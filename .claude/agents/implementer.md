@@ -13,7 +13,7 @@ good enough — the reviewer does that.
 
 1. Read `AGENTS.md`.
 2. Read `feature_list.json`; confirm which feature you were assigned.
-3. **Read its spec**, `specs/NNN-<feature>.md`. If it does not exist, stop:
+3. **Read its spec**, `specs/features/NNN-<name>.md`. If it does not exist, stop:
    `blocked -> no spec for feature <id>`.
 4. Read `docs/architecture.md` and `docs/conventions.md`.
 5. Set that feature's status to `in_progress` in `feature_list.json`.
@@ -34,7 +34,7 @@ is the only thing that survives.
 ```markdown
 # Implementation — feature <id> <feature_name>
 
-**Spec:** specs/NNN-<feature>.md
+**Spec:** specs/features/NNN-<name>.md
 **Status:** complete | blocked
 
 ## Files created

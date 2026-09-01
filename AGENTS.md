@@ -23,8 +23,9 @@
 |---|---|---|
 | `feature_list.json` | Task list with status (`pending` / `in_progress` / `done` / `blocked`) | Always, at the start |
 | `specs/` | One spec per feature. Acceptance criteria live here | Before implementing anything |
-| `specs/000-product-brief.md` | What this product is and who uses it | First session, or when lost |
-| `specs/001-domain-model.md` | The domain, derived from the source workbook | Before touching the schema |
+| `specs/product-brief.md` | What this product is and who uses it | First session, or when lost |
+| `specs/features/NNN-<name>.md` | The contract for one feature. `NNN` is the feature id, enforced by `init` | Before implementing that feature |
+| `specs/domain-model.md` | The domain, derived from the source workbook | Before touching the schema |
 | `progress/current.md` | Current session state | Always, at the start |
 | `progress/history.md` | Append-only log of previous sessions | When you need historical context |
 | `docs/architecture.md` | What "good work" means here: layers, dependency rules | Before implementing |
@@ -32,7 +33,7 @@
 | `docs/verification.md` | How to prove your work actually works | Before declaring anything `done` |
 | `docs/domain-glossary.md` | Thermo-P, A-S, boiler, MoM, yard, `Bal per nl`… | When the vocabulary is unfamiliar |
 | `CHECKPOINTS.md` | Objective criteria for "correct final state" | To self-assess, and when reviewing |
-| `.claude/agents/` | Subagent definitions (leader, explorer, implementer, reviewer) | If you are orchestrating work |
+| `.claude/agents/` | Subagent definitions: leader, explorer, **spec-writer**, implementer, reviewer | If you are orchestrating work |
 | `Samples/` | The original Excel workbook. **READ ONLY — never modify** | To verify domain assumptions |
 | `prisma/schema.prisma` | Database schema | Before any data change |
 | `src/` | Application code | To implement |
@@ -41,7 +42,7 @@
 ## 3. Hard rules (non-negotiable)
 
 - **One feature at a time.** Never mix changes from several tasks in one session.
-- **No spec, no code.** Every feature has a `specs/NNN-*.md` with numbered
+- **No spec, no code.** Every feature has a `specs/features/NNN-<name>.md` with numbered
   acceptance criteria before implementation starts.
 - **Never mark a feature `done` without green tests.** Run `init` and confirm the
   test block passes 100%.

@@ -27,8 +27,8 @@ $Required = @(
     'docs/conventions.md',
     'docs/verification.md',
     'docs/domain-glossary.md',
-    'specs/000-product-brief.md',
-    'specs/001-domain-model.md',
+    'specs/product-brief.md',
+    'specs/domain-model.md',
     'progress/current.md',
     'progress/history.md',
     '.claude/agents/leader.md',
@@ -50,7 +50,7 @@ if ($missing.Count -eq 0) {
 
 # Agent definitions must carry YAML frontmatter with a name.
 Get-ChildItem (Join-Path $Root '.claude/agents') -Filter *.md -ErrorAction SilentlyContinue | ForEach-Object {
-    $head = Get-Content $_.FullName -TotalCount 4
+    $head = Get-Content $_.FullName -TotalCount 5
     if (($head.Count -lt 1) -or ($head[0] -ne '---')) {
         Write-Bad "$($_.Name): missing YAML frontmatter"
     } elseif (-not ($head -match '^name:\s*\S+')) {
@@ -94,6 +94,14 @@ if ($null -ne $fl) {
                 Write-Bad "$label declares spec_status '$($feat.spec_status)' but $($feat.spec_file) does not exist"
             }
         }
+        # The convention is enforced, not merely documented: NNN is the feature id
+        # and the slug is the feature name. This is the check whose absence let
+        # feature #1 point at a reference document for three sessions.
+        $expected = "specs/features/{0:d3}-{1}.md" -f [int]$feat.id, $feat.name
+        if ($feat.spec_file -ne $expected) {
+            Write-Bad "$label spec_file is '$($feat.spec_file)'; convention requires '$expected'"
+        }
+
         # Nothing may be implemented without an approved spec.
         if (($feat.status -eq 'done') -and ($feat.spec_status -ne 'approved')) {
             Write-Bad "$label is done but its spec is not approved"

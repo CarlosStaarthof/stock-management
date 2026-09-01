@@ -5,17 +5,26 @@
     "one_feature_at_a_time": true,
     "spec_required_before_implementation": true,
     "require_tests_to_close": true,
-    "valid_status": ["pending", "in_progress", "blocked", "done"],
-    "valid_spec_status": ["missing", "draft", "approved"]
+    "valid_status": [
+      "pending",
+      "in_progress",
+      "blocked",
+      "done"
+    ],
+    "valid_spec_status": [
+      "missing",
+      "draft",
+      "approved"
+    ]
   },
   "milestones": {
     "M0": "Harness and scaffold",
     "M1": "Master data",
-    "M2": "Counting",
-    "M3": "Dashboard",
-    "M4": "Excel export",
-    "M5": "Housekeeping",
-    "M6": "Ship",
+    "M2": "Stock entry",
+    "M3": "History and analysis",
+    "M4": "Go live",
+    "M5": "Excel export",
+    "M6": "Housekeeping",
     "M7": "Deferred: Trucks and Yard"
   },
   "features": [
@@ -25,29 +34,30 @@
       "name": "repo_harness",
       "title": "Repository harness and spec foundation",
       "description": "Turn the directory into a system agents can work in: navigation map, docs, checkpoints, subagent definitions, progress log, verification entry point, and the two foundational specs.",
-      "spec_file": "specs/001-domain-model.md",
+      "spec_file": "specs/features/001-repo_harness.md",
       "spec_status": "approved",
       "acceptance": [
-        "AC-1: AGENTS.md, CLAUDE.md and CHECKPOINTS.md exist at the repository root",
-        "AC-2: docs/ contains architecture.md, conventions.md, verification.md and domain-glossary.md",
-        "AC-3: specs/ contains 000-product-brief.md and 001-domain-model.md, and 001 documents the workbook layout, the normalisation rules, the period model and the target schema",
-        "AC-4: .claude/agents/ contains leader.md, explorer.md, spec-writer.md, implementer.md and reviewer.md, each with valid YAML frontmatter",
-        "AC-5: progress/current.md and progress/history.md exist",
-        "AC-6: init.ps1 and init.sh run to completion and print '[OK] Environment ready' with no application code present",
-        "AC-7: init verifies harness integrity: required files present, feature_list.json parses, every status and spec_status is valid, every spec_file referenced with spec_status != 'missing' exists on disk",
-        "AC-8: The repository is a git repository with an initial commit and a .gitignore covering node_modules, .env and build output",
-        "AC-9: Nothing under Samples/ has been modified",
-        "AC-10: Every question in specs/001-domain-model.md that blocks a feature before M7 is answered"
+        "AC-1: `AGENTS.md`, `CLAUDE.md` and `CHECKPOINTS.md` exist at the repository root.",
+        "AC-2: `docs/` contains `architecture.md`, `conventions.md`, `verification.md` and `domain-glossary.md`.",
+        "AC-3: `specs/` separates reference documents from feature specs: `specs/product-brief.md` and `specs/domain-model.md` carry no number, and feature specs live at `specs/features/NNN-<name>.md` where `NNN` is the feature id. `domain-model.md` documents the workbook layout, the normalisation rules, the period model, the roles and money boundary, and the target schema.",
+        "AC-4: `.claude/agents/` contains `leader.md`, `explorer.md`, `spec-writer.md`, `implementer.md` and `reviewer.md`, each with valid YAML frontmatter, and each one's declared `tools:` list permits the work its body instructs it to do.",
+        "AC-5: `progress/current.md` and `progress/history.md` exist, and this feature's implementation report exists at `progress/impl_repo_harness.md`.",
+        "AC-6: `init.ps1` and `init.sh` both run to completion and print `[OK] Environment ready` with no application code present, and both exit `0`.",
+        "AC-7: `init` verifies harness integrity: required files present; agent frontmatter valid; `feature_list.json` parses; every `status` and `spec_status` valid; at most one feature `in_progress`; every `spec_file` with `spec_status` other than `missing` exists on disk; **every `spec_file` matches `specs/features/NNN-<name>.md` for its own id and name**; no feature is `done` without an approved spec and a non-empty `acceptance` array.",
+        "AC-8: The repository is a git repository with a commit history, and `.gitignore` covers `node_modules`, `.env` and build output.",
+        "AC-9: Nothing under `Samples/` has been modified.",
+        "AC-10: Every question in `specs/domain-model.md` that blocks a feature before M7 is answered, and every remaining open question is referenced by the feature it blocks.",
+        "AC-11: The harness documents do not contradict each other. Specifically: no file states a money precision other than `Decimal(18,8)`; no file refers to the removed `COUNTER` or `MANAGER` roles; and no file refers to a feature name, spec filename or question id that does not exist."
       ],
-      "status": "in_progress"
+      "status": "done"
     },
     {
       "id": 2,
       "milestone": "M0",
       "name": "app_scaffold",
       "title": "Next.js application scaffold",
-      "description": "Next.js App Router + TypeScript + Tailwind, Prisma against a Dockerised Postgres, Vitest and Playwright wired up, all invoked from init.",
-      "spec_file": "specs/002-app_scaffold.md",
+      "description": "Next.js App Router + TypeScript + Tailwind, Prisma against a Neon Postgres dev branch, Vitest and Playwright wired up, all invoked from init. No Docker.",
+      "spec_file": "specs/features/002-app_scaffold.md",
       "spec_status": "missing",
       "acceptance": [],
       "status": "pending"
@@ -57,8 +67,8 @@
       "milestone": "M0",
       "name": "auth_and_roles",
       "title": "Accounts and role-based access",
-      "description": "Auth.js credentials provider, User model, COUNTER/MANAGER/ADMIN roles, route protection, seeded first admin.",
-      "spec_file": "specs/003-auth_and_roles.md",
+      "description": "Auth.js credentials provider, User model, YARD_STAFF and ADMIN roles, route protection, role-shaped responses per specs/domain-model.md Part 6, seeded first admin.",
+      "spec_file": "specs/features/003-auth_and_roles.md",
       "spec_status": "missing",
       "acceptance": [],
       "status": "pending"
@@ -68,8 +78,8 @@
       "milestone": "M1",
       "name": "domain_schema",
       "title": "Domain schema and first migration",
-      "description": "Prisma schema per specs/001 Part 3: Location, Supplier, ItemType, Item, ItemPrice, ItemLocation, StockCount (keyed by location and period), StockCountLine (nullable quantity). Plus the migration and model-level tests.",
-      "spec_file": "specs/004-domain_schema.md",
+      "description": "Prisma schema per specs/domain-model.md Part 3: Location, Supplier, ItemType, Item, ItemPrice, ItemLocation, StockCount (keyed by location and period, with signature fields), StockCountLine (nullable quantity). Money is Decimal(18,8). Plus the migration and model-level tests.",
+      "spec_file": "specs/features/004-domain_schema.md",
       "spec_status": "missing",
       "acceptance": [],
       "status": "pending"
@@ -79,8 +89,8 @@
       "milestone": "M1",
       "name": "seed_from_workbook",
       "title": "Seed the item master from the source workbook",
-      "description": "Idempotent importer reading the Dublin and Clonmel sheets into Suppliers, ItemTypes, Items, ItemPrices and ItemLocation, applying the normalisation rules in specs/001 Part 2. Historical counts, the Summary sheet and the Trucks sheet are NOT imported. Emits an import report naming every item flagged needsReview.",
-      "spec_file": "specs/005-seed_from_workbook.md",
+      "description": "Idempotent importer reading the Dublin and Clonmel sheets into Suppliers, ItemTypes, Items, ItemPrices and ItemLocation, applying the normalisation rules in specs/domain-model.md Part 2. Historical counts, the Summary sheet and the Trucks sheet are NOT imported. Emits an import report naming every item flagged needsReview.",
+      "spec_file": "specs/features/005-seed_from_workbook.md",
       "spec_status": "missing",
       "acceptance": [],
       "status": "pending"
@@ -91,7 +101,7 @@
       "name": "item_master_ui",
       "title": "Item master administration",
       "description": "CRUD for items, suppliers and types; description required; versioned price lists; per-yard assignment and sheet ordering.",
-      "spec_file": "specs/006-item_master_ui.md",
+      "spec_file": "specs/features/006-item_master_ui.md",
       "spec_status": "missing",
       "acceptance": [],
       "status": "pending"
@@ -99,10 +109,10 @@
     {
       "id": 7,
       "milestone": "M2",
-      "name": "count_period_create",
-      "title": "Start a stock count for a period",
-      "description": "Create a count for a location and period. Period defaults from the count date (day <= 5 closes the previous month) and is overridable. Non-business-day dates warn but are allowed. One count per yard per month. Pre-populated with that yard's active items in sheet order, quantities null.",
-      "spec_file": "specs/007-count_period_create.md",
+      "name": "entry_start",
+      "title": "Start a stock entry",
+      "description": "Calendar view of existing counts, then confirm yard and date of entry. Period defaults from the date (day <= 5 closes the previous month) and is overridable. One count per yard per month. Pre-populated with that yard's active items in sheet order, quantities null. No business-day rule.",
+      "spec_file": "specs/features/007-entry_start.md",
       "spec_status": "missing",
       "acceptance": [],
       "status": "pending"
@@ -110,10 +120,10 @@
     {
       "id": 8,
       "milestone": "M2",
-      "name": "count_entry_ui",
-      "title": "Count entry screen",
-      "description": "Phone-first quantity entry with autosave. Distinguishes not-counted from counted-as-zero. Filter by type and supplier, running total, carry-forward from the previous period, and adding a one-off item inline.",
-      "spec_file": "specs/008-count_entry_ui.md",
+      "name": "stock_entry_ui",
+      "title": "Stock entry screen",
+      "description": "Phone-first quantity entry with autosave. Distinguishes not-counted from counted-as-zero. Three filter categories (Supplier, Type, Unit) with multi-select within a category and AND across categories. YARD_STAFF sees no line values, no running total and no 'no price' tag.",
+      "spec_file": "specs/features/008-stock_entry_ui.md",
       "spec_status": "missing",
       "acceptance": [],
       "status": "pending"
@@ -121,10 +131,10 @@
     {
       "id": 9,
       "milestone": "M2",
-      "name": "count_submit",
-      "title": "Submit and approve a count",
-      "description": "DRAFT to SUBMITTED to APPROVED. Submission blocked while any line is uncounted. Price snapshot written on submit. Approved counts immutable. Variance-against-previous-period warnings.",
-      "spec_file": "specs/009-count_submit.md",
+      "name": "entry_submit",
+      "title": "Sign, submit and approve",
+      "description": "Drawn signature stored as SVG path data, required before SUBMITTED. Submission blocked while any line is uncounted. Price snapshot written on submit. ADMIN approves; approved counts are immutable and reopening clears the signature.",
+      "spec_file": "specs/features/009-entry_submit.md",
       "spec_status": "missing",
       "acceptance": [],
       "status": "pending"
@@ -132,10 +142,10 @@
     {
       "id": 10,
       "milestone": "M3",
-      "name": "dashboard_totals",
-      "title": "Dashboard totals and variance",
-      "description": "Per-yard totals by period, period completeness (no headline total until every yard has an approved count), month-on-month and year-on-year variance joined on period. Held items only.",
-      "spec_file": "specs/010-dashboard_totals.md",
+      "name": "stock_takes_history",
+      "title": "Stock takes history",
+      "description": "Calendar of historical counts with a Dublin / Clonmel / Both selector and previous/next-count jumps. Read-only detail: item, quantity, unit. Money-free for BOTH roles. Phone-first.",
+      "spec_file": "specs/features/010-stock_takes_history.md",
       "spec_status": "missing",
       "acceptance": [],
       "status": "pending"
@@ -143,65 +153,54 @@
     {
       "id": 11,
       "milestone": "M3",
-      "name": "dashboard_breakdown",
-      "title": "Dashboard breakdowns",
-      "description": "Value by type and by supplier, biggest movers since the previous period, per-item quantity trend.",
-      "spec_file": "specs/011-dashboard_breakdown.md",
-      "spec_status": "missing",
-      "acceptance": [],
-      "status": "pending"
-    },
-    {
-      "id": 12,
-      "milestone": "M4",
-      "name": "export_yard_sheet",
-      "title": "Excel export: yard sheets",
-      "description": "Per-location sheet reproducing the Qty|Value column-pair layout with real headers and styling, generated from approved counts. Held items only by default, with a show-all option. No formula errors.",
-      "spec_file": "specs/012-export_yard_sheet.md",
-      "spec_status": "missing",
-      "acceptance": [],
-      "status": "pending"
-    },
-    {
-      "id": 13,
-      "milestone": "M4",
-      "name": "export_summary_sheet",
-      "title": "Excel export: summary sheet",
-      "description": "Per-yard totals, Total Stock, MoM and YoY by period. Incomplete periods are left visibly blank rather than filled with a partial total.",
-      "spec_file": "specs/013-export_summary_sheet.md",
-      "spec_status": "missing",
-      "acceptance": [],
-      "status": "pending"
-    },
-    {
-      "id": 14,
-      "milestone": "M4",
-      "name": "export_blank_count_sheet",
-      "title": "Printable blank count sheet",
-      "description": "A printable blank sheet listing all assigned items for a yard, as a paper fallback when the yard has no signal.",
-      "spec_file": "specs/014-export_blank_count_sheet.md",
-      "spec_status": "missing",
-      "acceptance": [],
-      "status": "pending"
-    },
-    {
-      "id": 15,
-      "milestone": "M5",
-      "name": "item_housekeeping",
-      "title": "Dormant and incomplete item housekeeping",
-      "description": "Items at zero across three or more consecutive counted periods are flagged for one-click archive by a MANAGER. Nothing is auto-archived; archiving never alters historical lines. The same screen lists items flagged needsReview, or missing unit or price.",
-      "spec_file": "specs/015-item_housekeeping.md",
+      "name": "analysis",
+      "title": "Analysis",
+      "description": "ADMIN only, and the only place monetary figures appear: per-yard values, total stock, period completeness, month-on-month and year-on-year joined on period, trend chart, breakdown by type and supplier. Desktop grid, stacks on phone.",
+      "spec_file": "specs/features/011-analysis.md",
       "spec_status": "missing",
       "acceptance": [],
       "status": "pending"
     },
     {
       "id": 16,
-      "milestone": "M6",
+      "milestone": "M4",
       "name": "deploy",
       "title": "Production deployment",
       "description": "Neon Postgres plus Vercel, environment configuration, migrate deploy in the pipeline, documented backup and restore.",
-      "spec_file": "specs/016-deploy.md",
+      "spec_file": "specs/features/016-deploy.md",
+      "spec_status": "missing",
+      "acceptance": [],
+      "status": "pending"
+    },
+    {
+      "id": 12,
+      "milestone": "M5",
+      "name": "export_workbook",
+      "title": "Excel export: full workbook",
+      "description": "One .xlsx with Summary, Dublin and Clonmel sheets in the sample's shape, generated clean so no #REF!, no hardcoded value cells and no off-by-one YoY can occur. Held items only by default. Signature and signer printed on each yard sheet. Absorbs the former #13.",
+      "spec_file": "specs/features/012-export_workbook.md",
+      "spec_status": "missing",
+      "acceptance": [],
+      "status": "pending"
+    },
+    {
+      "id": 14,
+      "milestone": "M5",
+      "name": "export_blank_count_sheet",
+      "title": "Printable blank count sheet",
+      "description": "A printable blank sheet listing all assigned items for a yard, as a paper fallback when the yard has no signal.",
+      "spec_file": "specs/features/014-export_blank_count_sheet.md",
+      "spec_status": "missing",
+      "acceptance": [],
+      "status": "pending"
+    },
+    {
+      "id": 15,
+      "milestone": "M6",
+      "name": "item_housekeeping",
+      "title": "Dormant and incomplete item housekeeping",
+      "description": "Items at zero across three or more consecutive counted periods are flagged for one-click archive by an ADMIN. Nothing is auto-archived; archiving never alters historical lines. The same screen lists items flagged needsReview, or missing unit or price.",
+      "spec_file": "specs/features/015-item_housekeeping.md",
       "spec_status": "missing",
       "acceptance": [],
       "status": "pending"
@@ -211,12 +210,12 @@
       "milestone": "M7",
       "name": "trucks_schema_seed",
       "title": "Trucks and yard-bulk schema",
-      "description": "Vehicle, BoilerReading, BagReading and YardBulkReading models, plus seeding of the truck registrations and role labels from the Clonmel Trucks and Yard sheet.",
-      "spec_file": "specs/017-trucks_schema_seed.md",
+      "description": "Vehicle, BoilerReading, BagReading and YardBulkReading models, plus seeding of the truck registrations and role labels for BOTH yards - Dublin has its own trucks 09D, 10D and 141D at Dublin!AM94:AS96.",
+      "spec_file": "specs/features/017-trucks_schema_seed.md",
       "spec_status": "missing",
       "acceptance": [],
       "status": "pending",
-      "blocked_by_question": "Q6 in specs/001-domain-model.md - does Dublin have its own trucks?"
+      "blocked_by_question": "Q8 in specs/domain-model.md - a full boiler is 200kg on Dublin and 250kg on Clonmel; which is right?"
     },
     {
       "id": 18,
@@ -224,11 +223,11 @@
       "name": "trucks_entry_ui",
       "title": "Truck and yard-bulk entry",
       "description": "Boiler percent-full and bag counts per truck, yard bulk bags, with kilogram rollups per material.",
-      "spec_file": "specs/018-trucks_entry_ui.md",
+      "spec_file": "specs/features/018-trucks_entry_ui.md",
       "spec_status": "missing",
       "acceptance": [],
       "status": "pending",
-      "blocked_by_question": "Q7 in specs/001-domain-model.md - do truck materials roll into the yard total?"
+      "blocked_by_question": "Q7 in specs/domain-model.md - do truck materials roll into the yard total?"
     },
     {
       "id": 19,
@@ -236,7 +235,7 @@
       "name": "export_trucks_sheet",
       "title": "Excel export: trucks and yard sheet",
       "description": "Trucks and yard sheet export, reproducing the boiler, bag and yard-bulk blocks.",
-      "spec_file": "specs/019-export_trucks_sheet.md",
+      "spec_file": "specs/features/019-export_trucks_sheet.md",
       "spec_status": "missing",
       "acceptance": [],
       "status": "pending"

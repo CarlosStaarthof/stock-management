@@ -9,19 +9,19 @@ A stock management web app for Macroads, replacing a hand-filled Excel workbook.
 Users record yard stock counts on phone or laptop; the dashboard computes the totals
 and variances; Excel becomes an export, not the system of record.
 
-See `specs/000-product-brief.md`.
+See `specs/product-brief.md`.
 
 ## Stack
 
 - Next.js (App Router) + TypeScript
-- Prisma + PostgreSQL (Docker locally, Neon in production)
+- Prisma + PostgreSQL (Neon — `dev` branch locally, `main` in production)
 - Tailwind CSS
 - ExcelJS for `.xlsx` generation
 - Vitest (unit/integration) + Playwright (e2e)
 
 ## The three things that matter most here
 
-1. **Spec-driven.** No feature is implemented before `specs/NNN-<feature>.md` exists
+1. **Spec-driven.** No feature is implemented before `specs/features/NNN-<name>.md` exists
    with numbered, testable acceptance criteria. The spec is the contract.
 2. **Role separation.** The leader does not implement, the implementer does not
    self-approve, the reviewer does not edit code. See `.claude/agents/`.
@@ -42,3 +42,5 @@ chat, where it degrades on every hand-off.
   through `src/server/`.
 - Store a computed `value` column. Value is always `quantity × unitPriceSnapshot`,
   derived on read.
+- Send a price, a value or a total to a `YARD_STAFF` session. Not hidden — not sent.
+  See `specs/domain-model.md` Part 6.

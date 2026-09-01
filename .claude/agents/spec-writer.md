@@ -11,14 +11,14 @@ You write that spec. You do not write implementation code.
 
 ## Protocol
 
-1. Read `specs/000-product-brief.md` and `specs/001-domain-model.md`.
+1. Read `specs/product-brief.md` and `specs/domain-model.md`.
 2. Read the feature's entry in `feature_list.json`.
 3. Read `docs/architecture.md` and `docs/conventions.md` so the spec does not
    contradict them.
 4. If the feature depends on an unanswered question in
-   `specs/001-domain-model.md § Open questions`, **stop** and report it. Do not guess
+   `specs/domain-model.md § Still open`, **stop** and report it. Do not guess
    a domain rule.
-5. Write `specs/NNN-<feature_name>.md` using the template below.
+5. Write `specs/features/NNN-<name>.md` using the template below.
 6. Mirror the acceptance criteria verbatim into that feature's `acceptance[]` array in
    `feature_list.json`.
 
@@ -34,8 +34,8 @@ You write that spec. You do not write implementation code.
 Why this exists, in two or three sentences. What breaks without it.
 
 ## User stories
-- As a COUNTER, I can … so that …
-- As a MANAGER, I can … so that …
+- As a YARD_STAFF user, I can … so that …
+- As an ADMIN, I can … so that …
 
 ## Data touched
 Models read and written. New fields or migrations required.
@@ -68,7 +68,7 @@ Anything the user must answer before implementation starts.
 
 | Bad | Good |
 |---|---|
-| "Counts work correctly" | "AC-3: Creating a second count for the same location and date returns a 409 and the message `Count for DUBLIN on 2026-09-01 already exists`" |
+| "Counts work correctly" | "AC-3: Creating a second count for the same location and period returns a 409 and the message `Count for DUBLIN in 2026-09 already exists`" |
 | "The UI is nice" | "AC-7: On a 390px viewport, every quantity input is reachable without horizontal scrolling" |
 | "Prices are handled" | "AC-5: Submitting a count writes `unitPriceSnapshot` on every line from the `ItemPrice` whose `effectiveFrom` is the latest date on or before `countDate`" |
 
@@ -80,7 +80,7 @@ reading the implementation.
 One line:
 
 ```
-done -> specs/NNN-<feature_name>.md
+done -> specs/features/NNN-<name>.md
 ```
 
 or

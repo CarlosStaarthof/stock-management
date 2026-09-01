@@ -17,7 +17,8 @@
 | DB column | `camelCase` in Prisma | `unitPriceSnapshot` |
 | Enum value | `SCREAMING_SNAKE` | `WHITE_THERMO`, `IN_PROGRESS` |
 | Route segment | `kebab-case` | `/stock-counts/[id]/entry` |
-| Spec file | `NNN-snake_case.md` | `007-count_create.md` |
+| Feature spec | `specs/features/NNN-snake_case.md`, `NNN` = feature id | `007-entry_start.md` |
+| Reference doc | `specs/kebab-case.md`, no number | `domain-model.md` |
 
 ## TypeScript
 
@@ -40,7 +41,7 @@
 
 ```ts
 // good
-throw new ConflictError(`Count for ${locationCode} on ${date} already exists`);
+throw new ConflictError(`Count for ${locationCode} in ${period} already exists`);
 
 // bad
 throw new Error("duplicate");
@@ -70,7 +71,10 @@ const KG_PER_FULL_BOILER = 250;
 
 - Every schema change ships with a migration: `npx prisma migrate dev --name <verb_noun>`.
 - Never edit an applied migration. Write a new one.
-- Money and quantity: `Decimal @db.Decimal(12, 4)`. Never `Float`.
+- **Money: `Decimal @db.Decimal(18, 8)`. Quantity: `Decimal @db.Decimal(12, 4)`.**
+  Never `Float`. Not `(12,4)` for money: four workbook prices are formulas
+  (`=5.2/0.85` and friends) that do not terminate in decimal, and at four places the
+  totals drift from the file this replaces. See `specs/domain-model.md` Invariant 10.
 - Every foreign key gets an explicit `onDelete` policy. Think about it — do not accept
   the default because it is the default.
 
@@ -79,7 +83,7 @@ const KG_PER_FULL_BOILER = 250;
 - Test names read as sentences describing behaviour, and reference their criterion:
 
 ```ts
-it("AC-3: rejects a second count for the same location and date", async () => { … });
+it("AC-3: rejects a second count for the same location and period", async () => { … });
 ```
 
 - Arrange / Act / Assert, separated by blank lines.

@@ -14,7 +14,7 @@ src/
 │   └── reporting/  totals, MoM, YoY, breakdowns
 ├── lib/
 │   ├── excel/      ExcelJS workbook builders — PURE functions over plain data
-│   ├── units.ts    unit-label normalisation (see specs/001)
+│   ├── units.ts    unit-label normalisation (see `specs/domain-model.md`)
 │   └── money.ts    decimal arithmetic helpers
 └── types/          shared TypeScript types
 ```
@@ -44,10 +44,24 @@ Keeping calculation in `server/` and presentation in `app/` is the structural fi
 ## Money and quantities
 
 - **Never use JavaScript `number` for money in the database.** Prisma `Decimal`
-  (`@db.Decimal(12, 4)`) for prices and values.
+  (`@db.Decimal(18, 8)`) for prices and values. Not `(12,4)`: four of the workbook's
+  prices are formulas — `=5.2/0.85` and friends — that do not terminate in decimal, and
+  at 4 places the totals drift from the file we are replacing.
 - **Quantities are decimal too.** The workbook holds `21.6128` tonnes and `0.475`
   units. `Int` would silently destroy data.
 - Convert to `number` only at the presentation boundary, and format there.
+
+## The money boundary
+
+`YARD_STAFF` is never *sent* a monetary value. Hiding one in a component is not a
+permission — it stays in the network response and the page source.
+
+- `src/server/` exposes two shapes per aggregate: `…ForStaff` and `…ForAdmin`.
+- The shape is chosen from the **session role**, never from anything the client controls.
+- A component never filters money. If a component has to decide whether to show a price,
+  the boundary has already been crossed in the wrong place.
+
+See `specs/domain-model.md` Part 6.
 
 ## Derived values are never stored
 

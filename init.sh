@@ -30,8 +30,8 @@ REQUIRED=(
   docs/conventions.md
   docs/verification.md
   docs/domain-glossary.md
-  specs/000-product-brief.md
-  specs/001-domain-model.md
+  specs/product-brief.md
+  specs/domain-model.md
   progress/current.md
   progress/history.md
   .claude/agents/leader.md
@@ -60,7 +60,7 @@ done
 step "Feature list"
 
 if command -v node >/dev/null 2>&1; then
-  node - <<'NODE'
+  fl_out="$(node - <<'NODE'
 const fs = require('fs');
 let fl;
 try {
@@ -86,6 +86,10 @@ for (const f of fl.features) {
     problems.push(`${label} is done but its spec is not approved`);
   if (f.status === 'done' && (!f.acceptance || f.acceptance.length === 0))
     problems.push(`${label} is done but has no acceptance criteria`);
+  // The convention is enforced, not merely documented.
+  const expected = `specs/features/${String(f.id).padStart(3, '0')}-${f.name}.md`;
+  if (f.spec_file !== expected)
+    problems.push(`${label} spec_file is '${f.spec_file}'; convention requires '${expected}'`);
 }
 
 if (inProgress.length > 1) problems.push(`more than one feature in_progress: ${inProgress.join(', ')}`);
@@ -94,7 +98,13 @@ else console.log(`    [ok]   ${fl.features.length} features, ${inProgress.length
 for (const p of problems) console.log(`    [FAIL] ${p}`);
 process.exit(problems.length ? 1 : 0);
 NODE
-  [ $? -ne 0 ] && FAILURES+=("feature_list.json validation failed")
+)"
+  printf '%s
+' "$fl_out"
+  # one entry per problem, so this gate and init.ps1 agree on their own failure count
+  while IFS= read -r line; do
+    case "$line" in *"[FAIL]"*) FAILURES+=("${line#*"[FAIL] "}");; esac
+  done <<< "$fl_out"
 else
   skip "node not available; cannot validate feature_list.json"
 fi

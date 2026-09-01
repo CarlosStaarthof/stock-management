@@ -11,7 +11,7 @@ this file to record a review.
 ## C1 — Process
 
 - [ ] Exactly one feature was changed in this session.
-- [ ] The feature has a spec at `specs/NNN-<feature>.md`.
+- [ ] The feature has a spec at `specs/features/NNN-<name>.md`.
 - [ ] Every numbered acceptance criterion in that spec is satisfied.
 - [ ] `feature_list.json` `acceptance[]` matches the spec's criteria.
 - [ ] `progress/impl_<feature>.md` exists and lists the files touched.
@@ -39,6 +39,9 @@ this file to record a review.
 
 - [ ] Monetary value is never stored — it is derived from
       `quantity × unitPriceSnapshot`.
+- [ ] No price, value or total appears anywhere in a `YARD_STAFF` response body.
+- [ ] Money columns are `Decimal(18,8)`; quantities `Decimal(12,4)`. Never `Float`.
+- [ ] A count cannot reach `SUBMITTED` without a signature, and reopening clears it.
 - [ ] `unitPriceSnapshot` is written when a count is submitted, and never rewritten
       afterwards.
 - [ ] An approved `StockCount` is immutable.

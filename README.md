@@ -14,8 +14,8 @@ with Spec-Driven Development layered on top.
 | If you are… | Read |
 |---|---|
 | An AI agent | [`AGENTS.md`](AGENTS.md) — the navigation map |
-| A developer, new to the project | [`specs/000-product-brief.md`](specs/000-product-brief.md) |
-| Working on the schema | [`specs/001-domain-model.md`](specs/001-domain-model.md) |
+| A developer, new to the project | [`specs/product-brief.md`](specs/product-brief.md) |
+| Working on the schema | [`specs/domain-model.md`](specs/domain-model.md) |
 | Reviewing someone's work | [`CHECKPOINTS.md`](CHECKPOINTS.md) |
 
 ## Verify the environment
@@ -39,20 +39,20 @@ else it needs, when it needs it — progressive disclosure, not a wall of rules.
 self-approve, the reviewer does not edit code. Definitions in
 [`.claude/agents/`](.claude/agents/).
 
-**3. Spec first.** No feature is implemented before `specs/NNN-<feature>.md` exists
+**3. Spec first.** No feature is implemented before `specs/features/NNN-<name>.md` exists
 with numbered, testable acceptance criteria. The spec is the contract; the reviewer
 checks against it, not against taste.
 
 ### The anti-broken-telephone rule
 
 Subagents write their results to files under `progress/` and return a single line such
-as `done -> progress/impl_count_create.md`. Substantive content never travels through
+as `done -> progress/impl_entry_start.md`. Substantive content never travels through
 chat, where it degrades on every hand-off.
 
 ### The loop
 
 ```
-spec-writer  →  specs/NNN-*.md          (approved by a human)
+spec-writer  →  specs/features/NNN-<name>.md          (approved by a human)
      ↓
 implementer  →  code + tests            →  progress/impl_<feature>.md
      ↓
