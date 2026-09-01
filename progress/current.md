@@ -31,7 +31,37 @@ feature has something concrete to be checked against.
 
 ## Verification
 
-<!-- paste the tail of the init run here -->
+Positive run — `./init.ps1`:
+
+```
+==> Harness integrity
+    [ok]   17 required files present
+
+==> Feature list
+    [ok]   feature_list.json parses
+    [ok]   17 features, 1 in progress
+
+==> Source workbook untouched
+    [ok]   Samples/ has no uncommitted changes
+
+==> Application
+    [skip] no package.json yet (feature #2 app_scaffold)
+
+[OK] Environment ready
+```
+
+Negative run — the gate must also *fail* when it should, otherwise green means
+nothing. Temporarily set feature #2 to `in_progress` with `spec_status: approved`
+for a spec file that does not exist, then reverted with `git checkout`:
+
+```
+    [FAIL] #2 app_scaffold declares spec_status 'approved' but specs/002-app_scaffold.md does not exist
+    [FAIL] more than one feature in_progress: #1 repo_harness, #2 app_scaffold
+[FAILED] 2 problem(s)
+EXITCODE=1
+```
+
+`init.sh` run under Git Bash: identical output, exit code 0. Both gates agree.
 
 ## Blockers
 
