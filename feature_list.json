@@ -1,0 +1,223 @@
+{
+  "project": "macroads-stock",
+  "description": "Stock management web app for Macroads. Replaces a hand-filled Excel workbook with yard-floor data entry, a live dashboard, and Excel as an export. Built as a Harness Engineering exercise: repo-as-system, leader/explorer/implementer/reviewer separation, spec-driven development.",
+  "rules": {
+    "one_feature_at_a_time": true,
+    "spec_required_before_implementation": true,
+    "require_tests_to_close": true,
+    "valid_status": ["pending", "in_progress", "blocked", "done"],
+    "valid_spec_status": ["missing", "draft", "approved"]
+  },
+  "milestones": {
+    "M0": "Harness and scaffold",
+    "M1": "Master data",
+    "M2": "Counting",
+    "M3": "Trucks and yard",
+    "M4": "Dashboard",
+    "M5": "Excel export",
+    "M6": "Ship"
+  },
+  "features": [
+    {
+      "id": 1,
+      "milestone": "M0",
+      "name": "repo_harness",
+      "title": "Repository harness and spec foundation",
+      "description": "Turn the directory into a system agents can work in: navigation map, docs, checkpoints, subagent definitions, progress log, verification entry point, and the two foundational specs.",
+      "spec_file": "specs/001-domain-model.md",
+      "spec_status": "approved",
+      "acceptance": [
+        "AC-1: AGENTS.md, CLAUDE.md and CHECKPOINTS.md exist at the repository root",
+        "AC-2: docs/ contains architecture.md, conventions.md, verification.md and domain-glossary.md",
+        "AC-3: specs/ contains 000-product-brief.md and 001-domain-model.md, and 001 documents the workbook layout, the normalisation rules and the target schema",
+        "AC-4: .claude/agents/ contains leader.md, explorer.md, spec-writer.md, implementer.md and reviewer.md, each with valid YAML frontmatter",
+        "AC-5: progress/current.md and progress/history.md exist",
+        "AC-6: init.ps1 and init.sh run to completion and print '[OK] Environment ready' with no application code present",
+        "AC-7: init verifies harness integrity: required files present, feature_list.json parses, every status and spec_status is valid, every spec_file referenced with spec_status != 'missing' exists on disk",
+        "AC-8: The repository is a git repository with an initial commit and a .gitignore covering node_modules, .env and build output",
+        "AC-9: Nothing under Samples/ has been modified"
+      ],
+      "status": "in_progress"
+    },
+    {
+      "id": 2,
+      "milestone": "M0",
+      "name": "app_scaffold",
+      "title": "Next.js application scaffold",
+      "description": "Next.js App Router + TypeScript + Tailwind, Prisma against a Dockerised Postgres, Vitest and Playwright wired up, all invoked from init.",
+      "spec_file": "specs/002-app_scaffold.md",
+      "spec_status": "missing",
+      "acceptance": [],
+      "status": "pending"
+    },
+    {
+      "id": 3,
+      "milestone": "M0",
+      "name": "auth_and_roles",
+      "title": "Accounts and role-based access",
+      "description": "Auth.js credentials provider, User model, COUNTER/MANAGER/ADMIN roles, route protection, seeded first admin.",
+      "spec_file": "specs/003-auth_and_roles.md",
+      "spec_status": "missing",
+      "acceptance": [],
+      "status": "pending"
+    },
+    {
+      "id": 4,
+      "milestone": "M1",
+      "name": "domain_schema",
+      "title": "Domain schema and first migration",
+      "description": "Prisma schema for Location, Supplier, ItemType, Item, ItemPrice, ItemLocation, StockCount, StockCountLine, plus the migration and model-level tests.",
+      "spec_file": "specs/004-domain_schema.md",
+      "spec_status": "missing",
+      "acceptance": [],
+      "status": "pending"
+    },
+    {
+      "id": 5,
+      "milestone": "M1",
+      "name": "seed_from_workbook",
+      "title": "Seed the item master from the source workbook",
+      "description": "Idempotent importer reading Samples/*.xlsx into Suppliers, ItemTypes, Items, ItemPrices, ItemLocation and Vehicles, applying the normalisation rules in specs/001. Historical counts are NOT imported.",
+      "spec_file": "specs/005-seed_from_workbook.md",
+      "spec_status": "missing",
+      "acceptance": [],
+      "status": "pending",
+      "blocked_by_question": "Q4 in specs/001-domain-model.md — items with no price"
+    },
+    {
+      "id": 6,
+      "milestone": "M1",
+      "name": "item_master_ui",
+      "title": "Item master administration",
+      "description": "CRUD for items, suppliers and types; versioned price lists; per-yard assignment and sheet ordering.",
+      "spec_file": "specs/006-item_master_ui.md",
+      "spec_status": "missing",
+      "acceptance": [],
+      "status": "pending"
+    },
+    {
+      "id": 7,
+      "milestone": "M2",
+      "name": "count_create",
+      "title": "Start a stock count",
+      "description": "Create a count for a location and date, pre-populated with that yard's active items in sheet order. One count per yard per day.",
+      "spec_file": "specs/007-count_create.md",
+      "spec_status": "missing",
+      "acceptance": [],
+      "status": "pending"
+    },
+    {
+      "id": 8,
+      "milestone": "M2",
+      "name": "count_entry_ui",
+      "title": "Count entry screen",
+      "description": "Phone-first quantity entry with autosave, filtering by type and supplier, a running total, and carry-forward from the previous count.",
+      "spec_file": "specs/008-count_entry_ui.md",
+      "spec_status": "missing",
+      "acceptance": [],
+      "status": "pending"
+    },
+    {
+      "id": 9,
+      "milestone": "M2",
+      "name": "count_submit",
+      "title": "Submit and approve a count",
+      "description": "DRAFT to SUBMITTED to APPROVED. Price snapshot written on submit. Approved counts immutable. Variance-against-last-count warnings before submit.",
+      "spec_file": "specs/009-count_submit.md",
+      "spec_status": "missing",
+      "acceptance": [],
+      "status": "pending"
+    },
+    {
+      "id": 10,
+      "milestone": "M3",
+      "name": "trucks_schema_seed",
+      "title": "Trucks and yard-bulk schema",
+      "description": "Vehicle, BoilerReading, BagReading and YardBulkReading models, plus seeding of the truck registrations and role labels from the workbook.",
+      "spec_file": "specs/010-trucks_schema_seed.md",
+      "spec_status": "missing",
+      "acceptance": [],
+      "status": "pending",
+      "blocked_by_question": "Q1 in specs/001-domain-model.md — does Dublin have trucks?"
+    },
+    {
+      "id": 11,
+      "milestone": "M3",
+      "name": "trucks_entry_ui",
+      "title": "Truck and yard-bulk entry",
+      "description": "Boiler percent-full and bag counts per truck, yard bulk bags, with kilogram rollups per material.",
+      "spec_file": "specs/011-trucks_entry_ui.md",
+      "spec_status": "missing",
+      "acceptance": [],
+      "status": "pending",
+      "blocked_by_question": "Q2 in specs/001-domain-model.md — do truck materials roll into the yard total?"
+    },
+    {
+      "id": 12,
+      "milestone": "M4",
+      "name": "dashboard_totals",
+      "title": "Dashboard totals and variance",
+      "description": "Total stock by yard, latest count date, month-on-month and year-on-year variance. The Summary sheet, computed live.",
+      "spec_file": "specs/012-dashboard_totals.md",
+      "spec_status": "missing",
+      "acceptance": [],
+      "status": "pending",
+      "blocked_by_question": "Q3 and Q5 in specs/001-domain-model.md"
+    },
+    {
+      "id": 13,
+      "milestone": "M4",
+      "name": "dashboard_breakdown",
+      "title": "Dashboard breakdowns",
+      "description": "Value by type and by supplier, biggest movers since the last count, per-item quantity trend.",
+      "spec_file": "specs/013-dashboard_breakdown.md",
+      "spec_status": "missing",
+      "acceptance": [],
+      "status": "pending"
+    },
+    {
+      "id": 14,
+      "milestone": "M5",
+      "name": "export_yard_sheet",
+      "title": "Excel export: yard sheets",
+      "description": "Per-location sheet reproducing the Qty|Value column-pair layout with real headers and styling, generated from approved counts.",
+      "spec_file": "specs/014-export_yard_sheet.md",
+      "spec_status": "missing",
+      "acceptance": [],
+      "status": "pending"
+    },
+    {
+      "id": 15,
+      "milestone": "M5",
+      "name": "export_summary_sheet",
+      "title": "Excel export: summary sheet",
+      "description": "Summary sheet with per-yard totals, total stock, MoM and YoY variance, generated from count totals and free of formula errors.",
+      "spec_file": "specs/015-export_summary_sheet.md",
+      "spec_status": "missing",
+      "acceptance": [],
+      "status": "pending"
+    },
+    {
+      "id": 16,
+      "milestone": "M5",
+      "name": "export_trucks_and_blank",
+      "title": "Excel export: trucks sheet and printable blank count sheet",
+      "description": "Trucks and yard sheet, plus a printable blank count sheet as a paper fallback for the yard.",
+      "spec_file": "specs/016-export_trucks_and_blank.md",
+      "spec_status": "missing",
+      "acceptance": [],
+      "status": "pending"
+    },
+    {
+      "id": 17,
+      "milestone": "M6",
+      "name": "deploy",
+      "title": "Production deployment",
+      "description": "Neon Postgres plus Vercel, environment configuration, migrate deploy in the pipeline, documented backup and restore.",
+      "spec_file": "specs/017-deploy.md",
+      "spec_status": "missing",
+      "acceptance": [],
+      "status": "pending"
+    }
+  ]
+}

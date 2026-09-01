@@ -1,0 +1,13 @@
+# Normalise text in the repository, checked out with native line endings.
+* text=auto
+
+# Shell scripts must keep LF or they will not run.
+*.sh text eol=lf
+
+# PowerShell is happy either way; keep it CRLF on Windows.
+*.ps1 text eol=crlf
+
+# The source workbook is binary and must never be line-ending mangled.
+*.xlsx binary
+*.xls  binary
+*.bin  binary

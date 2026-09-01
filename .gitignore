@@ -1,0 +1,44 @@
+# dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# build output
+.next/
+out/
+build/
+dist/
+*.tsbuildinfo
+
+# environment — never commit secrets or connection strings
+.env
+.env.*
+!.env.example
+
+# test output
+coverage/
+playwright-report/
+test-results/
+blob-report/
+.playwright/
+
+# generated
+prisma/generated/
+*.generated.ts
+
+# excel exports produced at runtime
+exports/
+*.tmp.xlsx
+
+# excel lock files (do not commit; do not touch Samples/ itself)
+~$*.xlsx
+
+# editor / OS
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+
+# claude local overrides
+.claude/settings.local.json
