@@ -63,16 +63,50 @@ EXITCODE=1
 
 `init.sh` run under Git Bash: identical output, exit code 0. Both gates agree.
 
+## Spec revision (same session, after answers from the user)
+
+Q1–Q5 answered. The answers changed scope and the schema, so the specs were revised
+before any application code was written.
+
+- **Q1/Q2 — Trucks & Yard deferred.** Moved to a new milestone M7 (features #17–#19).
+  Vehicles are no longer imported by the seeder. Re-opened as Q6 and Q7, blocking only
+  M7.
+- **Q3 — `Bal per nl` dropped.** Not a figure this team owns. Removed from the product
+  brief; the glossary keeps one line so the rows stay recognisable in the old workbook.
+- **Q4 — description mandatory, incomplete items flagged.** `Item.needsReview` added.
+  About 15 workbook rows have a description but no unit or price; they import flagged,
+  contribute 0 value *with a warning*, and land on the housekeeping worklist. A row with
+  a blank description fails the import loudly.
+- **Q5 — the period model.** This was the significant one. Converting every date serial
+  showed that the Dublin count dated `2025-09-01` is the Summary column headed
+  `2025-08-31`; that `'Clonmel '!R1` is a year out and `Dublin!U1` is 16 months in the
+  future; that counts fall on Saturdays and Sundays; and that Clonmel skipped July and
+  August 2025 entirely. A count therefore cannot be keyed by date. `StockCount` is now
+  keyed `(locationId, periodYear, periodMonth)` with `countDate` demoted to a recorded
+  fact. Period defaults from the date (day ≤ 5 closes the previous month), overridable.
+  Non-business-day dates warn but are allowed.
+- **Side note — one-off items.** New Part 5 in `specs/001`. `held` / `one-off` /
+  `dormant` defined; `StockCountLine.quantity` made **nullable** so "not counted" is
+  distinguishable from "counted, none held" — the one thing the workbook's blank cells
+  cannot express. Held-only is the default on every view and export; entry and the
+  printable blank sheet still show everything. New feature #15 `item_housekeeping`.
+- **Period completeness.** Total Stock, MoM and YoY appear only when every active yard
+  has an approved count for the period. Incomplete periods show per-yard figures and no
+  headline total.
+
+Files revised: `specs/001-domain-model.md` (Parts 3–5 + answered questions),
+`specs/000-product-brief.md` (scope), `feature_list.json` (19 features, 8 milestones),
+`docs/domain-glossary.md`.
+
 ## Blockers
 
 None.
 
 ## Open questions for the user
 
-Recorded in `specs/001-domain-model.md § Open questions` (Q1–Q5). Q4 blocks feature
-#5, Q1 blocks #10, Q2 blocks #11, Q3 and Q5 block #12.
+Only Q6 and Q7 remain, and both block M7 only. Everything before M7 is unblocked.
 
 ## Next
 
-Feature #2 `app_scaffold` — but its spec (`specs/002-app_scaffold.md`) does not exist
-yet, so the next action is a `spec-writer` run, not an `implementer` run.
+Feature #2 `app_scaffold`. Its spec (`specs/002-app_scaffold.md`) does not exist yet, so
+the next action is a `spec-writer` run, not an `implementer` run.

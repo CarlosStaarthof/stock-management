@@ -46,6 +46,8 @@ The total row is `SUBTOTAL(9, …)` — `Dublin!86`, `Clonmel!72`.
 | `Summary!AK3`, `Summary!AP4` | `#REF!` propagating into `Total Stock` |
 | `Summary!B18` | `=+B12+1` — an unexplained `+1` fudge |
 | `Summary!R19` | `Dublin diff` of `1` — a manual plug |
+| `'Clonmel '!R1` | Date header `2025-01-05`, positioned between `2025-12-01` and `2026-02-03` — a year typo |
+| `Dublin!U1` | Date header `2026-12-31`, 16 months after the file's own date of 01-Sep-2026 |
 
 ### Summary sheet layout
 
@@ -137,9 +139,13 @@ Preserve the original string as `unitLabel` (staff recognise it), and derive:
 - The same description can appear on both yard sheets with a different price
   (`Red - KestrelFlex - Anti-Skid` is 885 in both; `Bicycle Logo's 1200mm` appears
   under both `Kestrel` and `Kellys` — those are two distinct items).
-- Rows with a description but no price (e.g. `Dublin!R29 Pedestrian Logo White`) are
-  imported as items with `active: true` and **no** `ItemPrice`. They must be flagged in
-  the import report, not silently dropped.
+- Rows with a description but no unit or price (e.g. `Dublin!A29 Pedestrian Logo White`,
+  `Dublin!A62 Multigrip Signal Yellow`, `Dublin!A43 Clock Blue + Yellow Nos` — about 15
+  in total) are imported as items with `active: true`, `needsReview: true` and **no**
+  `ItemPrice`. They appear in the import report and on the housekeeping worklist. They
+  are never silently dropped, and never silently treated as zero-valued stock.
+- A row with a blank description is **not** importable — `description` is required.
+  The importer fails loudly and names the sheet and row so it can be fixed at source.
 - `E` may itself be a formula (`=5.2/0.85`). Import the computed value.
 
 ### Prices
@@ -150,19 +156,18 @@ Preserve the original string as `unitLabel` (staff recognise it), and derive:
 
 ### Not imported
 
-Historical `Qty`/`Value` columns, the `Summary` sheet, and all Trucks & Yard readings.
-Vehicles and their role labels **are** imported; their readings are not.
+Historical `Qty`/`Value` columns, the `Summary` sheet, and the entire
+`Clonmel Trucks & Yard` sheet — including vehicles, which move to M7 with the rest of
+that module. Counting starts fresh from the next count.
 
 ---
 
 ## Part 3 — The schema
 
 ```prisma
-enum Role            { COUNTER MANAGER ADMIN }
-enum CountStatus     { DRAFT SUBMITTED APPROVED }
-enum UnitKind        { TONNE KILOGRAM LITRE UNIT LINEAR_METRE }
-enum BoilerMaterial  { WHITE_THERMO YELLOW_THERMO AS_BUFF AS_RED CATS_EYES }
-enum BagMaterial     { WHITE_THERMO YELLOW_THERMO BEADS }
+enum Role        { COUNTER MANAGER ADMIN }
+enum CountStatus { DRAFT SUBMITTED APPROVED }
+enum UnitKind    { TONNE KILOGRAM LITRE UNIT LINEAR_METRE }
 
 User            id  email(unique)  name  passwordHash  role  active
                 createdAt  updatedAt
@@ -174,8 +179,11 @@ Supplier        id  name(unique)   active
 
 ItemType        id  code(unique)   name  sortOrder
 
-Item            id  description  supplierId  itemTypeId
-                unitLabel  unitKind  unitQuantityKg?  active  notes?
+Item            id  description   # REQUIRED, non-empty after trim
+                supplierId  itemTypeId
+                unitLabel?  unitKind  unitQuantityKg?
+                active  needsReview Boolean @default(false)
+                notes?
                 @@unique([description, supplierId])
 
 ItemPrice       id  itemId  unitPrice Decimal(12,4)  currency("EUR")
@@ -185,28 +193,23 @@ ItemPrice       id  itemId  unitPrice Decimal(12,4)  currency("EUR")
 ItemLocation    id  itemId  locationId  sortOrder  active
                 @@unique([itemId, locationId])
 
-StockCount      id  locationId  countDate  status
-                createdById  submittedAt?  approvedById?  approvedAt?  notes?
-                @@unique([locationId, countDate])
+StockCount      id  locationId
+                periodYear Int   periodMonth Int   # the month this count CLOSES
+                countDate  Date                    # the day the yard was walked
+                status  createdById  submittedAt?
+                approvedById?  approvedAt?  notes?
+                @@unique([locationId, periodYear, periodMonth])
 
 StockCountLine  id  stockCountId  itemId
-                quantity Decimal(12,4)  unitPriceSnapshot Decimal(12,4)?  note?
+                quantity Decimal(12,4)?   # NULL = not counted; 0 = counted, none held
+                unitPriceSnapshot Decimal(12,4)?
+                note?
                 @@unique([stockCountId, itemId])
-
-Vehicle         id  registration(unique)  roleLabel  locationId  active
-
-BoilerReading   id  stockCountId  vehicleId  material BoilerMaterial
-                percentFull Decimal(5,4)  kgPerFullBoiler Decimal(8,2)
-                @@unique([stockCountId, vehicleId, material])
-
-BagReading      id  stockCountId  vehicleId  material BagMaterial
-                bags Decimal(10,2)  kgPerBag Decimal(8,2)
-                @@unique([stockCountId, vehicleId, material])
-
-YardBulkReading id  stockCountId  materialLabel
-                bags Decimal(10,2)  kgPerBag Decimal(8,2)
-                @@unique([stockCountId, materialLabel])
 ```
+
+**Deferred to M7** — `Vehicle`, `BoilerReading`, `BagReading`, `YardBulkReading`, and
+the `BoilerMaterial` / `BagMaterial` enums. The Trucks & Yard sheet is out of v1 scope;
+its shape is documented in Part 1 so the model is ready when M7 starts.
 
 ### Invariants
 
@@ -216,34 +219,162 @@ YardBulkReading id  stockCountId  materialLabel
 3. **An `APPROVED` count is immutable.** Only an `ADMIN` may reopen it, and doing so is
    audited.
 4. **A count line without a price** (item has no `ItemPrice`) contributes `0` to the
-   total and is listed in a "missing price" warning on the count summary. It is never
-   silently treated as zero-valued stock.
-5. **`(locationId, countDate)` is unique.** One count per yard per day.
-6. **Decimal everywhere** for money and quantity. Never `Float`.
+   total **and raises a warning** on the count summary. It is never silently treated as
+   zero-valued stock.
+5. **`quantity = null` blocks submission.** Every line must be either counted (including
+   counted as `0`) or explicitly dismissed as not stocked at that yard. This is the one
+   rule the workbook cannot express, and the reason its blank cells are ambiguous.
+6. **`(locationId, periodYear, periodMonth)` is unique.** One count per yard per month —
+   *not* per day. See Part 4.
+7. **A period is complete** only when every `active` Location has an `APPROVED` count
+   for it. Total Stock, MoM and YoY exist only for complete periods.
+8. **Decimal everywhere** for money and quantity. Never `Float`.
+9. **`Item.description` is required and non-empty.** Enforced at the database and at
+   every form.
 
 ### Derived queries (no storage)
 
 | Report | Definition |
 |---|---|
-| Count total | `Σ (line.quantity × line.unitPriceSnapshot)` over approved lines |
-| Yard total | Count total for the latest `APPROVED` count of that yard |
-| Total stock | Sum of yard totals for the period |
-| MoM variance | `total(period) − total(previous period)` |
-| YoY variance | `total(period) − total(same month, previous year)` |
-| Movement | Per-yard difference between consecutive counts |
-| Boiler kg | `percentFull × kgPerFullBoiler` |
-| Bag kg | `bags × kgPerBag` |
+| Line value | `quantity × unitPriceSnapshot` |
+| Yard total | `Σ` line values for that yard's `APPROVED` count in the period |
+| Total stock | `Σ` yard totals — **only for complete periods** |
+| MoM variance | `total(period) − total(previous complete period)` |
+| YoY variance | `total(y, m) − total(y − 1, m)` |
+| Movement | Per-yard difference between consecutive counted periods |
+| Held | `quantity > 0` |
+| Dormant | `quantity = 0` across the last 3 counted periods |
+| One-off | held in exactly one period |
 
 ---
 
-## Open questions
+## Part 4 — Periods, and why a count is not a date
 
-Recorded rather than guessed. Each blocks only the feature named.
+### The evidence
+
+Every date serial in the workbook, converted:
+
+**Dublin:** `2025-05-30 Fri` · `06-30 Mon` · `07-31 Thu` · `09-01 Mon` · `10-01 Wed` ·
+`10-31 Fri` · `11-30 Sun` · `2026-12-31 Thu`
+
+**Clonmel:** `2025-06-30` · `09-01` · `10-01` · `11-01 Sat` · `12-01` · `2025-01-05` ·
+`2026-02-03` · `03-02` · `04-01` · `05-01` · `06-02` · `06-30`
+
+**Summary headers:** strict calendar month-ends — `2025-10-31`, `09-30`, `08-31`,
+`07-31`, `06-30`, `05-31`, …
+
+Four facts:
+
+1. **The Dublin count dated `2025-09-01` is the Summary column headed `2025-08-31`.**
+   One stock take, two different dates on two sheets.
+2. **Two dates are wrong.** Clonmel's `2025-01-05` sits positionally between `2025-12-01`
+   and `2026-02-03` — a year typo. Dublin's `2026-12-31` is 16 months after the file's
+   own date of 01-Sep-2026.
+3. **Some counts fall on weekends** — `11-01 Sat`, `11-30 Sun` — despite the stated rule
+   that counting happens on a business day.
+4. **Months get skipped.** Clonmel jumps `2025-06-30` → `2025-09-01`, so July and August
+   2025 have no Clonmel count at all.
+
+### The rule
+
+A stock take is done at the **start of a month**, or on the **last business day of the
+month before**. Both close the same month. Therefore:
+
+- `(periodYear, periodMonth)` identifies the count. This is what MoM and YoY join on.
+- `countDate` records when the yard was actually walked. It is a fact, not a key.
+
+**Period defaulting.** From `countDate`: if `day <= 5` the period is the *previous*
+month, otherwise it is `countDate`'s own month. The derived period is shown to the user
+on the create screen and can be overridden.
+
+| `countDate` | Default period |
+|---|---|
+| `2026-09-30` (Wed) | 2026-09 |
+| `2026-10-01` (Thu) | 2026-09 |
+| `2026-10-05` (Mon) | 2026-09 |
+| `2026-10-06` (Tue) | 2026-10 |
+
+**Business day.** A `countDate` on a weekend or an Irish public holiday raises a
+confirmation prompt but does **not** block. The workbook proves it happens.
+
+**YoY** is `(periodYear − 1, periodMonth)` — never "twelve columns to the left", which
+is what the Summary sheet does today and which breaks the moment a month is skipped.
+
+---
+
+## Part 5 — Held, one-off and dormant items
+
+### The problem
+
+Items appear on stock for a month and are gone the next. From the Dublin sheet:
+
+| Item | Quantities across the 8 counts |
+|---|---|
+| `Swept Path Markers for Transdev` | `–, –, –, –, 580, 580, 65, –` |
+| `EV ONLY text for Epower` | `0, –, 0, 0, 60, –, 105, 0` |
+| `Disabled Logo on Purple B'ground` | `–, –, –, –, –, 1, 1, 1` |
+| `Pre-form for Lucan ETNS` | `0, –, 0, 1, 1, 1, 0, –` |
+
+**In Dublin's most recent count, roughly 42 of 82 rows are zero or blank.** Half the
+printed sheet is asking about stock that is not there.
+
+### Definitions
+
+| Term | Definition |
+|---|---|
+| **Held** | `quantity > 0` in that period |
+| **One-off** | Held in exactly one period across its history |
+| **Dormant** | `quantity = 0` across the last 3 counted periods |
+| **Not counted** | `quantity IS NULL` — nobody looked. Blocks submission |
+
+### Where each surface defaults
+
+| Surface | Default | Why |
+|---|---|---|
+| Count entry | **All** items assigned to that yard | You cannot record stock with no row to type in |
+| Count summary / view | **Held only** | "See what we have, not what we don't" |
+| Dashboard | **Held only** | |
+| Excel yard export | **Held only**, with a "show all" option | The export stops carrying 40 dead rows |
+| Printable blank sheet | **All** items | Nothing should be unaskable on paper |
+
+### Adding a one-off during a count
+
+Two paths, both from the entry screen:
+
+1. **Search the master** for an item not assigned to this yard → creates an
+   `ItemLocation` link and a line, effective this period forward.
+2. **Create a new item inline** — `description` required; `supplier`, `type`, `unit` and
+   price may be filled in later, in which case the item is created with
+   `needsReview = true`.
+
+### Housekeeping
+
+Dormant items surface on a housekeeping screen where a `MANAGER` archives them in one
+click. **Nothing is auto-archived.** Archiving sets `Item.active = false`: it disappears
+from entry sheets, and every historical line referencing it is untouched.
+
+The same screen lists **incomplete items** — `needsReview = true`, missing `unitLabel`,
+or no `ItemPrice`.
+
+---
+
+## Answered questions
+
+Resolved with the user on 2026-09-01. Recorded here so later sessions do not re-open them.
+
+| # | Question | Answer |
+|---|---|---|
+| Q1 | Does Dublin have its own trucks, or is Trucks & Yard Clonmel-only? | **Deferred.** Focus on the Dublin and Clonmel yard sheets. Trucks & Yard moves to M7 and is re-opened there. |
+| Q2 | Does truck and yard-bulk material roll into the yard total? | **Deferred to M7** with Q1. |
+| Q3 | Is `Bal per nl` reconciliation still performed? | **Dropped from scope.** Not a figure this team owns. Removed from the product brief and the glossary. |
+| Q4 | Items with no price — obsolete, or never filled in? | **Import them, flag them.** `description` becomes mandatory going forward; items missing description, unit or price are imported with `needsReview = true` and appear on the housekeeping worklist. Their lines contribute `0` with a visible warning. |
+| Q5 | Are counts month-end or ad hoc? | **Start of the month, or the last business day of the month before — a business day.** This is the origin of the period model in Part 4. Non-business-day dates warn but are allowed. |
+
+### Still open — M7 only
+
+Nothing scheduled before M7 is blocked by these.
 
 | # | Question | Blocks |
 |---|---|---|
-| Q1 | Does Dublin have its own trucks, or is the Trucks & Yard sheet Clonmel-only? The workbook has one such sheet, named for Clonmel. | #10 `trucks_schema_seed` |
-| Q2 | Should truck and yard-bulk material roll **into** the yard count total, or stay a separate figure? In the workbook they are separate sheets and the Summary uses only the yard sheet totals. | #11, #12 |
-| Q3 | Is `Bal per nl` reconciliation still performed, and should the app capture the ledger figure to compute the difference? | #12 `dashboard_totals` |
-| Q4 | Items with no price (`Pedestrian Logo White`, `Multigrip Signal Yellow`, `Clock Blue + Yellow Nos`, and 12 others) — obsolete, or priced but never filled in? | #5 `seed_from_workbook` |
-| Q5 | Are counts always month-end, or ad hoc? Dublin's dates are irregular; Clonmel's are monthly. Affects how MoM is defined. | #12 |
+| Q6 | Does Dublin have its own trucks, or is Trucks & Yard Clonmel-only? | #17 `trucks_schema_seed` |
+| Q7 | Do truck and yard-bulk materials roll **into** the yard count total, or stay a separate figure? If they roll in, #10 `dashboard_totals` and #12 `export_yard_sheet` change too. | #18 `trucks_entry_ui` |
