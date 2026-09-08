@@ -18,7 +18,11 @@ this file to record a review.
 
 ## C2 — Verification
 
-- [ ] `init` finishes with `[OK] Environment ready`.
+- [ ] `init` finishes with `[OK] Environment ready` **and did not skip the database
+      checks**. From feature #3, `init` stays green when the database is unreachable
+      and says so — `[OK] Environment ready (database checks skipped)`. A feature
+      closed on such a run has never had its service tests executed, so that run does
+      not satisfy this checkpoint. The reviewer must see a full run.
 - [ ] `npm run typecheck` passes with zero errors.
 - [ ] `npm run lint` passes with zero errors.
 - [ ] Every new service function has at least one success test **and** one failure test.
