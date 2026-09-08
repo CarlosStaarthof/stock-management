@@ -22,5 +22,5 @@ None.
 
 ## Next
 
-Feature #2 `app_scaffold`. Its spec `specs/features/002-app_scaffold.md` does not exist
-yet, so the next action is a `spec-writer` run, not an `implementer` run.
+Feature #3 `auth_and_roles`. Its spec `specs/features/003-auth_and_roles.md` does not
+exist yet, so the next action is a `spec-writer` run, not an `implementer` run.

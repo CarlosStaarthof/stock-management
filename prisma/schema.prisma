@@ -1,0 +1,20 @@
+// Macroads Stock — database schema.
+//
+// Feature #2 app_scaffold ships a datasource and a generator and NOTHING else:
+// zero models, zero enums. Every model in specs/domain-model.md Part 3 belongs to
+// feature #4 domain_schema, together with its first migration.
+//
+// Two URLs, and the difference is load-bearing:
+//   DATABASE_URL  Neon's POOLED connection (host contains "-pooler") — used at runtime.
+//   DIRECT_URL    the unpooled connection — used by `prisma migrate`, which fails
+//                 through a pooler.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}

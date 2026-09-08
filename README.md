@@ -27,6 +27,19 @@ with Spec-Driven Development layered on top.
 
 Must print `[OK] Environment ready`. Nothing is done until it does.
 
+## Run the app
+
+```powershell
+npm ci                      # installs dependencies and generates the Prisma client
+cp .env.example .env        # then fill in the two Neon connection strings
+npm run dev                 # http://localhost:3000
+```
+
+Node 20 or newer. No Docker: Postgres is a Neon branch, not a local container. Nothing
+in the checks needs a reachable database — `npm run typecheck`, `npm run lint`,
+`npm run test:unit`, `npm run test:e2e` and `npm run build` all pass without one, and
+`npm run test:e2e` installs its own browser the first time it runs.
+
 ## How work happens here
 
 Three ideas, and they are the point of the project as much as the app is:
@@ -73,9 +86,13 @@ init.ps1 / init.sh   the single verification gate
 docs/                architecture, conventions, verification, glossary
 specs/               one spec per feature; the contract
 progress/            current session state + append-only history
+src/                 app/ (routes), components/, lib/, server/ (the only Prisma layer)
+tests/               unit/ (Vitest) and e2e/ (Playwright)
+prisma/              schema.prisma
+scripts/             helpers invoked by npm scripts
 Samples/             the original workbook — READ ONLY
 ```
 
 ## Status
 
-Milestone M0, feature #1 `repo_harness`. See `feature_list.json`.
+Milestone M0, feature #2 `app_scaffold`. See `feature_list.json`.
