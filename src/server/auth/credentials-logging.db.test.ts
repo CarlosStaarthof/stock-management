@@ -3,7 +3,7 @@ import { randomBytes } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { deepKeys } from "@/lib/money-boundary";
-import { resetTestDb } from "@/server/auth/test-db";
+import { resetTestDb } from "@/server/test-db";
 import { createUser, verifyCredentials } from "@/server/auth/user-service";
 
 /**

@@ -317,7 +317,7 @@ boundary is deliberate rather than forgotten:
 17. **AC-17** — `Item.description` is required and non-empty **at the database** (Invariant 9). The migration adds by hand the constraint `Item_description_not_empty` — `CHECK (btrim("description") <> '')`. Inserting `''` and inserting `'   '` each fail with a Postgres error whose message contains `Item_description_not_empty`, through `prisma.item.create` and through `prisma.$executeRaw` alike, and the `Item` row count is unchanged in both cases. `'  White Extrusion 80/20  '` inserts successfully — the constraint forbids emptiness, not untrimmed input, and trimming remains the importer's rule from Part 2. A `null` description is refused as `NOT NULL`.
 18. **AC-18** — `StockCount.periodMonth` is a month. The migration adds by hand the constraint `StockCount_periodMonth_range` — `CHECK ("periodMonth" BETWEEN 1 AND 12)`. Inserting `0` and inserting `13` each fail with a Postgres error naming `StockCount_periodMonth_range` and create no row; `1` and `12` both succeed.
 19. **AC-19** — Every foreign key has the `onDelete` policy of this spec's referential-behaviour table, asserted from the database rather than from the schema file: a query over `information_schema.referential_constraints` returns `delete_rule = 'RESTRICT'` for `StockCountLine.itemId`, `StockCount.locationId`, `StockCount.createdById`, `StockCount.approvedById`, `StockCount.signedById`, `ItemLocation.locationId`, `Item.supplierId` and `Item.itemTypeId`, and `delete_rule = 'CASCADE'` for `StockCountLine.stockCountId`, `ItemPrice.itemId` and `ItemLocation.itemId`. No foreign key has `SET NULL` or `NO ACTION`.
-20. **AC-20** — History cannot be deleted, and archival does not touch it. (a) Setting `Item.active = false` leaves every `StockCountLine` referencing that item unchanged — same `id`, same `quantity`, same `unitPriceSnapshot` — and the line is still readable through its count. (b) `prisma.item.delete` on an item that has at least one line is refused with a foreign-key error (`P2003` / `P2014`), and both the item and the line still exist afterwards. (c) `prisma.user.delete` on a user who created a count is refused for the same reason — deactivation, not deletion, is how #3 removes a person. (d) Deleting a `StockCount` deletes its lines and nothing else. (e) Deleting an item that has prices and location links but **no** lines succeeds and removes its `ItemPrice` and `ItemLocation` rows with it.
+20. **AC-20** — History cannot be deleted, and archival does not touch it. (a) Setting `Item.active = false` leaves every `StockCountLine` referencing that item unchanged — same `id`, same `quantity`, same `unitPriceSnapshot` — and the line is still readable through its count. (b) `prisma.item.delete` on an item that has at least one line is refused by Postgres with SQLSTATE `23001` (`restrict_violation`), which Prisma relays as a `PrismaClientUnknownRequestError` carrying no `code` and a message containing `violates RESTRICT setting of foreign key constraint` and the constraint's own name; both the item and the line still exist afterwards. (c) `prisma.user.delete` on a user who created a count is refused for the same reason — deactivation, not deletion, is how #3 removes a person. (d) Deleting a `StockCount` deletes its lines and nothing else. (e) Deleting an item that has prices and location links but **no** lines succeeds and removes its `ItemPrice` and `ItemLocation` rows with it.
 21. **AC-21** — The two yards exist as soon as the migrations are applied. The new migration's SQL ends with an `INSERT INTO "Location" … ON CONFLICT ("code") DO NOTHING` for exactly two rows, and after `npx prisma migrate deploy` against an empty database `Location` holds exactly two rows: `code = 'DUBLIN'`, `name = 'Dublin'`, `sortOrder = 1`, `active = true`, `id = 'loc_dublin'`; and `code = 'CLONMEL'`, `name = 'Clonmel'`, `sortOrder = 2`, `active = true`, `id = 'loc_clonmel'`. Applying the migration a second time against a database that already has them adds no row and raises no error.
 22. **AC-22** — Dates are dates. `"StockCount"."countDate"` and `"ItemPrice"."effectiveFrom"` both report `data_type = 'date'` in `information_schema.columns`, not `timestamp without time zone`. Writing `countDate` as `2026-09-30` and reading it back yields a value whose `toISOString().slice(0, 10)` is exactly `"2026-09-30"`, so the calendar day the yard was walked cannot shift by a timezone.
 23. **AC-23** — Migration hygiene: additive, second, and the first one untouched. `prisma/migrations` holds exactly two directories; the new one matches `/^\d{14}_create_stock_domain$/`; its SQL contains no `DROP TABLE`, no `DROP TYPE`, no `TRUNCATE` and no statement whose target is `"User"` or `"Role"` — the only occurrences of `"User"` in it are inside `REFERENCES "User"("id")` clauses. `git log --oneline -- prisma/migrations/<the create_user directory>/migration.sql` lists exactly one commit, and `prisma/migrations/migration_lock.toml` still records provider `postgresql` and is unmodified.
@@ -328,7 +328,7 @@ boundary is deliberate rather than forgotten:
 28. **AC-28** — `resetTestDb()` covers the new tables. It moves to `src/server/test-db.ts`, keeps its `MACROADS_TEST_DB` guard unchanged, and the only change to the four pre-existing `*.db.test.ts` files is the import path. After a fixture that populates all nine tables, `resetTestDb()` leaves `StockCountLine`, `StockCount`, `ItemPrice`, `ItemLocation`, `Item`, `Supplier`, `ItemType` and `User` with zero rows and raises no foreign-key error, and leaves `Location` holding exactly `DUBLIN` and `CLONMEL` with their migration ids — any other `Location` row is removed, and those two are not. Calling it twice in succession succeeds, and `npm run test:db` passes twice in a row and with the file order reversed.
 29. **AC-29** — Every foreign-key column is indexed, because Postgres does not index them automatically. A query over `pg_indexes` asserts that each of `Item.supplierId`, `Item.itemTypeId`, `ItemPrice.itemId`, `ItemLocation.itemId`, `ItemLocation.locationId`, `StockCount.locationId`, `StockCount.createdById`, `StockCount.approvedById`, `StockCount.signedById`, `StockCountLine.stockCountId` and `StockCountLine.itemId` is the leading column of at least one index — whether from a `@@unique`, a `@@index`, or the composite `@@index([locationId, sortOrder])`.
 30. **AC-30** — Nothing #3 shipped regresses. `npm run test:unit`, `npm run test:db` and `npm run test:e2e` all pass; the four pre-existing `*.db.test.ts` files pass with no assertion weakened or removed; `npm run lint` and `npm run typecheck` exit `0`; and no file under `src/app/` or `src/components/` imports `PrismaClient`.
-31. **AC-31** — This feature adds no application surface. The set of files it changes contains no path under `src/app/`, `src/components/` or `src/lib/`; it adds no server action, no route handler and no exported service function; and no query anywhere in the repository returns `unitPrice` or `unitPriceSnapshot` to a caller outside a `*.db.test.ts` file. `git diff --name-only` for the feature lists only `prisma/schema.prisma`, one new migration directory, `src/server/test-db.ts` (moved), the three new `src/server/schema/*.db.test.ts` files, the four import-path edits, `tests/unit/schema-and-migration.test.ts`, `tests/unit/project-contract.test.ts`, `specs/features/004-domain_schema.md`, `feature_list.json` and files under `progress/`.
+31. **AC-31** — This feature adds no application surface. The set of files it changes contains no path under `src/app/`, `src/components/` or `src/lib/`; it adds no server action, no route handler and no exported service function; and no query anywhere in the repository returns `unitPrice` or `unitPriceSnapshot` to a caller: no **shipping** module under `src/` or `scripts/` — anything that is not itself a `*.test.ts` file — so much as names either column, and the scan is proved non-vacuous by asserting it inspected `src/server/db.ts`. `git diff --name-only` for the feature lists only `prisma/schema.prisma`, one new migration directory, `src/server/test-db.ts` (moved), the three new `src/server/schema/*.db.test.ts` files, the four import-path edits, `tests/unit/schema-and-migration.test.ts`, `tests/unit/project-contract.test.ts`, `tests/unit/hashing-boundary.test.ts`, `specs/features/004-domain_schema.md`, `feature_list.json` and files under `progress/`. `tests/unit/hashing-boundary.test.ts`'s 003 assertion that every database importer lives under `src/server/auth/` is **relaxed** to `/^src\/server\//` — the minimum `CLAUDE.md` requires, since AC-27 and AC-28 put database importers under `src/server/schema/` and at `src/server/test-db.ts`. As a predicate it permits a strict superset of what #3's regex permitted, and every path it now permits is one `docs/architecture.md` permits; no documented rule is left unguarded.
 
 ## Out of scope
 
@@ -387,3 +387,97 @@ open, both flagged here so the user can strike either at approval:
 `Q7` and `Q8` in `specs/domain-model.md § Still open` block M7 only and are unrelated to
 this feature. `Q5`'s remaining half — whether counts settle on the first or the last day of
 the month — is absorbed by the period model and changes nothing in this schema.
+
+## Post-approval amendments
+
+Approved by the user on 2026-09-09, after the implementer stopped rather than editing a
+criterion to make it pass. Three of the four are corrections of fact: the spec asserted
+things about Postgres and Prisma that are not true. The coordinator approved the spec with
+those errors in it.
+
+### 1. AC-31 contradicted AC-27, AC-28 and AC-30 — file list extended
+
+`tests/unit/hashing-boundary.test.ts`, written for feature #3, asserts that every file
+importing `@/server/db` or `@prisma/client` lives under `src/server/auth/`. AC-27 puts
+this feature's constraint tests under `src/server/schema/` and AC-28 moves `resetTestDb()`
+to `src/server/test-db.ts`; both must reach Prisma, and neither matches. AC-30 requires
+`npm run test:unit` to pass. AC-31's file list did not permit changing the guard.
+
+AC-28 ∧ AC-27 ∧ AC-30 ⟹ that file must change ⟹ ¬AC-31.
+
+There is no third way: nothing reaches Prisma without one of those two imports, and a
+re-export shim under `src/server/auth/` would not help, because `src/server/test-db.ts` —
+mandated by AC-28 — is itself an importer.
+
+**Resolution.** `tests/unit/hashing-boundary.test.ts` is added to AC-31's list, and its 003
+regex is relaxed from `/^src\/server\/(auth\/|db(\.test)?\.ts$)/` to `/^src\/server\//`.
+
+**Corrected 2026-09-09, after the #4 review.** This paragraph originally claimed the new
+regex was "replaced, not weakened" and was "*stronger* in one respect, because it covers
+`src/lib/`, which neither existing test checks". That is false, and the reviewer disproved
+it by mutation: the old assertion applied the same predicate to the same file population
+(`codeFiles()` spans all of `src/`, `scripts/` and `prisma/`), so `src/lib/` was already
+covered by the very assertion being edited — `/^src\/server\/(auth\/|db(\.test)?\.ts$)/`
+returns `false` for `src/lib/anything.ts` too. The coordinator wrote that rationale and
+briefed the reviewer on the same wrong premise; the user approved the amendment partly on
+the strength of it.
+
+What is actually true: as a predicate the new regex accepts a **strict superset** of what
+the old one accepted — `src/server/schema/`, `src/server/test-db.ts` and later
+`src/server/items/` are newly permitted, and nothing is newly forbidden. It is a
+**weakening** of that one assertion: bounded, forced by AC-27 ∧ AC-28 ∧ AC-30, and
+architecturally correct, because everything it now permits is permitted by `CLAUDE.md` and
+`docs/architecture.md` anyway. No documented rule is left unguarded, which is why the
+review approved it.
+
+The alternative considered and rejected was enumerating the permitted directories, which
+would require editing a guard rail again for #6's `items/`, #7's `counts/` and #11's
+reporting queries — each edit an opportunity to weaken it further, and with no reviewer
+necessarily looking at that line.
+
+### 2. AC-20 asked for an error AC-19 makes impossible
+
+AC-20 required a refused delete to surface as Prisma `P2003` / `P2014`. It cannot, because
+AC-19 mandates `ON DELETE RESTRICT`:
+
+| Foreign-key action | SQLSTATE | Prisma |
+|---|---|---|
+| `RESTRICT` — what AC-19 requires | `23001` `restrict_violation` | `PrismaClientUnknownRequestError`, **no `code`** |
+| `NO ACTION` — what AC-19 forbids | `23503` `foreign_key_violation` | `P2003` |
+
+Observed verbatim during implementation:
+
+```
+PostgresError { code: "23001", message: "update or delete on table \"Item\" violates
+RESTRICT setting of foreign key constraint \"StockCountLine_itemId_fkey\" on table
+\"StockCountLine\"" }
+```
+
+AC-20's substance was always satisfiable — the delete is refused and both rows survive.
+Only the named error code was wrong. The criterion now names SQLSTATE `23001`, the text
+`violates RESTRICT setting of foreign key constraint`, and the constraint's own name, which
+is a stricter assertion than the one it replaces: `P2003` would have passed on a `NO ACTION`
+key, and `NO ACTION` is precisely what AC-19 forbids.
+
+### 3. AC-12 – AC-16: what "`P2002` naming the constraint" means
+
+Prisma 6 does not put the constraint name in a `P2002`. It reports the model and the
+offending fields — `{"modelName":"StockCount","target":["locationId","periodYear","periodMonth"]}`
+— and the `$executeRaw` path yields Postgres' DETAIL (`Key (…)=(…) already exists`), which
+also omits the name. The five criteria are read as requiring **both** halves, which
+together are stronger than the name alone:
+
+1. a `P2002` whose reported target is exactly the constraint's column list, from which the
+   index name is composed, **and**
+2. an index of exactly that name existing in `pg_indexes`.
+
+The criteria's text is unchanged; this records the reading the tests implement.
+
+### 4. AC-31's `unitPrice` scan is over shipping modules
+
+Read literally, "no query anywhere in the repository returns `unitPrice` … to a caller
+outside a `*.db.test.ts` file" fails on `src/lib/money-boundary.test.ts`, which has used the
+string as a fixture since #3, and on the two unit tests that quote the criterion. The
+criterion now scans **shipping** modules — anything under `src/` or `scripts/` that is not
+itself a `*.test.ts` file — and asserts the scan inspected `src/server/db.ts`, so it cannot
+pass vacuously.

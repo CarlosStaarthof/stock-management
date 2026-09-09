@@ -261,3 +261,120 @@ entries were written in this close.
   line now records the move and why, so the next reader does not "restore" it.
 
 **Closed 2026-09-09 after user sign-off.**
+
+## 2026-09-09 — feature #4 `domain_schema`
+
+The workbook's shape, expressed as tables a database will enforce. Implementation in
+`progress/impl_domain_schema.md`; review in `progress/review_domain_schema.md`.
+31 acceptance criteria, all PASS, **APPROVED with no required changes**.
+
+### What shipped
+
+Eight models — `Location`, `Supplier`, `ItemType`, `Item`, `ItemPrice`, `ItemLocation`,
+`StockCount`, `StockCountLine` — two enums, and the repository's **second migration**
+(`20260909135148_create_stock_domain`), additive and leaving #3's `User` table untouched.
+26 new model-level tests against real Postgres; `npm run test:db` now runs 7 files / 79
+tests. No UI, no route, no service: `src/server/schema/` holds tests and nothing else.
+
+### The four rules that make this better than the workbook, all enforced by Postgres
+
+| Rule | Enforced by | Why it matters |
+|---|---|---|
+| `value` is never a column | No column matches `/value\|total\|amount/i` anywhere | The workbook has 8 hardcoded value cells that drifted **−€362.05** from `qty × price`. A stored total can disagree with its own inputs |
+| `quantity` is nullable | `NULL` = not counted; `0` = counted, none held | The one distinction a spreadsheet cell cannot express, and the reason its blanks are ambiguous |
+| Money is `Decimal(18,8)` | Asserted from `information_schema`, not from the Prisma file | Four Clonmel prices are non-terminating formulas; at 4 places the June 2026 count lands 1.4c out |
+| One count per yard **per month** | `@@unique([locationId, periodYear, periodMonth])` | 9 of the workbook's 31 count columns have a date that is missing, mistyped or prose |
+
+**History cannot be deleted.** Every foreign key carries an explicit `onDelete`: `Restrict`
+where a row is referred to, `Cascade` only where a row is part of its parent. An item that
+appears in any count cannot be deleted; nor can the user who signed one. Archival is
+`active = false` throughout, and a count line survives it untouched.
+
+Two things `docs/domain-model.md` implies but Prisma cannot express were written into the
+migration by hand: `Item_description_not_empty` (`CHECK (btrim(description) <> '')`,
+Invariant 9 taken literally) and `StockCount_periodMonth_range` (`CHECK 1..12`). The two
+`Location` rows are seeded by the migration itself, with fixed ids, because the table
+belonged to no feature and Invariant 7 is undefined while it is empty.
+
+### The gate was proved red as well as green
+
+Six mutations by the implementer, then six more by the reviewer, every one reverted.
+
+| Mutation | Result |
+|---|---|
+| Add a tenth model (`Vehicle`) | 3 failures, one naming it as an M7 declaration that must not appear |
+| Delete `model ItemPrice` | 5 failures across both guard tests |
+| Drop `Item_description_not_empty` from the test database | `test:db` exit 1; **both** `init` scripts exit 1 naming it |
+| `DROP SCHEMA public CASCADE` on the test branch | Both migrations reapplied in order; both yards and both CHECKs present |
+| `src/lib/` file importing `@/server/db` | Dependency guard red |
+| A shipping module naming `unitPriceSnapshot` | AC-31's scan red, naming the file |
+
+**AC-9, the assertion everything downstream rests on**, was re-executed by the reviewer:
+`SELECT round(5.2/0.85, 8)` returns `6.11764706` on the same database, and that value
+round-trips through `Decimal(18,8)` exactly. `0.475` reads back `0.475`, not `0.48`.
+
+### Three defects in the approved spec, found by the implementer, which stopped rather than edit it
+
+`#4` was `blocked` mid-session and resumed. All three were the coordinator's errors, written
+into the spec and then approved.
+
+1. **AC-31's file list contradicted AC-27, AC-28 and AC-30.** `tests/unit/hashing-boundary.test.ts`
+   asserts every database importer lives under `src/server/auth/`; AC-27 and AC-28 put
+   importers under `src/server/schema/` and at `src/server/test-db.ts`. Four criteria forced
+   a fifth to break, and no shim avoided it. Resolved by extending the list and relaxing the
+   regex to `/^src\/server\//`.
+2. **AC-20 asked for Prisma `P2003`, which AC-19 makes impossible.** `ON DELETE RESTRICT`
+   raises SQLSTATE `23001`; `P2003` is `23503`, which only a `NO ACTION` key produces — and
+   `NO ACTION` is exactly what AC-19 forbids. The original criterion **could only have been
+   satisfied by violating AC-19**, i.e. by configuring the key that makes history deletable.
+   The reviewer confirmed both codes against throw-away keys in a rolled-back transaction.
+3. **`P2002` does not carry the constraint name** in Prisma 6. Resolved as: the reported
+   model and fields must compose the expected index name, *and* `pg_indexes` must hold an
+   index of exactly that name — which additionally pins the default naming, so a renamed
+   constraint turns it red.
+
+A fourth, AC-31's `unitPrice` scan, was unsatisfiable as written against a fixture that has
+existed since #3; it now scans shipping modules only, with a non-vacuity assertion.
+
+### A false rationale, caught by the review
+
+The amendment for defect 1 claimed the widened regex was "replaced, not weakened … stronger
+in one respect, because it covers `src/lib/`, which neither existing test checks". **False.**
+`codeFiles()` spans all of `src/`, so the old assertion already rejected `src/lib/` files;
+the reviewer disproved the claim by planting one, which both regexes reject. As a predicate
+the new regex accepts a strict superset — a *weakening* of that one assertion: bounded,
+forced, and architecturally correct, since everything it now permits is permitted by
+`CLAUDE.md` anyway. That is why it was approved, but it is not what the spec said.
+
+The coordinator wrote the claim, briefed the reviewer on the same wrong premise, and the
+user approved the amendment partly on its strength. The spec, the mirror and the code
+comment now record the false claim, its disproof, and who made it, so the next reader does
+not re-derive the wrong reasoning.
+
+### One improvement the red-gate exercise produced
+
+The AC-25 failure message read `expected the database to refuse, but the write succeeded` —
+which says a rule stopped being enforced but not *which*. `rejection()` now takes the name
+of the constraint that should have refused, so the transcript reads
+`… through Item_description_not_empty`. It adds no accepted outcome and removes no
+assertion; the reviewer confirmed it is strictly an improvement.
+
+### Observations carried forward (non-blocking)
+
+- **AC-15 records a real gap rather than hiding it.** Postgres treats `NULL`s as distinct,
+  so `(description, supplierId)` cannot stop two supplier-less items sharing a description.
+  `Dublin!A45` `School Logo Triangle` is the row. **De-duplication is #5's job and must
+  appear in #5's spec.**
+- AC-6's "only two monetary columns" test filters names by `/price/i`, so a future `cost`
+  or `eurPerTonne` would not trip it. Covered today by AC-4 and AC-11; widen when #5 or #9
+  next touches that file.
+- `resetTestDb()` runs in `beforeEach`, not `afterAll`, so a green service run leaves the
+  last file's rows on the test branch. Harmless, and #3's design.
+- `expectRestrictViolation` reads the SQLSTATE out of Prisma's rendered error string,
+  because `error.code` is undefined for `23001`. A Prisma upgrade could turn it red for a
+  reason that is not a regression — loudly, which is the right failure mode.
+- `prisma migrate dev` rewrites `prisma/migrations/migration_lock.toml` with a different
+  comment header. It was restored, and a test now fails if it drifts again. **Check that
+  file after every `migrate dev` from #5 onward.**
+
+**Closed 2026-09-09 after user sign-off.**

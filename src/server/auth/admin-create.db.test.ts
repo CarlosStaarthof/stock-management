@@ -3,7 +3,7 @@ import { randomBytes } from "node:crypto";
 
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { resetTestDb } from "@/server/auth/test-db";
+import { resetTestDb } from "@/server/test-db";
 import { db } from "@/server/db";
 
 /**

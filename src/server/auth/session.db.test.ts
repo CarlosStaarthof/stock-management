@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { resetTestDb } from "@/server/auth/test-db";
+import { resetTestDb } from "@/server/test-db";
 import { createUser, setUserActive } from "@/server/auth/user-service";
 import { db } from "@/server/db";
 import { ForbiddenError, UnauthorizedError } from "@/server/errors";

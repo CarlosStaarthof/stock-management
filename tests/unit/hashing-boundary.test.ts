@@ -131,7 +131,7 @@ describe("the dependency rule", () => {
     expect(reached).toContain("src/lib/auth-config.ts");
   });
 
-  it("AC-31: every database access this feature adds lives under src/server/auth/", () => {
+  it("004 AC-31 replacing 003 AC-31: every file that touches the database lives under src/server/", () => {
     const touchesDb = codeFiles().filter((file) =>
       importedModules(file).some(
         (specifier) => specifier === "@/server/db" || specifier === "@prisma/client",
@@ -139,10 +139,29 @@ describe("the dependency rule", () => {
     );
 
     for (const file of touchesDb) {
-      // src/server/db.ts and its test are feature #2's; everything #3 adds is under auth/.
-      expect(file).toMatch(/^src\/server\/(auth\/|db(\.test)?\.ts$)/);
+      // #3 wrote `/^src\/server\/(auth\/|db(\.test)?\.ts$)/` here, when auth/ was the only
+      // aggregate. #4 RELAXES it to the minimum CLAUDE.md actually requires - data access
+      // goes through src/server/ - because AC-27 and AC-28 put database importers under
+      // src/server/schema/ and at src/server/test-db.ts.
+      //
+      // Say it plainly: this predicate accepts a STRICT SUPERSET of what #3's accepted.
+      // It is a weakening of this one assertion - bounded, forced, and architecturally
+      // correct, because every path it now permits is one docs/architecture.md permits.
+      // It is NOT "stronger because it covers src/lib/": #3's regex already rejected
+      // src/lib/ files, since codeFiles() spans all of src/, scripts/ and prisma/ and
+      // /^src\/server\/(auth\/|db(\.test)?\.ts$)/.test("src/lib/anything.ts") is false.
+      // The reviewer disproved that claim by planting a src/lib/ importer; both regexes
+      // reject it.
+      //
+      // Enumerating auth/|schema/|test-db.ts instead would need editing again for #6's
+      // items/, #7's counts/ and #11's reporting/, and every edit to a guard rail is a
+      // chance to weaken it. See specs/features/004-domain_schema.md "Post-approval
+      // amendments" §1 and progress/review_domain_schema.md, Observation 1.
+      expect(file).toMatch(/^src\/server\//);
     }
 
+    // Non-vacuity: the filter must actually have found the database layer.
     expect(touchesDb).toContain("src/server/auth/user-service.ts");
+    expect(touchesDb).toContain("src/server/db.ts");
   });
 });
