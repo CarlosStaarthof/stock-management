@@ -122,7 +122,7 @@
         "AC-31: The dependency rule holds. `npm run lint` exits `0`; no file under `src/app/` or `src/components/` imports `PrismaClient`; every database access added by this feature lives under `src/server/auth/`; and `src/middleware.ts` imports nothing from `@prisma/client`, so the edge runtime never needs it.",
         "AC-32: `/sign-in` is usable on a phone. At a 390 px viewport the page's `document.documentElement.scrollWidth` does not exceed its `clientWidth`, and the email input, the password input and the submit control are all visible and clickable without horizontal scrolling."
       ],
-      "status": "in_progress"
+      "status": "done"
     },
     {
       "id": 4,

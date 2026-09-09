@@ -31,20 +31,23 @@ describe("project contract", () => {
     expect(packageJson.engines?.node).toBe(">=20");
   });
 
-  it("AC-6: the schema has a generator, a postgresql datasource and no models or enums", () => {
+  it("AC-6 (002) narrowed by 003 AC-1: a generator, a postgresql datasource, and only User and Role", () => {
     expect(schema).toMatch(/generator\s+\w+\s*\{/);
     expect(schema).toMatch(/datasource\s+\w+\s*\{/);
     expect(schema).toMatch(/provider\s*=\s*"postgresql"/);
     expect(schema).toMatch(/url\s*=\s*env\("DATABASE_URL"\)/);
     expect(schema).toMatch(/directUrl\s*=\s*env\("DIRECT_URL"\)/);
 
-    // Models and enums are feature #4 domain_schema. Comments mention both words, so
-    // count declarations at the start of a line, not occurrences of the word.
+    // Spec 002 AC-6 required zero declarations. Spec 003 AC-1 supersedes that for
+    // `User` and `Role` only - authentication cannot be tested against a table that
+    // does not exist. Every OTHER model is still feature #4 domain_schema, and this is
+    // an equality rather than a count, so #4 cannot slip one in early. Comments mention
+    // both words, so declarations are counted at the start of a line.
     const declarations = schema
       .split("\n")
       .filter((line) => /^\s*(model|enum)\s+\w+\s*\{/.test(line));
 
-    expect(declarations).toEqual([]);
+    expect(declarations).toEqual(["enum Role {", "model User {"]);
   });
 
   it("AC-14: tsconfig.json turns strict mode on", () => {

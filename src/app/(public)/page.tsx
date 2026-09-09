@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { JSX } from "react";
 
 import { EnvStatus } from "@/components/EnvStatus";
@@ -28,6 +29,13 @@ export default function HomePage(): JSX.Element {
         not the system of record.
       </p>
       <EnvStatus databaseConfigured={isDatabaseConfigured()} />
+      <Link
+        href="/sign-in"
+        data-testid="sign-in-link"
+        className="w-fit rounded border border-slate-300 px-3 py-2 text-sm"
+      >
+        Sign in
+      </Link>
     </main>
   );
 }

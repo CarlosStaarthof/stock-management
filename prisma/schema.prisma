@@ -1,8 +1,14 @@
 // Macroads Stock — database schema.
 //
-// Feature #2 app_scaffold ships a datasource and a generator and NOTHING else:
-// zero models, zero enums. Every model in specs/domain-model.md Part 3 belongs to
-// feature #4 domain_schema, together with its first migration.
+// Feature #3 auth_and_roles owns EXACTLY two declarations: the `Role` enum and the
+// `User` model, plus the repository's first migration. Authentication cannot be tested
+// against a table that does not exist, so spec 002 AC-6 ("zero models") is superseded
+// here for `User` and `Role` only — see specs/features/003-auth_and_roles.md
+// "Scope boundary with #4 domain_schema".
+//
+// Every OTHER model in specs/domain-model.md Part 3 — Location, Supplier, ItemType,
+// Item, ItemPrice, ItemLocation, StockCount, StockCountLine and their enums — belongs
+// to feature #4 domain_schema. Not one field of them appears here.
 //
 // Two URLs, and the difference is load-bearing:
 //   DATABASE_URL  Neon's POOLED connection (host contains "-pooler") — used at runtime.
@@ -17,4 +23,27 @@ datasource db {
   provider  = "postgresql"
   url       = env("DATABASE_URL")
   directUrl = env("DIRECT_URL")
+}
+
+/// The two roles of specs/domain-model.md Part 6. There is no third role and no
+/// yard-scoped user: YARD_STAFF counts and never sees a euro, ADMIN approves and prices.
+enum Role {
+  YARD_STAFF
+  ADMIN
+}
+
+/// An account. `passwordHash` is a bcrypt hash written by src/server/auth/password.ts;
+/// the plaintext is never stored, logged or returned.
+///
+/// `active` is read on every authenticated request rather than trusted from the session
+/// token, so deactivating a leaver locks them out on their very next request.
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  role         Role     @default(YARD_STAFF)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 }

@@ -27,6 +27,21 @@ Must end with `[OK] Environment ready`. Nothing is `done` until it does.
 4. **Application** — skipped entirely until `package.json` exists. Then: Node ≥ 20,
    `npm ci`, `npx prisma validate` if `prisma/schema.prisma` exists, and each of
    `typecheck`, `lint`, `test:unit`, `test:e2e` that `package.json` actually defines.
+5. **Database** — added by feature #3. `node scripts/db-probe.mjs` opens a TCP connection
+   to the host in `DATABASE_URL` and then to the host in `TEST_DATABASE_URL`, with a ten
+   second timeout. It never queries and never prints a credential.
+   - **Both reachable:** `npx prisma migrate status` must pass — a pending migration or
+     drift fails the gate — and then `npm run test:db` runs the Level 2 service tests.
+   - **Either not reachable, or `TEST_DATABASE_URL` unset:** the step SKIPS. `init`
+     prints a line beginning `[skip] database unreachable at <host>` (or
+     `[skip] TEST_DATABASE_URL is not set`) and ending
+     `database-dependent checks skipped`, does not run `npm run test:db`, and still
+     exits `0` — with the final line
+     `[OK] Environment ready (database checks skipped)`, which names what it did not do.
+
+   A machine with no database is not a broken machine, so the gate stays usable. But a
+   green run that skipped this step has never executed a service test: `CHECKPOINTS.md`
+   C2.1 therefore forbids closing a feature on one. The reviewer must see a full run.
 
 Anything not in that list is not checked, however much this document might wish it were.
 When a step is added to the scripts, it is added here in the same change.

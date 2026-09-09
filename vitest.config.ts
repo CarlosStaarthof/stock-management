@@ -13,9 +13,12 @@ export default defineConfig({
   test: {
     environment: "node",
     // Unit tests sit beside their source; Playwright specs live in tests/e2e and are
-    // never run by `test:unit` (AC-10).
+    // never run by `test:unit` (002 AC-10).
     include: ["src/**/*.test.ts", "tests/unit/**/*.test.ts"],
-    exclude: ["node_modules/**", ".next/**", "tests/e2e/**"],
+    // `*.db.test.ts` needs a real Postgres and belongs to `npm run test:db`
+    // (vitest.db.config.ts). The two suites are disjoint by name (003 AC-26), so
+    // `test:unit` stays green on a machine with no database at all.
+    exclude: ["node_modules/**", ".next/**", "tests/e2e/**", "**/*.db.test.ts"],
     testTimeout: 15_000,
   },
 });

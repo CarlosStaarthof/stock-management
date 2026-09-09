@@ -158,10 +158,72 @@ else
   done
 fi
 
-# ------------------------------------------------------------------- 5. verdict
+# ------------------------------------------------------------------ 5. database
+# Added by feature #3 auth_and_roles.
+#
+# The service tests and the migration check need a real Postgres. A machine that has not
+# been given one is not broken, so this step SKIPS and says so rather than failing - the
+# gate would otherwise block all work until Neon is configured. CHECKPOINTS.md C2.1
+# closes the hole that opens: a feature may not be closed on a run that skipped here.
+step "Database"
+
+DB_SKIPPED=0
+
+db_skip() {
+  detail="${1#"[probe] "}"
+  case "$detail" in
+    "unreachable "*) detail="database unreachable at ${detail#unreachable }" ;;
+  esac
+  # Deliberately at column 0, unlike every other skip: AC-24 asks for a line that
+  # BEGINS "[skip] " and ENDS "database-dependent checks skipped".
+  printf '[skip] %s - database-dependent checks skipped\n' "$detail"
+  DB_SKIPPED=1
+}
+
+if [ ! -f package.json ]; then
+  skip "no package.json yet (feature #2 app_scaffold)"
+elif ! node -e "process.exit(require('./package.json').scripts?.['test:db'] ? 0 : 1)"; then
+  skip "no 'test:db' script yet"
+else
+  # One probe, shared with init.ps1, so the two scripts cannot disagree about whether a
+  # database is there. It names the host and never the credentials.
+  probe_ok=1
+  probe_line=""
+  for variable in DATABASE_URL TEST_DATABASE_URL; do
+    if [ "$probe_ok" -eq 1 ]; then
+      if probe_out="$(node scripts/db-probe.mjs "$variable")"; then
+        :
+      else
+        probe_ok=0
+        probe_line="$(printf '%s' "$probe_out" | tail -n 1)"
+      fi
+    fi
+  done
+
+  if [ "$probe_ok" -eq 0 ]; then
+    db_skip "$probe_line"
+  else
+    ok "database reachable"
+
+    if npx prisma migrate status; then
+      ok "prisma migrate status"
+    else
+      bad "prisma migrate status: a migration is pending, or the schema has drifted"
+    fi
+
+    echo "    npm run test:db"
+    npm run test:db --silent && ok "npm run test:db" || bad "npm run test:db failed"
+  fi
+fi
+
+# ------------------------------------------------------------------- 6. verdict
 echo
 if [ "${#FAILURES[@]}" -eq 0 ]; then
-  echo "[OK] Environment ready"
+  if [ "$DB_SKIPPED" -eq 1 ]; then
+    echo "[OK] Environment ready (database checks skipped)"
+  else
+    echo "[OK] Environment ready"
+  fi
   exit 0
 else
   echo "[FAILED] ${#FAILURES[@]} problem(s):"

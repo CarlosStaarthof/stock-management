@@ -106,3 +106,158 @@ Feature #1 has its own spec, whose header states that it was written after the f
 that no other feature may claim that exception.
 
 **Closed 2026-09-01 after user sign-off.**
+
+## 2026-09-08 — feature #2 `app_scaffold`
+
+Next.js App Router scaffold, so that a green gate means something was verified.
+Implementation in `progress/impl_app_scaffold.md`; review in
+`progress/review_app_scaffold.md`. Committed as `bc4da92`.
+
+*(This entry was written on 2026-09-09 while closing #3. The session that closed #2
+committed the feature but skipped AGENTS.md §5 step 3 and left its summary only in the
+commit message. Recorded here late rather than not at all.)*
+
+### What changed
+
+`init` used to return in under a second because every application step was skipped. It
+now runs `npm ci`, `prisma validate`, `typecheck`, `lint`, 17 unit tests and 4 Playwright
+tests against a real browser. No `[skip]` line remains in the application block.
+
+Next 15.5.25, React 19.2.8, TypeScript 5.9.3 strict, Tailwind 4.3.3, Prisma 6.19.3
+(datasource and generator only, **zero models** — models are #4), Vitest 3.2.7,
+Playwright 1.59.1.
+
+### Two architecture rules became machine-enforced
+
+| Rule | Enforced by | Proved by |
+|---|---|---|
+| No `PrismaClient` under `src/app/` or `src/components/` | ESLint `no-restricted-imports` | Adding the import turns `lint` red; the same import in `src/server/db.ts` lints clean |
+| No credential in a tracked file | `tests/unit/repo-hygiene.test.ts` | Three mutations, all caught |
+
+Neither was asserted; both were watched failing first.
+
+### The scaffold runs with no database at all
+
+With `DATABASE_URL` and `DIRECT_URL` on an unresolvable host, `prisma validate`,
+`typecheck`, `lint`, `test:unit`, `test:e2e` and `build` all exit `0` and `init` is green.
+That kept the work unblocked while the Neon `dev` branch did not yet exist.
+
+### First feature built in the intended order
+
+Spec written, read by the user, amended, approved, **then** code. Approved by the reviewer
+on the first pass — a review that re-executed every claim rather than trusting the report.
+
+### Two defects found and recorded rather than papered over
+
+1. **AC-8 as approved was unsatisfiable.** It forbade a credential pattern in every tracked
+   file while AC-9 mandated that same pattern as a test fixture, quoted verbatim in the
+   spec and in `feature_list.json`. The criterion fired on its own contract and never on
+   code. The implementer refused to edit the spec to make a criterion pass and resolved it
+   in the implementation; the wording was corrected after approval.
+2. **Marking the feature `done` turned the gate red.** The credential check caught the
+   reviewer's own report quoting the credentials it had planted, including a `.invalid`
+   host. `#2` was reverted to `in_progress` on the spot. The placeholder rule now accepts
+   RFC 2606 / RFC 6761 reserved hosts, verified by three mutations — a real Neon credential
+   in a progress note, a real host under `src/`, and the placeholder password `u:p` at a
+   real `neon.tech` host. All three still caught.
+
+**Closed 2026-09-08 after user sign-off.**
+
+## 2026-09-09 — feature #3 `auth_and_roles`
+
+Identity, and the mechanism the money boundary will run on. Implementation in
+`progress/impl_auth_and_roles.md`; review in `progress/review_auth_and_roles.md`.
+32 acceptance criteria, all PASS, **APPROVED on the first pass**.
+
+### What shipped
+
+`User` and `enum Role { YARD_STAFF ADMIN }`, plus the repository's **first migration**
+(`20260908224453_create_user`). Auth.js v5 credentials sign-in, bcrypt at cost 10 behind a
+single module, route protection in both the edge middleware and the page guards, landing by
+role (`YARD_STAFF` → `/stock-entry`, `ADMIN` → `/stock-takes`), `npm run admin:create` with
+no default password anywhere, and `shapeForRole` — the mechanism every later feature uses to
+build `…ForStaff` / `…ForAdmin` responses.
+
+`init` gained a Database step: `scripts/db-probe.mjs` opens a TCP connection, never queries
+and never prints a credential. Reachable means `prisma migrate status` and `npm run test:db`
+run for real; unreachable means the step **skips visibly and stays green**.
+
+Test counts: 14 unit files / 63 tests, 4 service files / 29 tests against real Postgres,
+26 end-to-end tests against a real browser.
+
+### Gate evidence — the reviewer proved the gate goes red as well as green
+
+Six runs, all performed by the reviewer itself, in a copy of the tree outside the
+repository. The last pair was unprompted.
+
+| Run | Final line | Exit |
+|---|---|---|
+| Full, database reachable — `init.ps1` | `[OK] Environment ready` | 0 |
+| Full, database reachable — `init.sh` | `[OK] Environment ready` | 0 |
+| No database, all four URLs unresolvable — both | `[OK] Environment ready (database checks skipped)` | 0 |
+| Database step forced to fail — both | `[FAILED] 1 problem(s): - npm run test:db failed` | 1 |
+
+`CHECKPOINTS.md` C2.1 was tightened at spec approval precisely so that a feature could not
+be closed on a run that skipped the database. This close is a full run.
+
+### Two things found during implementation, both fixed rather than worked around
+
+1. **`src/app/loading.tsx` turned every server-side `redirect()` into a 200.** A
+   `loading.tsx` puts a Suspense boundary above every page below it; once the shell has
+   flushed, Next can no longer answer 307 and redirects from the browser instead. AC-11,
+   AC-12 and AC-15 require the refusal to be the *server's* answer. The fallback moved to
+   `src/app/(public)/loading.tsx`.
+
+   The reviewer rebuilt this three ways in a scratch copy, with a negative control:
+
+   | Arrangement | `/stock-entry` | `/` |
+   |---|---|---|
+   | A — as shipped, `(public)/loading.tsx` | **307** → sign-in | 200, loading fallback present |
+   | B — `loading.tsx` back at `src/app/` | **200**, 24,621 bytes of page shell | 200 |
+   | C — no `loading.tsx` anywhere | 307 | 200, **fallback absent** |
+
+   B reproduces the bug exactly — a refusal degraded to a 200 that `curl` would accept.
+   C proves `/`'s loading state genuinely comes from the new location, so spec 002 still
+   holds. A fix, not a workaround.
+
+2. **`AUTH_SECRET` was empty in this machine's `.env`**, so Auth.js could mint no session
+   and every sign-in spec failed with `MissingSecret`. `.env` cannot be written by an agent,
+   and the application must **not** invent a fallback — AC-22 requires the opposite.
+   `scripts/run-e2e.mjs` mints an **ephemeral** secret for the test run only, random per run
+   and written to no file. The reviewer verified the application's own refusal with the
+   secret deleted from a real server's environment: `GET /api/users` returned `401
+   {"error":"Unauthorized"}`, 24 bytes, no `users` key — and `grep` finds no fallback secret
+   anywhere under `src/`.
+
+### Lifecycle defect found while closing
+
+`progress/history.md` had no entry for #2. The session that closed it committed the feature
+and skipped AGENTS.md §5 step 3, leaving the summary only in the commit message. Both
+entries were written in this close.
+
+### Observations carried forward (non-blocking)
+
+- `playwright.config.ts` `retries: 1` hides intermittent failures — one `init.ps1` run
+  reported `3 flaky`, all `ERR_NETWORK_IO_SUSPENDED` on #2's home specs, green on retry and
+  `0 flaky` under `init.sh` minutes later. Machine noise, but a genuinely intermittent
+  regression could still reach `done`. Revisit if the count grows.
+- AC-22's in-gate tests *simulate* "no secret ⇒ `auth()` throws". True today and verified
+  against a real server, but nothing would notice if a future Auth.js generated a
+  development secret instead of throwing.
+- `requireUserPage` sends every null session to `?reason=inactive`. Right for a deactivated
+  user; a guess for a misconfigured deployment.
+- The end-to-end suite writes to the **development** database. Accounts are random
+  `@macroads-e2e.invalid` addresses deleted in `afterAll`, but an interrupted run leaves
+  rows behind.
+- `verifyCredentials` runs twice per sign-in — two bcrypt comparisons per attempt, a
+  deliberate trade against guessing the landing path.
+
+### Corrections made while closing
+
+- `docs/operations.md` carried a note saying `.env.example` still lacked the test-database
+  pair. The user added those lines by hand; the note was false and is deleted.
+- `specs/features/002-app_scaffold.md` named the literal path `src/app/loading.tsx` in its
+  UI-states prose. No 002 criterion or test names that path, so nothing was broken, but the
+  line now records the move and why, so the next reader does not "restore" it.
+
+**Closed 2026-09-09 after user sign-off.**

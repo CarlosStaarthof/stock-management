@@ -145,6 +145,30 @@ describe("repository hygiene", () => {
     }
   });
 
+  it("003 AC-30: .env.example documents the test database alongside the other four", () => {
+    const example = readFileSync(".env.example", "utf8");
+
+    // `npm run test:db` deletes every row between tests. The template has to say which
+    // variable points at the database it is allowed to do that to, or the first person to
+    // run it points it at their own.
+    for (const variable of ["TEST_DATABASE_URL", "TEST_DIRECT_URL"]) {
+      expect(example).toMatch(new RegExp(`^${variable}=`, "m"));
+    }
+
+    // Placeholders, not credentials: the user info is USER:PASSWORD and the host is
+    // under .invalid, which can never resolve (RFC 2606).
+    const assignments = example
+      .split("\n")
+      .filter((line) => /^TEST_(DATABASE|DIRECT)_URL=/.test(line));
+
+    expect(assignments).toHaveLength(2);
+    for (const line of assignments) {
+      const [, userInfo, host] = [...line.matchAll(CREDENTIAL_PARTS)][0] ?? [];
+      expect(userInfo).toBe("USER:PASSWORD");
+      expect((host ?? "").replace(/:\d+$/, "").endsWith(".invalid")).toBe(true);
+    }
+  });
+
   it("AC-7: .env.example documents all four variables and the pooled/direct split", () => {
     const example = readFileSync(".env.example", "utf8");
 

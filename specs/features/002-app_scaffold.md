@@ -111,7 +111,10 @@ without an environment. Throws on a missing or empty variable, naming the variab
 The only screen is a static home page, so the states are the framework-level ones:
 
 - **Empty:** not applicable — the page renders no collection. There is no data source yet.
-- **Loading:** `src/app/loading.tsx` renders while a segment suspends.
+- **Loading:** a `loading.tsx` renders while a segment suspends. *(Moved to
+  `src/app/(public)/loading.tsx` by feature #3: at `src/app/` it put a Suspense
+  boundary above every protected page and turned each server-side `redirect()`
+  into a 200. `/` keeps its loading state; no criterion here names the path.)*
 - **Error:** `src/app/error.tsx` renders an error boundary; `src/app/not-found.tsx`
   renders for an unknown route.
 - **Success:** `/` returns HTTP 200 and shows the heading `Macroads Stock`.

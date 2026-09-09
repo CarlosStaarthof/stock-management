@@ -22,5 +22,8 @@ None.
 
 ## Next
 
-Feature #3 `auth_and_roles`. Its spec `specs/features/003-auth_and_roles.md` does not
-exist yet, so the next action is a `spec-writer` run, not an `implementer` run.
+Feature #4 `domain_schema`. Its spec `specs/features/004-domain_schema.md` does not exist
+yet, so the next action is a `spec-writer` run, not an `implementer` run.
+
+Feature #3 is closed; `progress/history.md` holds its summary. The database is live, so
+from here `init` runs the Database step for real on every run.

@@ -181,10 +181,74 @@ if (-not (Test-Path (Join-Path $Root 'package.json'))) {
     }
 }
 
-# ------------------------------------------------------------------- 5. verdict
+# ------------------------------------------------------------------ 5. database
+# Added by feature #3 auth_and_roles.
+#
+# The service tests and the migration check need a real Postgres. A machine that has not
+# been given one is not broken, so this step SKIPS and says so rather than failing - the
+# gate would otherwise block all work until Neon is configured. CHECKPOINTS.md C2.1
+# closes the hole that opens: a feature may not be closed on a run that skipped here.
+Write-Step "Database"
+
+$script:DbSkipped = $false
+
+function Write-DbSkip {
+    param($ProbeLine)
+    $detail = $ProbeLine.Replace('[probe] ', '')
+    if ($detail.StartsWith('unreachable ')) {
+        $detail = 'database unreachable at ' + $detail.Substring(12)
+    }
+    # Deliberately at column 0, unlike every other skip: AC-24 asks for a line that
+    # BEGINS "[skip] " and ENDS "database-dependent checks skipped".
+    Write-Host "[skip] $detail - database-dependent checks skipped" -ForegroundColor DarkGray
+    $script:DbSkipped = $true
+}
+
+if (-not (Test-Path (Join-Path $Root 'package.json'))) {
+    Write-Skip "no package.json yet (feature #2 app_scaffold)"
+} elseif ($scripts -notcontains 'test:db') {
+    Write-Skip "no 'test:db' script yet"
+} else {
+    # One probe, shared with init.sh, so the two scripts cannot disagree about whether a
+    # database is there. It names the host and never the credentials.
+    $probeOk = $true
+    $probeLine = ''
+    foreach ($variable in @('DATABASE_URL', 'TEST_DATABASE_URL')) {
+        if ($probeOk) {
+            $probeOut = & node (Join-Path $Root 'scripts/db-probe.mjs') $variable
+            if ($LASTEXITCODE -ne 0) {
+                $probeOk = $false
+                $probeLine = ($probeOut | Select-Object -Last 1)
+            }
+        }
+    }
+
+    if (-not $probeOk) {
+        Write-DbSkip $probeLine
+    } else {
+        Write-Ok "database reachable"
+
+        & npx prisma migrate status
+        if ($LASTEXITCODE -ne 0) {
+            Write-Bad "prisma migrate status: a migration is pending, or the schema has drifted"
+        } else {
+            Write-Ok "prisma migrate status"
+        }
+
+        Write-Host "    npm run test:db"
+        & npm run test:db --silent
+        if ($LASTEXITCODE -ne 0) { Write-Bad "npm run test:db failed" } else { Write-Ok "npm run test:db" }
+    }
+}
+
+# ------------------------------------------------------------------- 6. verdict
 Write-Host ""
 if ($script:Failures.Count -eq 0) {
-    Write-Host "[OK] Environment ready" -ForegroundColor Green
+    if ($script:DbSkipped) {
+        Write-Host "[OK] Environment ready (database checks skipped)" -ForegroundColor Green
+    } else {
+        Write-Host "[OK] Environment ready" -ForegroundColor Green
+    }
     exit 0
 } else {
     Write-Host "[FAILED] $($script:Failures.Count) problem(s):" -ForegroundColor Red
