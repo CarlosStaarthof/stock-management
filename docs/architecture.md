@@ -33,8 +33,34 @@ Arrows point one way only.
 - A React component **never** imports `PrismaClient`.
 - A route handler **never** writes a Prisma query inline — it calls a service in
   `src/server/`.
-- `src/lib/excel/` **never** imports from `src/server/` or `prisma`. It receives plain
-  objects. This is what makes exports unit-testable without a database.
+- `src/lib/**` **never** imports from `src/server/` or `prisma`, **with one named
+  exception**: it may import the typed error classes from `@/server/errors`, and nothing
+  else from `src/server/`. It receives plain objects. This is what makes `src/lib/`
+  unit-testable without a database.
+
+  *The exception, added 2026-09-10 while closing #5.* Spec 005 AC-2, AC-6 and AC-7 require
+  `src/lib/excel/workbook-reader.ts` itself to throw `ValidationError`, and that class lives
+  only in `src/server/errors.ts`. The rule as first written was a proxy for the constraint
+  that actually matters — nothing in `src/lib/` may reach a database or a server-only
+  runtime — and `errors.ts` is four stateless classes that import nothing at all, so it
+  compromises neither. The exception is deliberately narrow and is **enforced by ESLint for
+  every ordinary import form**, not by convention: `@/server/db`, any service under
+  `@/server/`, `export * from` and every relative reach-around (`../server/db`,
+  `./../server/db`) all turn `npm run lint` red, in nine spellings the #5 reviewer tried.
+
+  **Three spellings currently slip through**, found by that reviewer and reproduced:
+  `@/./server/db` and `@/../src/server/db` — which `no-restricted-imports` compares as
+  prefixes rather than as resolved paths, and which both typecheck and resolve at runtime —
+  and `await import("@/server/db")`, because the rule does not visit `ImportExpression` in
+  this configuration. None appears anywhere in the tree; the only `lib → server` import that
+  exists is the permitted `@/server/errors` one. **The fix, open for whoever next touches the
+  lint config:** replace the two prefix patterns with one that matches the path segment —
+  on the shape of `(^|/)server(/|$)`, keeping the `errors` exception — and add a
+  `no-restricted-syntax` rule on `ImportExpression` for the dynamic form. Until then this
+  sentence says "every ordinary import form" and not "cannot", because a governing document
+  that overstates its own guarantee is worse than one that admits a gap. The alternative, moving the error classes to `src/lib/errors.ts` and
+  re-exporting them from `src/server/errors.ts`, is cleaner layering and remains open; it
+  was not done here because it would touch every file #3 committed.
 - `src/server/` **never** imports from `src/app/` or `src/components/`.
 
 Why: the Excel workbook this replaces failed because presentation and calculation were

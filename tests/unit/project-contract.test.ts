@@ -101,34 +101,95 @@ describe("the two test suites stay disjoint", () => {
   });
 });
 
-describe("the money boundary has not been crossed yet", () => {
-  // Spec 004 AC-31. `unitPriceSnapshot` is the first monetary column in the schema, and
-  // this feature ships no QUERY that returns it: the first real reader is #8, and it must
-  // go through shapeForRole. So no shipping module - nothing under src/ or scripts/ that
-  // is not itself a test - may so much as name the column yet. Test files are excluded
-  // because a test that names the string is asserting about it, not returning it to a
-  // session: src/lib/money-boundary.test.ts has used it as a fixture since #3.
+describe("the money boundary, and where the first monetary column may be named", () => {
+  // Spec 004 AC-31, AMENDED by spec 005 AC-29 - amended, not deleted and not loosened.
+  //
+  // #4 asserted that NO shipping module under src/ or scripts/ names `unitPrice`, because
+  // none could legitimately need it yet. #5's writer must: it is the feature that puts the
+  // workbook's 129 prices into `ItemPrice`. So the assertion becomes an EXACT permitted
+  // list rather than an empty one - a third module naming the column turns this red - and
+  // it gains two assertions #4 could not make:
+  //
+  //   * nothing under src/app/, src/components/, src/lib/ or scripts/ names either column,
+  //     so the reader, the unit table and the seed script stay on the safe side of the
+  //     boundary; and
+  //   * `unitPriceSnapshot` stays forbidden everywhere outside a test, because its first
+  //     reader is still #8 and it must go through shapeForRole.
+  //
+  // Test files are excluded from the scan throughout: a test that names the string is
+  // asserting about it, not returning it to a session - src/lib/money-boundary.test.ts has
+  // used it as a fixture since #3.
   const IS_TEST = /\.test\.ts$/;
 
-  it("004 AC-31: no shipping module under src/ or scripts/ mentions unitPrice yet", () => {
+  /** Tracked and untracked source files under src/ and scripts/, tests excluded. */
+  function shippingModules(): string[] {
     const tracked = spawnSync(
       "git",
       ["ls-files", "--cached", "--others", "--exclude-standard", "src", "scripts"],
       { encoding: "utf8" },
     );
 
-    const scanned = (tracked.stdout ?? "")
+    return (tracked.stdout ?? "")
       .split("\n")
       .map((line) => line.trim())
       .filter((line) => line.length > 0)
       .filter((file) => /\.(ts|tsx|mjs|cjs|js)$/.test(file))
       .filter((file) => !IS_TEST.test(file));
+  }
+
+  it("005 AC-29 amending 004 AC-31: exactly two modules may name unitPrice", () => {
+    const scanned = shippingModules();
 
     // The scan must have looked at something, or the assertion below is vacuous.
     expect(scanned).toContain("src/server/db.ts");
 
+    const offenders = scanned
+      .filter((file) => /unitPrice/.test(readFileSync(file, "utf8")))
+      .sort();
+
+    expect(offenders).toEqual([
+      "src/server/items/workbook-import-service.ts",
+      "src/server/items/workbook-plan.ts",
+    ]);
+  });
+
+  it("005 AC-29: nothing under src/app, src/components, src/lib or scripts names it at all", () => {
+    const scanned = shippingModules().filter((file) =>
+      /^(src\/app\/|src\/components\/|src\/lib\/|scripts\/)/.test(file),
+    );
+
+    // Non-vacuity: this feature added a module to two of those four directories.
+    expect(scanned).toContain("src/lib/excel/workbook-reader.ts");
+    expect(scanned).toContain("scripts/seed-workbook.ts");
+
     const offenders = scanned.filter((file) => /unitPrice/.test(readFileSync(file, "utf8")));
 
     expect(offenders).toEqual([]);
+  });
+
+  it("005 AC-29: unitPriceSnapshot is still named by no shipping module anywhere", () => {
+    // The first reader of a snapshot is #8, and it must go through shapeForRole.
+    const offenders = shippingModules().filter((file) =>
+      /unitPriceSnapshot/.test(readFileSync(file, "utf8")),
+    );
+
+    expect(offenders).toEqual([]);
+  });
+});
+
+describe("what feature 005 added to the project contract", () => {
+  it("005 AC-30: exceljs is a pinned dependency and seed:workbook is a script", () => {
+    const manifest = JSON.parse(readFileSync("package.json", "utf8")) as {
+      dependencies?: Record<string, string>;
+      scripts?: Record<string, string>;
+    };
+
+    // Pinned exactly: an importer that reads a different ExcelJS from the one the 152 rows
+    // were counted with is an importer nobody has verified.
+    expect(manifest.dependencies?.exceljs).toBe("4.4.0");
+    expect(manifest.scripts?.["seed:workbook"]).toBe("tsx scripts/seed-workbook.ts");
+
+    const lockfile = readFileSync("package-lock.json", "utf8");
+    expect(lockfile).toContain('"node_modules/exceljs"');
   });
 });

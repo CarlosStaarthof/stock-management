@@ -266,7 +266,7 @@ and run in `npm run test:unit` with no database; tests that write are `*.db.test
 14. **AC-14** — Where the two sheets disagree about an item they share, the disagreement is resolved deterministically and recorded, never averaged and never duplicated into two items. Sheets are processed in the fixed order `Dublin` then `Clonmel `, and the first value wins. **Five** items disagree on the unit label — `MMA Paints - Red` (`Dublin!D50` `1 Unit` against `'Clonmel '!D64` `16kg`), `MMA Paints - Blue` (`1 Unit` / `16kg`), `MMA Paints - White` (`2 Unit` / `16kg`), `ViaLine  Traffic Red RAL1023` (`20 Kg` / `20kg`) and `ViaLine Traffic Yellow (RAL 1023)` (`20 Kg` / `20kg`) — and **five** disagree on the item type: `MultiGrip X440 Traffic Green RAL6024` (`Paint` / `M-Grip`), `MultiGrip X440 Traffic Purple. RAL 4006` (`Paint` / `M-Grip`), `ViaLine White` (`Paint` / `Vialine`), `ViaLine  Traffic Red RAL1023` and `ViaLine Traffic Yellow (RAL 1023)` (`Paint` / `Vialine`). Those are **eight** distinct items; each gets a `notes` string naming both cells and both values, and each appears in the report's `conflicts[]`. **Zero** items disagree on price — all twelve shared items carry the same price on both sheets — and a test asserts that count is zero. Should a price conflict ever arise, the importer refuses the whole run with a `ConflictError` naming both cells and both prices rather than picking one, because a silently chosen price would make the app disagree with the file it replaces (Invariant 10).
 15. **AC-15** — Exactly **10** items carry a non-null `notes`: the 2 of AC-13 and the 8 of AC-14. The other 130 have `notes: null`, so the field stays a signal rather than provenance boilerplate on every row.
 16. **AC-16** — The report is complete enough for a reviewer to check against the workbook by hand, and it is deterministic. `buildImportReport` returns an object holding: `source` with the file name, byte length and SHA-256 of the bytes read; `sheets[]` giving for each sheet its name, item-block first and last row, in-block row count and below-total row count (`Dublin` 3, 84, 82, 0 and `Clonmel ` 3, 70, 68, 2); `counts` with 10 suppliers, 19 item types, 140 items, 129 prices and 152 links; `needsReview[]` with exactly the 15 entries of AC-12 and AC-13, each carrying its `sheet!cell`, its description and its reasons drawn from `MISSING_SUPPLIER`, `MISSING_UNIT`, `MISSING_PRICE` and `BELOW_TOTAL_ROW`; `supplierVariants[]` with exactly the four collapsed spellings `Kellys`, `Kelly's`, `Meon ` and `Visever ` mapped to their canonical names with their row counts 19, 1, 1 and 2; `sharedItems[]` with the 12 items of AC-11; and `conflicts[]` with the 10 disagreements of AC-14. Every array is sorted by sheet then row, and building the report twice from the same workbook yields two byte-identical JSON strings.
-17. **AC-17** — The report carries no money. `JSON.stringify(report)` contains no key matching `/price|value|amount/i` at any depth, and none of the workbook's price strings appears anywhere in it. A missing price is reported as the reason code `MISSING_PRICE`, which is a value and not a key.
+17. **AC-17** — The report carries no money **outside `divergences[]`**. With that one array removed, `JSON.stringify(report)` contains no key matching `/price|value|amount/i` at any depth and none of the workbook's price strings appears anywhere in it; a missing price is reported as the reason code `MISSING_PRICE`, which is a value and not a key. `divergences[]` is exempt because AC-22 requires it to carry the workbook value and the stored value of every field the importer declined to overwrite, and a price is such a field — an admin running the seed already holds every price, so the exemption crosses no money boundary (Invariant 12 governs what a `YARD_STAFF` *session* is sent, and this report reaches no session). **The exemption must not be proved vacuously:** the assertion is made on a report built against a database in which a price *has* been corrected, so `divergences[]` is non-empty and holds both figures, and the same assertion is made on the ordinary report whose `divergences[]` is `[]`. Both pass.
 18. **AC-18** — One run against a database holding only the two migration-seeded `Location` rows creates exactly **10** `Supplier`, **19** `ItemType`, **140** `Item`, **129** `ItemPrice` and **152** `ItemLocation` rows, and the returned `created` counts say the same. `Location`, `User`, `StockCount` and `StockCountLine` still hold exactly what they held before — 2, 0, 0 and 0 rows — so no yard and no historical count is invented.
 19. **AC-19** — `Location` is used and never created. The importer resolves the two yards by `code` (`DUBLIN`, `CLONMEL`), the `Location` row count is 2 before and 2 after, and the 152 links point at `loc_dublin` and `loc_clonmel` — **82** to Dublin and **70** to Clonmel. Against a database from which the `CLONMEL` row has been deleted, the run throws `NotFoundError` whose message contains `CLONMEL`, exits non-zero, and creates no `Supplier`, `ItemType`, `Item`, `ItemPrice` or `ItemLocation` row.
 20. **AC-20** — Prices land in the database exactly as the workbook computes them. All 129 `ItemPrice` rows have `effectiveFrom` = `2025-01-01`, `label` = `2025 Prices` — which is also what `Dublin!E2` and `'Clonmel '!E2` read — and `currency` = `EUR`. Read back through Prisma, `Cast Iron Studs` (`'Clonmel '!E19`, the formula `=5.2/0.85`) has `unitPrice.toString()` equal to `6.11764706`, and `Bauxite Buff  for MMA` (`Dublin!E10`) equal to `33.09` — not `33.090000000000003` and not `6.12`. Every item has at most one price, so `@@unique([itemId, effectiveFrom])` is never violated.
@@ -280,7 +280,7 @@ and run in `npm run test:unit` with no database; tests that write are `*.db.test
 28. **AC-28** — **Where the tests live,** and the two suites stay disjoint. The pure tests are `src/lib/excel/workbook-reader.test.ts`, `src/lib/units.test.ts` and `src/server/items/workbook-plan.test.ts`; the database tests are `src/server/items/workbook-import.db.test.ts`, picked up by `vitest.db.config.ts`'s existing `src/**/*.db.test.ts` with no configuration change. `npm run test:unit` executes zero files matching `*.db.test.ts`. The database test calls `resetTestDb()` in `beforeEach`, seeds nothing it does not need, and `npm run test:db` passes twice in a row and with its files in any order.
 29. **AC-29** — **004 AC-31's `unitPrice` scan is amended, not deleted, and stays a money-boundary guard.** #4 asserted that no shipping module under `src/` or `scripts/` names `unitPrice`, because none could legitimately need it yet; this feature's writer must. The scan in `tests/unit/project-contract.test.ts` now asserts an **exact** permitted list, `toEqual(["src/server/items/workbook-import-service.ts", "src/server/items/workbook-plan.ts"])`, so a third module naming the column turns it red; it keeps its non-vacuity assertion that it inspected `src/server/db.ts`; and it additionally asserts that **no** file under `src/app/`, `src/components/`, `src/lib/` or `scripts/` names `unitPrice` or `unitPriceSnapshot` at all. `unitPriceSnapshot` stays forbidden everywhere outside a test: the first reader of a snapshot is still #8, and it must go through `shapeForRole`.
 30. **AC-30** — The gate is green, in full. `exceljs` is added to `dependencies` in `package.json` at an exact pinned version and appears in `package-lock.json`; `seed:workbook` is added to `scripts`; `npm ci` succeeds from the lockfile. `npx prisma validate`, `npm run typecheck`, `npm run lint`, `npm run test:unit`, `npm run test:e2e`, `npx prisma migrate status` and `npm run test:db` all pass, and `./init.ps1` ends with `[OK] Environment ready` having **executed** the database checks rather than skipping them. `prisma/schema.prisma`, every directory under `prisma/migrations/` and `prisma/migrations/migration_lock.toml` are byte-identical to their state before this feature: #5 adds no migration and changes no schema.
-31. **AC-31** — The feature adds no application surface. Its changed-file list contains no path under `src/app/` or `src/components/`, no route handler, no server action and no React component: `git diff --name-only` lists only `package.json`, `package-lock.json`, `src/lib/excel/workbook-reader.ts`, `src/lib/units.ts`, their two test files, `src/server/items/workbook-plan.ts`, `src/server/items/workbook-import-service.ts`, their two test files, `scripts/seed-workbook.ts`, `tests/unit/project-contract.test.ts`, `specs/features/005-seed_from_workbook.md`, `feature_list.json` and files under `progress/`. Nothing under `Samples/` is modified, and `src/lib/excel/workbook-reader.ts` and `src/lib/units.ts` import neither `@prisma/client` nor `@/server/db`, so `tests/unit/hashing-boundary.test.ts` needs no change.
+31. **AC-31** — The feature adds no application surface. Its changed-file list contains no path under `src/app/` or `src/components/`, no route handler, no server action and no React component: `git diff --name-only` lists only `package.json`, `package-lock.json`, `src/lib/excel/workbook-reader.ts`, `src/lib/units.ts`, their two test files, `src/server/items/workbook-plan.ts`, `src/server/items/workbook-import-service.ts`, their two test files, `scripts/seed-workbook.ts`, `tests/unit/project-contract.test.ts`, `eslint.config.mjs`, `docs/architecture.md`, `specs/features/005-seed_from_workbook.md`, `feature_list.json` and files under `progress/`. Nothing under `Samples/` is modified, and `src/lib/excel/workbook-reader.ts` and `src/lib/units.ts` import neither `@prisma/client` nor `@/server/db`, so `tests/unit/hashing-boundary.test.ts` needs no change.
 
 ## Out of scope
 
@@ -325,6 +325,53 @@ and run in `npm run test:unit` with no database; tests that write are `*.db.test
 - **Performance work.** The import is one transaction of batched writes; there is no
   benchmark, no index and no `EXPLAIN` budget in this feature.
 - **CI.** `init` remains the gate.
+
+## Post-approval amendments
+
+### AC-17 exempts `divergences[]` — ruled by the user on 2026-09-10
+
+The implementer built AC-17 and AC-22 both as written rather than choosing between them,
+and reported the collision instead of hiding it. AC-17 said the report carries no money at
+any depth; AC-22 requires `divergences[]` to hold the workbook value and the stored value
+of every field the importer declined to overwrite, and its own scenario has an `ADMIN`
+correcting a price. A price divergence therefore puts a price string in the report.
+
+The two collide **only** in that case: every report built from the workbook against a
+consistent database has `divergences: []`, which is the report AC-17's original test
+asserted on — so the collision never fired, and the exemption was never exercised either.
+
+**Ruling: the report shows both figures, inside `divergences[]` and nowhere else.** The
+reasoning the user accepted: an `ADMIN` running `npm run seed:workbook` already holds every
+price in the system, so the exemption discloses nothing, and Invariant 12 governs what a
+`YARD_STAFF` **session** is sent — this report reaches no session at all. The alternative,
+reporting only that a price differs, was rejected as making the one field where drift
+matters most the one field the report will not name.
+
+The amendment closes the vacuity the original wording allowed: AC-17 now requires the
+money-free assertion to be proved on a report whose `divergences[]` is **non-empty and
+holds both figures**, as well as on the ordinary empty one. Before this, the criterion
+passed without ever meeting the case it was written about.
+
+### AC-31's file list gains `eslint.config.mjs` and `docs/architecture.md` — 2026-09-10
+
+Both changes were required by the review, not chosen by the implementer.
+
+`docs/architecture.md` said `src/lib/excel/` **never** imports from `src/server/`, and the
+workbook reader does — it imports `ValidationError`, because AC-2, AC-6 and AC-7 all require
+*the reader* to throw it. The reviewer flagged that the doc and the code disagree in writing
+and that one of them had to change.
+
+The coordinator amended the doc rather than the code: the rule was a proxy for the
+constraint that matters — nothing under `src/lib/` may reach a database or a server-only
+runtime — and `src/server/errors.ts` is four stateless classes that import nothing, so it
+compromises neither. **The exception is narrow and is enforced by ESLint**, which is why
+`eslint.config.mjs` is now in scope: `src/lib/**` may import `@/server/errors` and nothing
+else from `@/server/`. Before this feature no lint rule covered `lib → server` at all, so
+the boundary is stricter after the amendment than the original rule ever was in practice.
+
+The cleaner alternative — moving the error classes to `src/lib/errors.ts` and re-exporting
+them from `src/server/errors.ts` — remains open and is recorded in `docs/architecture.md`.
+It was not done here because it would touch every file feature #3 committed.
 
 ## Open questions
 

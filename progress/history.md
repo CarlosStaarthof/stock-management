@@ -378,3 +378,147 @@ assertion; the reviewer confirmed it is strictly an improvement.
   file after every `migrate dev` from #5 onward.**
 
 **Closed 2026-09-09 after user sign-off.**
+
+## 2026-09-10 — feature #5 `seed_from_workbook`
+
+The workbook's contents, in the database. Implementation in
+`progress/impl_seed_from_workbook.md`; review in `progress/review_seed_from_workbook.md`.
+31 criteria. **CHANGES_REQUESTED on the first pass, APPROVED on the second** — the first
+non-approval in this project.
+
+### What shipped
+
+`npm run seed:workbook` reads columns A–E of the `Dublin` and `Clonmel ` sheets and writes
+**10 suppliers, 19 item types, 140 items, 129 prices and 152 yard links**. Insert-only,
+atomic, idempotent. No UI: the interface is stdout and the import report.
+
+Five modules on a deliberate read → plan → write pipeline, with a pure boundary before the
+write — which is what makes 17 of the 31 criteria testable with no database at all.
+
+### The headline correction: 140 items, not 150
+
+Every figure was re-derived from the file, twice independently — by the spec-writer, then
+by the implementer before it wrote a line of code, then a third time by the reviewer with
+its own parser. All three agreed.
+
+| Quantity | Value |
+|---|---|
+| Dublin `A3:A84` / Clonmel `A3:A70` | 82 + 68 = 150 rows |
+| Below Clonmel's total (`A75`, `A76`) | 2 |
+| **Source rows** | **152** |
+| Items on **both** sheets | 12 |
+| **Distinct items** | **140** |
+| Prices | 129 — 11 items have none, and get no `ItemPrice` rather than a zero |
+| Flagged `needsReview` | 15 — the 13 incomplete rows plus the 2 below-total |
+
+"150" was the row count. The project had said 152, then 151, then 150; the item count is a
+different question again, and nobody had asked it.
+
+### The sheets disagree with each other about eight items
+
+Previously unrecorded. Five disagree on the unit — `MMA Paints - Red` is `1 Unit` on Dublin
+and `16kg` on Clonmel — and five on the item type, `MultiGrip X440 Traffic Green` being
+`Paint` on one sheet and `M-Grip` on the other. Dublin wins, deterministically, and every
+conflict is written into the item's `notes` and the report's `conflicts[]`.
+
+**Zero disagree on price**, and a test asserts that count is zero. Should one ever arise the
+importer refuses the whole run rather than picking a side, because a silently chosen price
+would make the app disagree with the file it replaces (Invariant 10).
+
+### Decisions the user made
+
+- **Internal whitespace is preserved**, so the two Kestrel bicycle-logo pairs are four items
+  rather than two: 140 and not 138. Exactly two pairs in the file differ only by an extra
+  space, identical in supplier, type, unit and price. The test asserts 140 *against* the
+  collapsed 138, so a future "helpful" normalisation turns the suite red. The accepted
+  consequence is recorded with cell references in the spec's Open questions §5: the item
+  master shows two pairs only a character count tells apart, and housekeeping cannot surface
+  them, since all four are complete and held.
+- **AC-17 exempts `divergences[]`** — the report shows both figures where the workbook and
+  the database disagree about a price. An `ADMIN` running the seed already holds every
+  price, and Invariant 12 governs what a `YARD_STAFF` *session* is sent; this report reaches
+  no session.
+
+### Two properties carry the feature
+
+**Insert-only (AC-22).** No `UPDATE`, no `DELETE`, no `upsert` — asserted by scanning the
+service's own source. A re-run can never revert a human's correction, which matters because
+the 15 flagged items exist to prompt corrections. Proved by importing, having an `ADMIN` fix
+a supplier, a unit, a price and an archive flag, then running a **third** time and asserting
+all four survive byte for byte.
+
+**One transaction (AC-24).** A part-way failure leaves zero rows, not a half-import for the
+next run to trip over.
+
+### A rule the spec never stated, which AC-22 forced
+
+AC-23's exact `(description, supplierId ?? null)` match alone makes AC-22 fail: once an
+`ADMIN` sets `School Logo Triangle`'s supplier, the stored row leaves the key the workbook
+plans it under, and the next run inserts a blank second copy. `diffPlan` therefore runs a
+**second pass** in which a planned item *with no supplier* may claim a stored row of the
+same description that no other planned item has claimed.
+
+The reviewer built six adversarial fixtures against it and found it correctly narrow: an
+exact key always beats a loose one, a planned item that *has* a supplier returns early and
+can never claim another supplier's row, and AC-11's "same description under two suppliers is
+two items" is genuinely untouched. It found one real defect — the feeding query had no
+`orderBy`, so which row was claimed depended on what Postgres returned first — reproduced it
+(`item_kelly` one run, `item_kestrel` the next), and it was fixed.
+
+### Three holes found by asking "would this test actually fail?"
+
+1. **AC-17's money scan was weak.** `JSON.stringify(price)` matches only a *whole* string
+   leaf. The implementer mutated the report to render a description as
+   `"… (3 Part Kit) 173.29"` and the suite stayed green. It now runs three scans: whole leaf
+   or key, embedded decimal price inside any string, and price-as-a-number against an exact
+   list of nine permitted numeric keys. The embedded scan is restricted to prices carrying a
+   decimal point, and the restriction was measured rather than guessed — **54 decimal prices
+   collide with zero real strings; 33 integer prices collide 56 times** (`102` inside
+   `RAL1023`, `12` inside `1200mm`), verified independently by the coordinator.
+2. **`describeSource` had no test, so AC-16's `source` clause had no proof.** The report
+   tests fed it a fabricated `{ byteLength: 90567, sha256: "abc123" }`, which would have
+   passed on a function returning a constant. The digest is now asserted as a literal —
+   `6308ae04…bff0`, 90,567 bytes — confirmed by three parties independently.
+3. **A non-`.xlsx` buffer did not reject with `ValidationError`.** Writing the failure test
+   the reviewer asked for found that ExcelJS's raw ZIP error propagated, which AC-26 forbids
+   and which `docs/architecture.md` forbids of a service. `readYardSheets` now wraps it.
+   This was the only production logic change of the review round.
+
+### An architecture rule relaxed, and a guarantee corrected
+
+`docs/architecture.md` said `src/lib/excel/` **never** imports from `src/server/`. The
+reader does — AC-2, AC-6 and AC-7 each require *the reader* to throw `ValidationError`.
+
+The coordinator amended the doc rather than the code: the rule was a proxy for "nothing in
+`src/lib/` may reach a database or a server-only runtime", and `errors.ts` is four stateless
+classes importing nothing. The reviewer was asked to judge that adversarially — a rule being
+relaxed to match code — and upheld it, noting that before this feature **no lint rule
+covered `lib → server` at all**, so the enforced boundary is tighter after the change than
+the stricter-sounding rule ever was. Its summary: *"The doc did not stop describing a real
+constraint; it started describing the right one."*
+
+The reviewer then tried to defeat the new ESLint fence with twelve import shapes and got
+through with three: `@/./server/db`, `@/../src/server/db` — both typecheck-clean and
+resolving at runtime, because `no-restricted-imports` compares prefixes and not resolved
+paths — and `await import("@/server/db")`, which the rule does not visit. Nine shapes were
+blocked, including every relative reach-around.
+
+That did not block approval: no criterion requires the rule and the code obeys it. What was
+wrong was a **sentence in a governing document** promising the exception "cannot widen
+without the lint step going red". It now says "every ordinary import form", names the three
+gaps, and records the fix — match the path segment rather than the prefix, plus a
+`no-restricted-syntax` rule for the dynamic form. **Open, and carried into #6.**
+
+### Three spec amendments, all recorded
+
+AC-17's `divergences[]` exemption, with a clause forbidding it to be proved vacuously; and
+AC-31's file list gaining `eslint.config.mjs` and `docs/architecture.md`, both changed
+because the review required it rather than by choice.
+
+### Rate limits
+
+Three separate agent runs were killed mid-flight by account session limits. Nothing was lost
+in any of them: the work lands on disk as it goes and `progress/current.md` records state,
+which is the design working as intended. The feature took five agent runs instead of two.
+
+**Closed 2026-09-10 after user sign-off.**
