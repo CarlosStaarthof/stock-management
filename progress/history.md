@@ -665,3 +665,132 @@ Five agent runs were killed mid-flight on this feature, the resets marching 7:30
 attempts, two review passes. Nothing was lost in any of them.
 
 **Closed 2026-09-11 after user sign-off.**
+
+## 2026-09-11 — feature #7 `entry_start`
+
+The period model, made into a screen — and the first feature a `YARD_STAFF` user ever sees.
+Implementation in `progress/impl_entry_start.md`; review in `progress/review_entry_start.md`.
+33 criteria. **Blocked before a line was written, CHANGES_REQUESTED on the first review
+pass, APPROVED on the second.**
+
+### What shipped
+
+Four routes under `/stock-entry`, both roles: a day calendar one month at a time, *who /
+where / when*, the derived period with an override, and the count itself pre-populated from
+the yard sheet with every quantity `null`. One server action, one write. Four pure modules —
+period arithmetic, the month grid, yard time and the message strings — are why a third of
+the criteria run with no database.
+
+Test counts across the feature: unit 273 → **378**, service 173 → **221**, e2e 56 → **90**.
+
+### AC-14 — the first time the money boundary had to hold inside a response
+
+Every screen before this was ADMIN-only, so the boundary was a *route* boundary. Part 6
+gives both roles the `DRAFT` count, so #7 is the first feature that sends real domain data
+to a staff session.
+
+`listSheet` is the one definition of a yard sheet (006 AC-24) and was ADMIN-only. Two
+options were put to the user:
+
+| Option | Why not |
+|---|---|
+| Widen the guard, discard the price in the caller | The guarantee rests on every future caller remembering. #8, #9 and #14 all read sheets for staff, and 006 AC-31's scan catches the *name* `unitPrice`, not a price passed onward under another field name |
+| **Never build it for staff** (chosen) | — |
+
+`listSheet` now selects its shape through `shapeForRole` — shipped by #3 and **unused for
+four features until now** — so a staff entry has no `currentPrice` key at all:
+`Object.hasOwn(entry, "currentPrice") === false`, with a spy-thunk test asserting the admin
+builder runs **zero** times. Part 6's rule is "not hidden — not sent"; built-then-discarded
+is weaker than never constructed. The reviewer attacked this hardest and it held.
+
+### The implementer refused to write a line, and checked the arithmetic instead
+
+#7 was `blocked` before any source file existed. Four criteria did not hold:
+
+1. **AC-19 was arithmetically impossible.** It pinned September 2026 to 5 rows / 35 cells,
+   which fixes the rule as `ceil((leading + days) / 7)`, then asserted February 2026 gives 6.
+   Under that rule February is **5** — verified independently by the coordinator. February
+   at five rows is also the better case: the largest leading pad that still fits.
+2. **AC-30's cleanup would have deleted a shipped fixture.** It told every spec to delete
+   every count with `periodYear >= 2090`; `tests/e2e/support/item-master.ts` has seeded one
+   at **2999** since #6, and a whole #6 spec file depends on it. With three files running at
+   once, #7's own specs would also have deleted each other's rows — intermittent failure at
+   `retries: 0`, the exact flakiness that criterion forbids. Both deletes are now scoped to
+   each file's own reserved year.
+3. **AC-24 demanded 2026 literals on a page only a 2090+ write can reach.**
+4. **AC-25 forbade the string `SUBMITTED` in the very directory the Contract put the type
+   in.** `CountStatus` now lives at `src/types/stock-count.ts`.
+
+Eleven other claims it checked and found sound, which is what made the two blockers credible
+rather than noise.
+
+### A latent race in #6, surfaced by the coordinator's gate — AC-33
+
+The implementer reported two consecutive clean e2e suites. **The coordinator's independent
+gate run went red**, on #6's `item-master-items.spec.ts:176`: `Timeout 10000ms exceeded
+while waiting on the predicate`, `1 failed`, `33 did not run`. That file alone on one worker:
+`17 passed`.
+
+The history is worth keeping, because three careful passes missed it. #6's reviewer proposed
+comparing rendered rows to a live `db.item.count()`; the implementer **rejected it as a
+race** and substituted a within-one-page-load comparison; the reviewer **agreed and
+overturned itself**. But the implementation also kept polled cross-checks against that same
+global count, and the reviewer credited them as the independent measurement. **The agreed
+solution contained the flaw of the option both had already rejected.**
+
+The error is precise: polling repairs a *transient* disagreement, not a *continuous* one.
+While sibling specs write throughout the window there is no instant at which render and
+count agree. The polls are gone; the `> 100` floor (which is where the `take: 50` mutation
+actually fails), the within-load equality, and per-file seeded-row assertions remain.
+
+Surfaced only because 006 AC-35 had set `retries: 0`. Under the `retries: 1` it replaced,
+this would have been a silent retry and a green gate.
+
+### A test that proved nothing about the code it named
+
+The first review pass rejected the feature on one thing: **AC-13's atomicity test built its
+own `db.$transaction(...)` with a copy of the service's body.** It tested Postgres, not
+`startCount`. The reviewer proved it by deleting the real wrapper — the whole suite stayed
+green. It also dismantled the fallback claim: the concurrency test said to cover this fails
+on the *first* statement in the transaction, so no line write is ever attempted and its 82
+line total is what a non-transactional implementation would produce too.
+
+The replacement drives the real function: an unsatisfiable `CHECK` on `StockCountLine`, so
+the count row is created and the line write fails **inside** the transaction. It rules out
+the three early refusals by class to prove it reached the write, asserts zero counts and
+zero lines, and proves non-vacuity by succeeding immediately afterwards with exactly 82
+lines. The constraint is dropped in a `finally` *and* before the add, with the rejection
+parked in a sentinel so no failing assertion can return while it is live.
+
+The second required change: AC-4 and AC-18's browser clauses were never written — one test
+posted to a page rather than the Server Action, so it created no row and asserted nothing
+about who was recorded as the counter. One new test now injects `createdById` and `role`
+into the live form alongside the cookie, header and query vectors, and asserts the recorded
+id is the **staff** user's — with the Server Action's captured `POST` body proving the
+forged fields really reached the server.
+
+### Two collisions with shipped work, both resolved by the new work giving way
+
+- #6's specs edit yard sheets while #7's count them, so a count started mid-run referenced
+  another spec's items and broke #6's cleanup. Fixed at `playwright.config.ts` — the
+  stock-entry specs became a second project depending on the first. **No spec was weakened**,
+  and `retries: 0`, the served build, the workers and every timeout are unchanged.
+- The calendar's 30+ links prefetched protected pages and broke #3's shipped cookie
+  assertion. `prefetch={false}` on the **page**, because AC-2 requires that test to pass
+  unmodified.
+
+### Carried into #8
+
+`tmp_ac13_line_write_fails` is the **first DDL any test in this repository issues**. The
+reviewer judged it right and well guarded but flagged it as a precedent whose guard rails
+live inside one test: if #8 or #9 needs a second, the add/drop pair belongs behind a helper
+in `src/server/test-db.ts`, beside `resetTestDb()`.
+
+### Rate limits, and the change they forced
+
+Two more agent runs were killed mid-flight; eight in total across the project. #7 took six
+agent runs. From this feature on, **the coordinator runs the gate and agents run targeted
+suites only** — the change that found the #6 race. Measured effect on the implementer:
+~10.8k tokens per tool call on #6, ~1.6–2.1k on #7's phases.
+
+**Closed 2026-09-11 after user sign-off.**

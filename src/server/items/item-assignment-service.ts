@@ -1,12 +1,14 @@
 import { itemNotAssigned, itemNotFound, locationNotFound } from "@/lib/item-master-messages";
-import { assertRole } from "@/server/auth/guards";
+import { assertRole, assertUser } from "@/server/auth/guards";
 import type { SessionUser } from "@/server/auth/session-user";
 import { db } from "@/server/db";
 import { NotFoundError } from "@/server/errors";
 import { parseLocationCode, parseMoveDirection } from "@/server/items/item-master-input";
 import type { MoveDirection } from "@/server/items/item-master-input";
 import { toCurrentPrice, toPriceRows, todayIso } from "@/server/items/price-selection";
-import type { CurrentPrice, PriceRecord } from "@/server/items/price-selection";
+import type { PriceRecord } from "@/server/items/price-selection";
+import { sheetEntriesForRole } from "@/server/items/sheet-shape";
+import type { SheetEntry, StaffSheetEntry } from "@/server/items/sheet-shape";
 
 /**
  * The per-yard sheet: which items a yard counts, and in what order it walks them.
@@ -30,16 +32,12 @@ import type { CurrentPrice, PriceRecord } from "@/server/items/price-selection";
  * permits to name it.
  */
 
-export type SheetEntry = {
-  itemId: string;
-  description: string;
-  unitLabel: string | null;
-  sortOrder: number;
-  currentPrice: CurrentPrice | null;
-  /** Why this row is here when `includeArchived` was asked for. */
-  linkActive: boolean;
-  itemActive: boolean;
-};
+/**
+ * A sheet row. TWO SHAPES SINCE #7, and which one you get is the session's business:
+ * `AdminSheetEntry` carries `currentPrice`, `StaffSheetEntry` has no such key at all
+ * (007 AC-14). They live in `sheet-shape.ts` with the function that chooses between them.
+ */
+export type { AdminSheetEntry, SheetEntry, StaffSheetEntry } from "@/server/items/sheet-shape";
 
 export type ListSheetOptions = {
   /** Include unassigned links and archived items, each marked with why (AC-24). */
@@ -84,13 +82,44 @@ function parseLocationCodeOrNotFound(code: string): string {
   }
 }
 
+/** One link to the non-money half of a sheet row: the same fields for either role. */
+function toStaffEntry(link: LinkRecord): StaffSheetEntry {
+  return {
+    itemId: link.item.id,
+    description: link.item.description,
+    unitLabel: link.item.unitLabel,
+    sortOrder: link.sortOrder,
+    linkActive: link.active,
+    itemActive: link.item.active,
+  };
+}
+
+/**
+ * The yard sheet, ROLE-SHAPED (007 AC-14).
+ *
+ * THE GUARD MOVED, AND ONLY HERE. Until #7 every screen that could reach a sheet was
+ * `ADMIN`-only, so `assertRole(actor, "ADMIN")` was enough. `specs/domain-model.md` Part 6
+ * puts "create and edit a DRAFT count" in BOTH role columns, and the caller that needs a
+ * sheet most is now a `YARD_STAFF` user starting a count — so this function and
+ * `locationName` accept any signed-in actor, and `listSheet`'s RETURN VALUE is shaped from
+ * `actor.role` instead. Every mutation below keeps `assertRole(actor, "ADMIN")`.
+ *
+ * A staff reader never has a price BUILT for them: `sheetEntriesForRole` takes the price
+ * builder as a thunk and calls it only in the admin branch, so "not hidden — not sent"
+ * (Part 6) is a mechanism rather than a discipline every future caller has to remember.
+ * #8, #9 and #14 inherit safety.
+ *
+ * This function still does not name the price column: it reads whole `ItemPrice` rows and
+ * hands them to `price-selection.ts`, which is one of the nine modules 006 AC-31 permits
+ * to name it.
+ */
 export async function listSheet(
   actor: SessionUser,
   locationCode: string,
   options: ListSheetOptions = {},
   asOf: string = todayIso(),
 ): Promise<SheetEntry[]> {
-  assertRole(actor, "ADMIN");
+  assertUser(actor);
 
   const location = await locationByCode(locationCode);
   const includeArchived = options.includeArchived === true;
@@ -106,27 +135,29 @@ export async function listSheet(
     include: { item: { include: { prices: true } } },
   })) as LinkRecord[];
 
-  return links
-    .map((link) => ({
-      itemId: link.item.id,
-      description: link.item.description,
-      unitLabel: link.item.unitLabel,
-      sortOrder: link.sortOrder,
-      currentPrice: toCurrentPrice(toPriceRows(link.item.prices), asOf),
-      linkActive: link.active,
-      itemActive: link.item.active,
-    }))
-    // `sortOrder` ascending, then `description` ascending so a tie is deterministic and
-    // the sheet reads the same on two consecutive loads (AC-24).
-    .sort(
-      (left, right) =>
-        left.sortOrder - right.sortOrder || left.description.localeCompare(right.description),
-    );
+  // Sorted BEFORE shaping, so both roles read the sheet in one order and the comparator
+  // never has to see a field one of the shapes does not have. `sortOrder` ascending, then
+  // `description` ascending so a tie is deterministic and the sheet reads the same on two
+  // consecutive loads (006 AC-24).
+  const ordered = [...links].sort(
+    (left, right) =>
+      left.sortOrder - right.sortOrder ||
+      left.item.description.localeCompare(right.item.description),
+  );
+
+  return sheetEntriesForRole(actor, ordered, toStaffEntry, (link) =>
+    toCurrentPrice(toPriceRows(link.item.prices), asOf),
+  );
 }
 
-/** The yard sheet's own name for a yard, for an empty-state message. */
+/**
+ * The yard sheet's own name for a yard, for an empty-state message.
+ *
+ * Widened with `listSheet` (007 AC-14): a yard's NAME is not money, and #7's confirm
+ * screen has to say `Dublin` to a staff user.
+ */
 export async function locationName(actor: SessionUser, locationCode: string): Promise<string> {
-  assertRole(actor, "ADMIN");
+  assertUser(actor);
   return (await locationByCode(locationCode)).name;
 }
 

@@ -154,36 +154,37 @@ test("AC-6, AC-17: the list finds an item by substring in any case, and the badg
   // at two moments against a database three workers are writing to is an intermittent
   // failure, which is the defect spec 006 AC-35 exists to remove.
   //
-  // But that equality is NOT sufficient on its own, and an earlier version of this comment
-  // claimed otherwise. src/server/items/item-service.ts computes `counts` and `rows` from
-  // the SAME in-memory array, so a `take:` on the findMany shrinks the badge and the
-  // rendered rows together and toHaveCount(activeBadge) still passes. The #6 reviewer
-  // proved it: with `take: 50` the failure lands on the line below, not on that one.
+  // But that equality is NOT sufficient on its own. src/server/items/item-service.ts
+  // computes `counts` and `rows` from the SAME in-memory array, so a `take:` on the
+  // findMany shrinks the badge and the rendered rows together and toHaveCount(activeBadge)
+  // still passes. The #6 reviewer proved it: with `take: 50` the failure lands on the line
+  // below, not on that one.
   //
   // So the floor is load-bearing. `toBeGreaterThan(100)` is what pins the badge against
   // the real size of the master and stops the equality being a tautology. DO NOT REMOVE IT
-  // as redundant. Behind it stand the two polled comparisons further down, which measure
-  // rendered rows and all four badges against fresh db.item.count() calls - polled because
-  // a concurrent insert agrees on the next pass while a page size never agrees, and with
-  // retries: 0 a poll that could not converge fails the gate rather than passing quietly.
+  // as redundant: it is the one assertion the `take: 50` mutation fails.
+  //
+  // What stands behind it is the presence check below — NOT a comparison against a fresh
+  // db.item.count(). Two polled global comparisons stood there until 007 AC-33 removed
+  // them. Polling repairs a TRANSIENT disagreement, not a continuous one, and
+  // item-master-yards.spec.ts and item-master-access.spec.ts create and archive items
+  // throughout this window, so the render and the count are taken at different instants
+  // and there is no pass on which the predicate holds. It failed #7's gate with
+  // "Timeout 10000ms exceeded while waiting on the predicate", 1 failed, 33 did not run.
   const activeBadge = Number(await page.getByTestId("filter-count-active").innerText());
   expect(activeBadge).toBeGreaterThan(100);
   await expect(page.getByTestId("item-row")).toHaveCount(activeBadge);
 
-  // And the badge is not a lie either: it agrees with the database. Polled, because a
-  // parallel worker may write between the read and the render — a `take:` never agrees,
-  // a concurrent insert agrees on the next pass.
-  await expect
-    .poll(
-      async () => {
-        await page.goto("/item-master");
-        const rendered = await page.getByTestId("item-row").count();
-        const active = await db.item.count({ where: { active: true } });
-        return rendered - active;
-      },
-      { message: "the list renders one row per active item in the database" },
-    )
-    .toBe(0);
+  // And the list is not a lie about the rows this file owns: every item seeded in
+  // `beforeAll` is on the page, found by its unique description. These rows are this
+  // spec's own, so no parallel worker moves them (AC-33, 006 AC-34). `deletableItem` is
+  // left out on purpose — a later test in this file removes it.
+  for (const seeded of [pricedItem, flaggedItem, fuelItem, notedItem, referencedItem]) {
+    await expect(
+      page.getByTestId("item-row").filter({ hasText: seeded.description }),
+      `${seeded.description} is rendered on the active list`,
+    ).toHaveCount(1);
+  }
 
   // A substring, in the wrong case.
   await page.goto(`/item-master?q=${encodeURIComponent("priced beads")}`);
@@ -196,26 +197,43 @@ test("AC-6, AC-17: the list finds an item by substring in any case, and the badg
   await expect(rows.first().getByTestId("item-price")).toHaveText("€33.09");
 
   // AC-17: every badge READS a real number rather than merely being non-empty, and the
-  // filtered list renders exactly those rows and no others. Polled for the same reason.
-  await page.goto("/item-master");
-  for (const [filter, where] of [
-    ["active", { active: true }],
-    ["needs-review", { active: true, needsReview: true }],
-    ["notes", { active: true, NOT: { notes: null } }],
-    ["archived", { active: false }],
-  ] as const) {
-    await expect
-      .poll(
-        async () => {
-          await page.goto("/item-master");
-          const badge = Number(await page.getByTestId(`filter-count-${filter}`).innerText());
-          return badge - (await db.item.count({ where }));
-        },
-        { message: `the ${filter} badge counts the rows it claims to` },
-      )
-      .toBe(0);
+  // filtered list renders exactly those rows and no others. Each filter is measured WITHIN
+  // ONE PAGE LOAD — the badge and the rows on that load come from the same `listItems`
+  // snapshot — which is precisely what the removed polls against db.item.count() could not
+  // do while three workers write (AC-33).
+  for (const filter of ["active", "needs-review", "notes", "archived"] as const) {
+    await page.goto(`/item-master?filter=${filter}`);
+
+    const badge = await page.getByTestId(`filter-count-${filter}`).innerText();
+    expect(badge, `the ${filter} badge reads a whole number`).toMatch(/^\d+$/);
+    await expect(
+      page.getByTestId("item-row"),
+      `the ${filter} list renders exactly the rows its badge claims`,
+    ).toHaveCount(Number(badge));
   }
 
+  // And each filter really selects: this file's own flagged and noted rows sit under the
+  // filters their seeded flags put them in, and an active row is not under `Archived`.
+  await page.goto("/item-master?filter=needs-review");
+  for (const seeded of [flaggedItem, fuelItem]) {
+    await expect(
+      page.getByTestId("item-row").filter({ hasText: seeded.description }),
+    ).toHaveCount(1);
+  }
+
+  await page.goto("/item-master?filter=notes");
+  for (const seeded of [fuelItem, notedItem]) {
+    await expect(
+      page.getByTestId("item-row").filter({ hasText: seeded.description }),
+    ).toHaveCount(1);
+  }
+
+  await page.goto("/item-master?filter=archived");
+  await expect(
+    page.getByTestId("item-row").filter({ hasText: pricedItem.description }),
+  ).toHaveCount(0);
+
+  await page.goto("/item-master");
   await page.getByTestId("filter-needs-review").click();
   await expect(page).toHaveURL(/filter=needs-review/);
 

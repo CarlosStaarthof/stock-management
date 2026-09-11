@@ -54,7 +54,39 @@ export default defineConfig({
     baseURL: BASE_URL,
     trace: "retain-on-failure",
   },
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
+  /**
+   * TWO PHASES, and the dependency between them is a correctness requirement rather than a
+   * performance choice (spec 007 AC-30).
+   *
+   * #6's specs EDIT the yard sheets: they assign their own items to Dublin and Clonmel and
+   * delete them again, and `item-master-items.spec.ts` asserts that an unreferenced item
+   * still offers its *Delete* control. #7's specs COUNT those sheets: `startCount`
+   * pre-populates one `StockCountLine` per item on the yard's sheet, which is the whole
+   * point of the feature — so a count started while an item-master spec is running
+   * references that spec's items, hides the *Delete* control 006 AC-12 asserts is there,
+   * and makes its `cleanUp` fail on `StockCountLine_itemId_fkey`'s RESTRICT.
+   *
+   * Both observed, on the second of two consecutive full runs. At `retries: 0` an
+   * intermittent failure is a failure, so the two suites are separated rather than
+   * hardened against each other: neither spec had to be weakened, no fixture had to reach
+   * into another suite's rows, and no yard is off limits to a count.
+   *
+   * Everything 006 AC-35 pinned is unchanged: one served build, `retries: 0`, three
+   * workers, and the same timeouts.
+   */
+  projects: [
+    {
+      name: "chromium",
+      testIgnore: /stock-entry-.*\.spec\.ts/,
+      use: { ...devices["Desktop Chrome"] },
+    },
+    {
+      name: "chromium-stock-entry",
+      testMatch: /stock-entry-.*\.spec\.ts/,
+      dependencies: ["chromium"],
+      use: { ...devices["Desktop Chrome"] },
+    },
+  ],
   // Playwright starts the application itself (spec 002 AC-11): no separately launched
   // server, so `init` is green on a machine where nothing is already running.
   //

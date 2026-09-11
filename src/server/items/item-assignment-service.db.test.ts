@@ -332,9 +332,23 @@ describe("listSheet", () => {
     await expect(moveItemInSheet(staff, itemId, "DUBLIN", "UP")).rejects.toThrow(
       "ADMIN is required for this action",
     );
-    await expect(listSheet(staff, "DUBLIN")).rejects.toThrow(
-      "ADMIN is required for this action",
-    );
+    // 007 AC-14 REPLACES this assertion, and only this one. `listSheet` was ADMIN-only
+    // because until #7 no staff caller existed; the caller that needs it most is now a
+    // YARD_STAFF user starting a count. It no longer rejects - it returns a sheet with NO
+    // `currentPrice` key at all, so a staff reader never has a price built for them. The
+    // seventeen mutations 006 AC-4 names are untouched, and the three above are three of
+    // them.
+    const staffSheet = await listSheet(staff, "DUBLIN");
+
+    expect(staffSheet.map((entry) => entry.itemId)).toEqual([itemId]);
+    for (const entry of staffSheet) {
+      expect(Object.hasOwn(entry, "currentPrice")).toBe(false);
+    }
+
+    const adminSheet = await listSheet(ADMIN, "DUBLIN");
+    for (const entry of adminSheet) {
+      expect(Object.hasOwn(entry, "currentPrice")).toBe(true);
+    }
 
     expect(await db.itemLocation.findMany()).toEqual(before);
   });

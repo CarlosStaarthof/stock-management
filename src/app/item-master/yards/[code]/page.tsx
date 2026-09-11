@@ -17,6 +17,7 @@ import {
 import { formatPriceExact } from "@/lib/money";
 import { listSheet, locationName } from "@/server/items/item-assignment-service";
 import { priceAmountOf } from "@/server/items/price-selection";
+import { currentPriceOf } from "@/server/items/sheet-shape";
 
 /**
  * One yard's sheet, in the order the yard is walked (006 AC-23, AC-24).
@@ -78,7 +79,11 @@ export default async function YardSheetPage({
             </thead>
             <tbody>
               {sheet.map((entry, index) => {
-                const amount = priceAmountOf(entry.currentPrice);
+                // `listSheet` returns a union since 007 AC-14, so the page narrows rather
+                // than assuming which half it was handed. An ADMIN reaches this page and
+                // only an ADMIN, so the price is here and renders exactly as 006 AC-24
+                // requires; a staff entry would have no such key to read.
+                const amount = priceAmountOf(currentPriceOf(entry));
 
                 return (
                   <tr
