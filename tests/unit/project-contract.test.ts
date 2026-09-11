@@ -102,19 +102,22 @@ describe("the two test suites stay disjoint", () => {
 });
 
 describe("the money boundary, and where the first monetary column may be named", () => {
-  // Spec 004 AC-31, AMENDED by spec 005 AC-29 - amended, not deleted and not loosened.
+  // Spec 004 AC-31, AMENDED by 005 AC-29 and AMENDED AGAIN by 006 AC-31 - amended each
+  // time, never deleted and never loosened into a directory exemption.
   //
   // #4 asserted that NO shipping module under src/ or scripts/ names `unitPrice`, because
   // none could legitimately need it yet. #5's writer must: it is the feature that puts the
-  // workbook's 129 prices into `ItemPrice`. So the assertion becomes an EXACT permitted
-  // list rather than an empty one - a third module naming the column turns this red - and
-  // it gains two assertions #4 could not make:
+  // workbook's 129 prices into `ItemPrice`. #6 is the first feature that RENDERS one, so
+  // two presentation files join the list. The list is therefore nine files, and it is a
+  // list of FILES rather than a directory exemption - a tenth module naming the column
+  // turns this red, wherever it lives. Three assertions carry it:
   //
-  //   * nothing under src/app/, src/components/, src/lib/ or scripts/ names either column,
-  //     so the reader, the unit table and the seed script stay on the safe side of the
-  //     boundary; and
+  //   * the whole tree names it in exactly those nine places;
+  //   * src/lib/ and scripts/ stay at ZERO, which is why `formatPriceExact` takes
+  //     `value: string`, and under src/app/ and src/components/ only the three named
+  //     files may say it - each behind a route no YARD_STAFF session can reach (006 AC-2);
   //   * `unitPriceSnapshot` stays forbidden everywhere outside a test, because its first
-  //     reader is still #8 and it must go through shapeForRole.
+  //     reader is still #9 and it must go through shapeForRole.
   //
   // Test files are excluded from the scan throughout: a test that names the string is
   // asserting about it, not returning it to a session - src/lib/money-boundary.test.ts has
@@ -137,7 +140,7 @@ describe("the money boundary, and where the first monetary column may be named",
       .filter((file) => !IS_TEST.test(file));
   }
 
-  it("005 AC-29 amending 004 AC-31: exactly two modules may name unitPrice", () => {
+  it("006 AC-31 amending 005 AC-29: exactly nine modules may name unitPrice", () => {
     const scanned = shippingModules();
 
     // The scan must have looked at something, or the assertion below is vacuous.
@@ -147,28 +150,63 @@ describe("the money boundary, and where the first monetary column may be named",
       .filter((file) => /unitPrice/.test(readFileSync(file, "utf8")))
       .sort();
 
+    // #6 is the first feature that legitimately RENDERS a price, so the permitted list
+    // grows from two to nine - and stays a list of FILES, never a directory exemption.
+    // The two presentation files on it sit behind a route no YARD_STAFF session can
+    // reach at all (006 AC-2), which is what justifies them being on it. A tenth module
+    // naming the column turns this red.
     expect(offenders).toEqual([
+      "src/app/item-master/actions.ts",
+      "src/components/item-master/ItemTable.tsx",
+      "src/components/item-master/PricePanel.tsx",
+      "src/server/items/item-master-input.ts",
+      "src/server/items/item-price-service.ts",
+      "src/server/items/item-service.ts",
+      "src/server/items/price-selection.ts",
       "src/server/items/workbook-import-service.ts",
       "src/server/items/workbook-plan.ts",
     ]);
   });
 
-  it("005 AC-29: nothing under src/app, src/components, src/lib or scripts names it at all", () => {
+  it("006 AC-31: src/lib and scripts stay at ZERO files naming it", () => {
     const scanned = shippingModules().filter((file) =>
-      /^(src\/app\/|src\/components\/|src\/lib\/|scripts\/)/.test(file),
+      /^(src\/lib\/|scripts\/)/.test(file),
     );
 
-    // Non-vacuity: this feature added a module to two of those four directories.
+    // Non-vacuity: both directories gained a module in #5 or #6.
     expect(scanned).toContain("src/lib/excel/workbook-reader.ts");
+    expect(scanned).toContain("src/lib/money.ts");
     expect(scanned).toContain("scripts/seed-workbook.ts");
 
+    // This is why `formatPriceExact` takes `value: string`: the formatter is money-shaped
+    // without being column-shaped, so the whole of `src/lib/` stays on the safe side of
+    // the boundary and can be audited with a grep.
     const offenders = scanned.filter((file) => /unitPrice/.test(readFileSync(file, "utf8")));
 
     expect(offenders).toEqual([]);
   });
 
-  it("005 AC-29: unitPriceSnapshot is still named by no shipping module anywhere", () => {
-    // The first reader of a snapshot is #8, and it must go through shapeForRole.
+  it("006 AC-31: under src/app and src/components only the three named files may name it", () => {
+    const scanned = shippingModules().filter((file) =>
+      /^(src\/app\/|src\/components\/)/.test(file),
+    );
+
+    expect(scanned).toContain("src/app/page-guards.ts");
+
+    const offenders = scanned
+      .filter((file) => /unitPrice/.test(readFileSync(file, "utf8")))
+      .sort();
+
+    expect(offenders).toEqual([
+      "src/app/item-master/actions.ts",
+      "src/components/item-master/ItemTable.tsx",
+      "src/components/item-master/PricePanel.tsx",
+    ]);
+  });
+
+  it("006 AC-31: unitPriceSnapshot is STILL named by no shipping module anywhere", () => {
+    // Its first reader is #9. #6 renders a price and never a snapshot, and the fixture
+    // that writes one for AC-11 lives under tests/, which this scan does not reach.
     const offenders = shippingModules().filter((file) =>
       /unitPriceSnapshot/.test(readFileSync(file, "utf8")),
     );

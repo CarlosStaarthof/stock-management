@@ -12,7 +12,14 @@ import type { NextAuthConfig } from "next-auth";
 export const SIGN_IN_PATH = "/sign-in";
 
 /** Every route the middleware refuses to a signed-out request. */
-export const PROTECTED_PATHS = ["/stock-entry", "/stock-takes", "/analysis"] as const;
+export const PROTECTED_PATHS = [
+  "/stock-entry",
+  "/stock-takes",
+  "/analysis",
+  // Feature #6: the item master. The middleware decides SIGNED IN OR NOT and nothing
+  // else; ADMIN is decided from the stored User row by `requireAdminPage` (006 AC-1).
+  "/item-master",
+] as const;
 
 /** Spec 003 "Open questions": 7 days, refreshed at most once every 24 hours. */
 export const SESSION_MAX_AGE_SECONDS = 7 * 24 * 60 * 60;

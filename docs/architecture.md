@@ -43,24 +43,34 @@ Arrows point one way only.
   only in `src/server/errors.ts`. The rule as first written was a proxy for the constraint
   that actually matters — nothing in `src/lib/` may reach a database or a server-only
   runtime — and `errors.ts` is four stateless classes that import nothing at all, so it
-  compromises neither. The exception is deliberately narrow and is **enforced by ESLint for
-  every ordinary import form**, not by convention: `@/server/db`, any service under
-  `@/server/`, `export * from` and every relative reach-around (`../server/db`,
-  `./../server/db`) all turn `npm run lint` red, in nine spellings the #5 reviewer tried.
+  compromises neither. The exception is deliberately narrow and is **enforced by ESLint**,
+  not by convention.
 
-  **Three spellings currently slip through**, found by that reviewer and reproduced:
-  `@/./server/db` and `@/../src/server/db` — which `no-restricted-imports` compares as
-  prefixes rather than as resolved paths, and which both typecheck and resolve at runtime —
-  and `await import("@/server/db")`, because the rule does not visit `ImportExpression` in
-  this configuration. None appears anywhere in the tree; the only `lib → server` import that
-  exists is the permitted `@/server/errors` one. **The fix, open for whoever next touches the
-  lint config:** replace the two prefix patterns with one that matches the path segment —
-  on the shape of `(^|/)server(/|$)`, keeping the `errors` exception — and add a
-  `no-restricted-syntax` rule on `ImportExpression` for the dynamic form. Until then this
-  sentence says "every ordinary import form" and not "cannot", because a governing document
-  that overstates its own guarantee is worse than one that admits a gap. The alternative, moving the error classes to `src/lib/errors.ts` and
-  re-exporting them from `src/server/errors.ts`, is cleaner layering and remains open; it
-  was not done here because it would touch every file #3 committed.
+  *Closed 2026-09-10 by #6 AC-33, and widened on 2026-09-11 after review.* The rule
+  matches the path **segment** — `(^|/)server(/|$)`, with the single literal exception
+  `@/server/errors` — rather than a string prefix, and two `no-restricted-syntax`
+  selectors cover `ImportExpression`. So `@/server/db`, any service under `@/server/`,
+  `export * from`, every relative reach-around (`../server/db`, `./../server/db`), the two
+  spellings that used to slip past a prefix comparison (`@/./server/db`,
+  `@/../src/server/db`) and the dynamic form in **both** its static spellings —
+  `import("@/server/db")` and the backtick one, whose argument is a `TemplateLiteral` with
+  no `value` property for a selector to read — all turn `npm run lint` red. That is a
+  claim this document no longer has to take on trust: `tests/unit/lint-fence.test.ts` runs
+  ESLint's `lintText` API against each of those fifteen shapes with a `filePath` under
+  `src/lib/`, and against the five that must stay clean, so the guarantee is asserted
+  rather than asserted-about.
+
+  **What it does not reach, stated rather than implied:** a specifier assembled at
+  runtime. `const p = "@/server/db"; await import(p)`, a `createRequire` call, or any
+  computed string defeats every static rule, this one included — the #6 reviewer
+  demonstrated all three. The fence stops the import forms a person actually writes, not a
+  person deliberately hiding one; the constraint it is a proxy for — nothing in
+  `src/lib/` reaches a database or a server-only runtime — is ultimately kept by review.
+  None of the blocked shapes appears anywhere in the tree; the only `lib → server` import
+  that exists is the permitted `@/server/errors` one. The alternative, moving the error
+  classes to `src/lib/errors.ts` and re-exporting them from `src/server/errors.ts`, is
+  cleaner layering and remains open; it was not done here because it would touch every
+  file #3 committed.
 - `src/server/` **never** imports from `src/app/` or `src/components/`.
 
 Why: the Excel workbook this replaces failed because presentation and calculation were

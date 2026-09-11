@@ -36,5 +36,10 @@ export default auth((request: NextRequest & { auth: unknown }) => {
 
 // Matcher patterns must be static literals — Next reads them at build time.
 export const config = {
-  matcher: ["/stock-entry/:path*", "/stock-takes/:path*", "/analysis/:path*"],
+  matcher: [
+    "/stock-entry/:path*",
+    "/stock-takes/:path*",
+    "/analysis/:path*",
+    "/item-master/:path*",
+  ],
 };

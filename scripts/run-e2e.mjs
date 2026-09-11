@@ -12,6 +12,13 @@
 // starts. It is never written to a file, it changes on every run, and the APPLICATION
 // keeps no fallback of its own: with no secret configured, Auth.js refuses every session,
 // which is exactly what spec 003 AC-22 requires.
+//
+// Feature #6 adds the build. Spec 006 AC-35: the suite serves a PRODUCTION BUILD rather
+// than `next dev`, because three workers against a server that compiles routes on demand
+// is what made the suite flaky - `read ECONNRESET` twice in the last gate run, on requests
+// that never reached the application. The build happens HERE, once, before Playwright
+// starts: `playwright.config.ts`'s webServer then only has to `next start`, which is why
+// its timeout could come down with the rest of them.
 
 import { spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
@@ -41,6 +48,13 @@ if ((childEnv.AUTH_SECRET ?? "").trim() === "") {
   );
 }
 
+/** Resolved through each package's own `bin` entry, so a moved CLI does not break this. */
+function cliOf(packageName) {
+  const packageJsonPath = require.resolve(`${packageName}/package.json`);
+  const bin = require(packageJsonPath).bin;
+  return join(dirname(packageJsonPath), typeof bin === "string" ? bin : bin[packageName]);
+}
+
 // Resolved through the package's own `bin` entry rather than a hard-coded path, so the
 // script survives Playwright moving its CLI.
 const playwrightPackageJson = require.resolve("@playwright/test/package.json");
@@ -68,6 +82,23 @@ function chromiumIsInstalled() {
   } catch {
     return false;
   }
+}
+
+// One build, before any worker starts. 004 AC-26 and 005 AC-27 already prove
+// `npm run build` exits 0 with no reachable database, so this does not change the
+// no-database path: it fails there for the same reason it fails anywhere, or not at all.
+console.log("[e2e] building the application; the suite runs against the build, not `next dev`.");
+const buildResult = spawnSync(process.execPath, [cliOf("next"), "build"], {
+  stdio: "inherit",
+  env: childEnv,
+});
+if (buildResult.error) {
+  console.error(`[e2e] could not run next build: ${buildResult.error.message}`);
+  process.exit(1);
+}
+if ((buildResult.status ?? 1) !== 0) {
+  console.error("[e2e] the build failed; there is nothing to serve.");
+  process.exit(buildResult.status ?? 1);
 }
 
 if (!chromiumIsInstalled()) {

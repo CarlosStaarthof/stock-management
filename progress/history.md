@@ -522,3 +522,146 @@ in any of them: the work lands on disk as it goes and `progress/current.md` reco
 which is the design working as intended. The feature took five agent runs instead of two.
 
 **Closed 2026-09-10 after user sign-off.**
+
+## 2026-09-11 — feature #6 `item_master_ui`
+
+The first real screen. Implementation in `progress/impl_item_master_ui.md`; review in
+`progress/review_item_master_ui.md`. 35 criteria. **CHANGES_REQUESTED on the first pass,
+APPROVED on the second.**
+
+### What shipped
+
+Seven `ADMIN`-only screens under `/item-master` — the item list with filters, item create
+and edit, delete confirm, suppliers, item types, and the per-yard sheet — plus five services
+in `src/server/items/`, the Zod schemas at their edge, and `src/lib/item-master-messages.ts`
+holding every user-facing string a criterion quotes, so the screen and its tests cannot
+drift apart.
+
+Test counts across the feature: unit 85 → **273**, service 89 → **173**, end-to-end 26 → **56**.
+
+The money boundary here is a **route** boundary rather than a response-shaping one. Part 6
+puts the item master and every monetary figure in the ADMIN column, so `shapeForRole` is
+deliberately unused: nothing is shaped for staff because nothing is sent to staff.
+
+### Decisions the user approved
+
+1. `needsReview` clears by hand, is refused while a reason remains, and re-raises itself.
+2. Archiving an item does not touch `ItemLocation`, so restoring returns it to its places.
+3. **A price typed wrongly today cannot be corrected today** — the honest cost of Invariant 2.
+4. Unassigning a yard deactivates the link rather than deleting it, so `sortOrder` survives.
+5. **Gaps in `sortOrder` are never repaired.** Reordering is a swap, and the test asserts the
+   multiset of values at a yard is identical before and after any sequence of moves.
+   Clonmel's 71–74 gap is the record that the fuel rows sit below the total row.
+6. `ItemType` has no archive — Part 3 gives it no `active` column and #6 adds no migration.
+7. Desktop-first, phone-usable at 390 px, not phone-first.
+
+### AC-35, added by the coordinator after approval
+
+The approval gate itself reported `2 flaky`, up from 1, up from 0. Both failures were
+`read ECONNRESET` — the server dropping connections, not assertions failing — and the cause
+was structural: three Playwright workers against `npm run dev`, which compiles routes on
+demand in one process. `playwright.config.ts`'s own comments recorded that an earlier session
+had already raised `timeout` to 90 s and `expect.timeout` to 25 s for the same reason, so the
+problem had been absorbed by raising limits twice rather than fixed.
+
+AC-35 required building once and serving that build, `retries: 0`, lower timeouts, and two
+consecutive clean runs. It paid for itself before the feature was finished: **56 passed,
+0 failed, 0 flaky**, timeout down to 45 s and expect to 10 s. Every run since — seven full
+suites across the implementer, the reviewer and the coordinator — has been clean.
+
+### Three defects the implementer's own red-gate run caught
+
+It broke the lint fence on purpose to prove the gate goes red, and that run found two things
+nobody was looking for:
+
+1. **The site's `<meta name="description">` leaked a money word.** AC-2 forbids
+   `/price|value|total|amount/i` in the body of a refused request, and Next's 307 carries the
+   app's own metadata. It read "Yard stock counts, **totals** and variances for Macroads."
+   The blurb was narrowed rather than the scan exempted — *"an exception carved into a
+   money-boundary check is the thing that rots."*
+2. **A #5 test would have failed on a word.** 005 AC-25 swept every non-test file under
+   `src/server/items/` for spreadsheet-column literals, and `moveItemInSheet`'s spec-pinned
+   `"UP"` reads as a column. The sweep was narrowed to the two importer modules **by name** —
+   the same "a list of files, never a directory exemption" rule AC-31 states.
+3. A fixture that would have become a tenth module naming `unitPrice` was moved under
+   `tests/` rather than widening AC-31's permitted list.
+
+### AC-3 — the bug from #3, deliberately re-broken
+
+```
+WITH  loading.tsx:  status=200  location=(none)                          bodyBytes=5052
+WITHOUT (shipped):  status=307  location=/stock-entry?denied=item-master bodyBytes=5140
+```
+
+The implementer noted the right caveat: the body sizes are near-identical either way, so the
+**status code and the absent `Location`** are the evidence, not the byte count.
+
+**A rate limit struck between the proving and the removing**, leaving
+`src/app/item-master/loading.tsx` in the tree — the file that degrades the refusal to a 200.
+The coordinator caught it on the resume check. A later resume was told that if it happened
+again, the blockers section must say so in capital letters.
+
+### What the reviewer could not break, and what it found
+
+First pass, 117 tool calls: it reproduced AC-3 from scratch in both directions, provoked all
+five AC-29 failures with an 11-term scan, wrote its own AC-23 probe (archived row
+mid-sequence, restore, adjacent-across-a-gap, two moves, first-up, last-down — all green
+first try), and **snapshotted the development database before and after both full e2e runs**:
+every row of all 140 items, 129 prices, 152 links byte-identical. It broke none of the five
+things it was asked to attack.
+
+It nonetheless found three real defects in passing:
+
+- **A backtick defeats the lint fence.** ``import(`@/server/db`)`` is a `TemplateLiteral`,
+  not a `Literal`, and walked past a rule written to stop exactly that — clean under both
+  ESLint and `tsc`. Closed with a second selector built from the same shared pattern so the
+  two cannot drift; `BLOCKED` 12 → 15.
+- **`doneMessage("toString")` returned a function**, because the lookup table inherited
+  `Object.prototype`. TypeScript believed it a `string`, the component rendered it, React
+  would have thrown. The existing test used an ordinary sentence as its unknown key.
+- **AC-6 and AC-17 were inferred, not measured.** Both say "a fixture of 140 items"; nothing
+  asserted at that scale.
+
+### The disagreement, and the reviewer overturning itself
+
+For the third finding the reviewer proposed comparing rendered rows to a fresh
+`db.item.count()`. The implementer **declined**, because three spec files run in three
+workers against one live database: two readings at two moments would be an intermittent
+failure — the exact defect AC-35 exists to remove. It compared rows to the `Active` badge
+within a single page load instead.
+
+Asked to judge, the reviewer sided against itself: *"The implementer is right, and my
+suggestion was the wrong fix."* Then it checked whether the substitute was equivalent and
+found it **weaker than the code claimed**, proving it with `take: 50`: the badge and the rows
+come from the same array, so both shrink together and the equality still passes. What
+actually catches it is the `toBeGreaterThan(100)` floor one line earlier, backed by two
+polled comparisons against fresh counts.
+
+### One comment corrected by the coordinator, recorded as a deviation
+
+The test comment credited the wrong assertion — a reader would have deleted the `> 100`
+floor as redundant and turned a real measurement back into a tautology. The implementer was
+killed by a **fifth** rate limit before it could rewrite it, and the coordinator made the
+edit rather than spend a sixth agent run on a comment. `git diff` on the file yields zero
+changed lines that are not comment lines; no assertion, no logic, no production code. The
+feature was already APPROVED and the reviewer had specified the content. Recorded in the
+implementation report under its own heading so the deviation from role separation is visible
+rather than discovered later.
+
+### Carried-forward debts closed here
+
+- **AC-33** — the three ESLint holes #5's reviewer found, plus the backtick shape found by
+  #6's. `docs/architecture.md` now states what the fence **does not** reach — a specifier in
+  a `const`, `createRequire`, any computed string — under a bolded heading, and closes by
+  naming what actually holds the line: review, not the linter.
+- **AC-31** — 005 AC-29's `unitPrice` scan widened to an exact nine-file list, never a
+  directory exemption. `unitPriceSnapshot` is still named by no shipping module; its first
+  reader is #9.
+
+### Rate limits
+
+Five agent runs were killed mid-flight on this feature, the resets marching 7:30pm → 1am →
+11:10am → 9:20pm → 4:50am. #6 took **seven agent runs** — one spec, four implementer
+attempts, two review passes. Nothing was lost in any of them.
+
+**Closed 2026-09-11 after user sign-off.**

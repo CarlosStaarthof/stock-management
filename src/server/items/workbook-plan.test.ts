@@ -903,14 +903,35 @@ describe("diffPlan", () => {
 });
 
 describe("the importer's source, as a fact about the repository", () => {
-  const MODULES = ["src/lib/excel", "src/server/items"].flatMap((directory) =>
-    readdirSync(directory)
+  /**
+   * THE IMPORTER'S modules, named one by one.
+   *
+   * This was a sweep of every non-test file under `src/lib/excel` and `src/server/items`,
+   * on the premise that everything in those directories is the importer. Feature #6
+   * falsified the premise: spec 006 § Contract puts eight item-master modules in
+   * `src/server/items/`, none of which reads a worksheet, and the scan below then read
+   * `moveItemInSheet`'s direction `"UP"` as a spreadsheet column and turned red.
+   *
+   * So it becomes an exact LIST rather than a directory sweep - the same lesson 006 AC-31
+   * states for the money-column scan, "a list of files, never a directory exemption". The
+   * guarantee is unchanged and unweakened: every module that actually reads the workbook
+   * is still scanned, and `src/lib/excel` is still swept whole, because everything there
+   * IS the reader. A new importer module that forgot to be added here would be caught by
+   * the non-vacuity assertions below, which name what the scan must have looked at.
+   */
+  const MODULES = [
+    ...readdirSync("src/lib/excel")
       .filter((name) => name.endsWith(".ts") && !name.endsWith(".test.ts"))
-      .map((name) => `${directory}/${name}`),
-  );
+      .map((name) => `src/lib/excel/${name}`),
+    "src/server/items/workbook-plan.ts",
+    "src/server/items/workbook-import-service.ts",
+  ];
 
   it("AC-25: reads no worksheet column beyond E", () => {
-    expect(MODULES.length).toBeGreaterThan(0);
+    // Non-vacuity: the three modules that touch a worksheet are all in the scan.
+    expect(MODULES).toContain("src/lib/excel/workbook-reader.ts");
+    expect(MODULES).toContain("src/server/items/workbook-plan.ts");
+    expect(MODULES).toContain("src/server/items/workbook-import-service.ts");
 
     for (const file of MODULES) {
       const source = readFileSync(file, "utf8");

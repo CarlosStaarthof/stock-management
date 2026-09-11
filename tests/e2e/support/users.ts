@@ -67,6 +67,10 @@ export async function signIn(page: Page, user: TestUser, from = "/sign-in"): Pro
   await page.getByTestId("sign-in-submit").click();
 
   // Two waits, so a failure says which half went wrong: the redirect, or the page.
-  await page.waitForURL((url) => url.pathname !== "/sign-in", { timeout: 60_000 });
-  await expect(page.getByTestId("signed-in-email")).toHaveText(user.email, { timeout: 30_000 });
+  //
+  // The numbers came down with the rest of them under 006 AC-35: the suite serves a
+  // production build now, so there is no on-demand route compilation to wait through, and
+  // a wait longer than the test's own 45 s budget could never have fired anyway.
+  await page.waitForURL((url) => url.pathname !== "/sign-in", { timeout: 20_000 });
+  await expect(page.getByTestId("signed-in-email")).toHaveText(user.email, { timeout: 15_000 });
 }
