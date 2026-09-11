@@ -1,6 +1,6 @@
 # 020 — Fast, single-statement test database reset
 
-**Feature id:** 20   **Status:** draft
+**Feature id:** 20   **Status:** approved   **Approved:** 2026-09-11
 **Depends on:** #3 `auth_and_roles` (the `MACROADS_TEST_DB` guard and `scripts/run-db-tests.mjs`), #4 `domain_schema` (the nine tables, the two migration-seeded `Location` rows, 004 AC-28), #5 `seed_from_workbook` (005 AC-28)
 
 ## Purpose
