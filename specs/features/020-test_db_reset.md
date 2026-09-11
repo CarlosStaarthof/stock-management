@@ -109,7 +109,7 @@ meaning for a test fixture, and inventing them here would be noise.
 9. **AC-9** — **Idempotent, twice in a row, and order-free.** Two `resetTestDb()` calls in immediate succession both succeed and leave the same state — eight tables empty, `Location` at exactly the two rows. `npm run test:db` passes twice in a row with the same test count both times, and passes with its files given in reverse order (`npm run test:db -- <every db test file, reversed>`), no test depending on what a previous file left behind.
 10. **AC-10** — **The refusal still fires before any test file loads.** `scripts/run-db-tests.mjs` keeps both refusals **before any migration is deployed and any test file is loaded** — the byte-identity clause is dropped because AC-15 changes one binding in that file, and byte-identity was never what this criterion protected. Both refusals are still written against `TEST_DATABASE_URL`, which remains the variable a developer would point at their own database by mistake. A test running in `npm run test:unit` — needing no database — spawns `node scripts/run-db-tests.mjs` in a working directory containing no `.env`, twice: (a) with `TEST_DATABASE_URL` absent from the child environment, and (b) with `TEST_DATABASE_URL` set to the same string as `DATABASE_URL`. Each exits `1`; (a) prints `[test:db] TEST_DATABASE_URL is not set` and (b) prints `[test:db] TEST_DATABASE_URL must not equal DATABASE_URL`; and neither child's combined output contains `prisma migrate`, `Test Files` or `TRUNCATE` — no migration was deployed and no test file was loaded.
 11. **AC-11** — **The in-function guard refuses before any SQL is built or sent.** With `MACROADS_TEST_DB` unset, and again with each of `""`, `"0"`, `"true"` and `"2"`, `resetTestDb()` rejects with an `Error` whose message contains `resetTestDb() refuses to run: MACROADS_TEST_DB is not set` — the text unchanged from today — so only the exact string `"1"` passes. The test runs in `npm run test:unit`, where the database is not reachable; the rejection is that message and never a Prisma connection error or a `TRUNCATE` failure, which is what proves no statement left the process.
-12. **AC-12** — **No application surface, no migration, no drift.** `git diff --name-only` for this feature lists exactly `src/server/test-db.ts`, the new `src/server/test-db.db.test.ts`, the new `src/server/test-db.test.ts`, the new `tests/unit/test-db-guard.test.ts`, `specs/features/020-test_db_reset.md`, `feature_list.json` and files under `progress/`. Nothing under `src/app/`, `src/components/`, `src/lib/`, `prisma/`, `tests/e2e/` or `scripts/` changes; no migration directory is added; `prisma/schema.prisma` is untouched and `npx prisma migrate status` reports no drift and nothing pending. `npm run test:e2e` passes unchanged.
+12. **AC-12** — **No application surface, no migration, no drift.** `git diff --name-only` for this feature lists exactly `src/server/test-db.ts`, `scripts/run-db-tests.mjs`, the new `src/server/test-db.db.test.ts`, the new `src/server/test-db.test.ts`, the new `tests/unit/test-db-guard.test.ts`, `specs/features/020-test_db_reset.md`, `feature_list.json` and files under `progress/`. Nothing under `src/app/`, `src/components/`, `src/lib/`, `prisma/` or `tests/e2e/` changes, and `scripts/run-db-tests.mjs` is the only file under `scripts/` that does — for AC-15's binding and nothing else; no migration directory is added; `prisma/schema.prisma` is untouched and `npx prisma migrate status` reports no drift and nothing pending. `npm run test:e2e` passes unchanged.
 13. **AC-13** — **Which checks survive with no database,** as every feature since #3 has stated. Given `DATABASE_URL`, `DIRECT_URL`, `TEST_DATABASE_URL` and `TEST_DIRECT_URL` all pointing at a hostname that does not resolve: `npx prisma validate`, `npm run typecheck`, `npm run lint`, `npm run test:unit` and `npm run build` each exit `0`; both `init` scripts exit `0`, do not invoke `npm run test:db`, and end with `[OK] Environment ready (database checks skipped)`. Importing `src/server/test-db.ts` constructs no `PrismaClient` and opens no connection — `src/server/db.ts`'s deferred proxy is unchanged — so AC-6's schema-text test and AC-10 and AC-11's guard tests all run on a machine with no database at all.
 14. **AC-14** — **The improvement is recorded, not assumed.** `progress/impl_test_db_reset.md` states, from runs whose output it quotes: the statement count per reset before the change (eleven — nine `DELETE`s and two `Location` upserts) and after (two, per AC-3); the number of Level 2 tests and files at the time of the run; and the wall-clock of one full `npm run test:db` after the change. Wall-clock is evidence, not a threshold — the link's latency varies, which is why AC-3 and not a stopwatch is the criterion that must hold.
 
@@ -117,10 +117,12 @@ meaning for a test fixture, and inventing them here would be noise.
 
 ## Out of scope
 
-- **`scripts/run-db-tests.mjs`.** Not modified. AC-10 *verifies* its two refusals and pins it
-  byte-identical; nothing here may relax, move or re-implement the `MACROADS_TEST_DB`
-  handshake. A faster reset that could run against `DATABASE_URL` would be a catastrophe,
-  not an improvement.
+- **`scripts/run-db-tests.mjs` — only the `DATABASE_URL` binding changes** (AC-15, added by
+  amendment). The `MACROADS_TEST_DB` handshake and both refusals are pinned by AC-10, which
+  verifies them by spawning the script and asserting that neither child deploys a migration
+  nor loads a test file; nothing here may relax, move or re-implement them, and both stay
+  written against `TEST_DATABASE_URL`. A faster or better-connected reset that could run
+  against `DATABASE_URL` would be a catastrophe, not an improvement.
 - **Playwright.** `tests/e2e/**`, `playwright.config.ts` and `scripts/run-e2e.mjs` are
   untouched. The e2e suite runs against the development database and cleans up by the
   reserved-year convention #6 and #7 established; `resetTestDb()` is never called from it.
@@ -179,6 +181,20 @@ loaded, written against `TEST_DATABASE_URL` — is asserted exactly as before.
 was innocent and the answer is in the Neon console — the branch's compute state, or the
 account's monthly compute allowance. The current setup cannot distinguish those two
 explanations; this change can.
+
+### AC-12 and *Out of scope* carried through, 2026-09-11
+
+Found by the #20 reviewer, and the coordinator's error rather than the implementer's. The
+amendment above relaxed AC-10 so AC-15 could change one binding in
+`scripts/run-db-tests.mjs`, but did not carry that through to **AC-12's changed-file list**
+or to the ***Out of scope*** entry, both of which still pinned the file as unmodified. AC-15
+cannot be satisfied while they say so.
+
+AC-12's list now names the file, and says it is the only file under `scripts/` that changes
+and only for AC-15's binding. The out-of-scope entry now reads "only the `DATABASE_URL`
+binding changes", with the `MACROADS_TEST_DB` handshake and both refusals still pinned by
+AC-10. Nothing about the guards moved; only the sentence that wrongly described them as
+untouched.
 
 ## Open questions
 

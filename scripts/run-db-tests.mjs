@@ -7,7 +7,7 @@
 // skip.
 //
 // It then applies the migrations to the test database and runs vitest with
-// DATABASE_URL rebound to TEST_DATABASE_URL, so `src/server/db.ts` — unchanged, unmocked
+// DATABASE_URL rebound to the test database, so `src/server/db.ts` — unchanged, unmocked
 // — connects to the test branch.
 
 import { spawnSync } from "node:child_process";
@@ -49,9 +49,17 @@ if (testUrl === developmentUrl) {
 // a plain Postgres, which has no pooler and needs no second string.
 const testDirectUrl = (process.env.TEST_DIRECT_URL ?? "").trim() || testUrl;
 
+// Spec 020 AC-15: the tests themselves run against the UNPOOLED endpoint, not the pooled
+// one. `vitest.db.config.ts` sets `fileParallelism: false`, so at most one client is ever
+// live and the suite gains nothing from a connection pooler — while transaction-mode
+// pooling is a classic source of `Server has closed the connection` under many short
+// exchanges, the error that failed #7's closing gate twice with zero assertion failures.
+// `DIRECT_URL` carries the same string, so `prisma migrate deploy` is unaffected. When
+// TEST_DIRECT_URL is unset both fall back to the pooled string above, so a plain Postgres
+// still works.
 const childEnv = {
   ...process.env,
-  DATABASE_URL: testUrl,
+  DATABASE_URL: testDirectUrl,
   DIRECT_URL: testDirectUrl,
   // Read by resetTestDb(): a truncation that cannot prove it is on the test database
   // refuses to run.

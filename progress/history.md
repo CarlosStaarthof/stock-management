@@ -794,3 +794,132 @@ suites only** — the change that found the #6 race. Measured effect on the impl
 ~10.8k tokens per tool call on #6, ~1.6–2.1k on #7's phases.
 
 **Closed 2026-09-11 after user sign-off.**
+
+## 2026-09-11 — feature #20 `test_db_reset`
+
+Nine sequential deletes become one `TRUNCATE`, and the Level 2 suite leaves Neon's pooler.
+Implementation in `progress/impl_test_db_reset.md`; review in
+`progress/review_test_db_reset.md`. 15 criteria, **APPROVED on the first pass**.
+
+The first feature added after the original eighteen, and the first dispatched under the
+working rules adopted with #7.
+
+### Why it existed, and why it jumped the queue
+
+`resetTestDb` issued **nine sequential `deleteMany` round-trips per test**, plus two for the
+`Location` restore — eleven exchanges, ~2,430 across the suite, to a database in another
+region. That was about 6.5 minutes of every gate run and growing with every feature.
+
+AGENTS.md §4 says take the lowest `pending` id, which was #8. #20 went first deliberately:
+#8 adds the most service tests of any feature so far, and #20 was small enough that if the
+new dispatch rules had a flaw it would surface somewhere cheap.
+
+### What it bought
+
+| | Before | After |
+|---|---|---|
+| Statements per reset | 11 | **2** |
+| Round-trips per full run | ~2,430 | **~470** |
+| Full `npm run test:db` | 841 s (221 tests, 15 files) | **287–565 s** (234 tests, 16 files) |
+| Full `init` | ~20 min | **632 s** |
+
+**The wall-clock is the weakest of those numbers and the report says so.** This branch ran
+the same suite at ~390 s and at 841 s on the same day, and the three post-change runs
+descend 565 → 440 → 287 as it warms. The honest summary is "about half, on a branch whose
+speed varies by more than the change does". The guarantee is AC-3's **two statements per
+reset, counted as query events** — a fact about the code that a slow link can neither
+flatter nor spoil.
+
+The stronger claim is arithmetic: **~2,000 fewer opportunities per run for a connection to
+drop**, in the one place both of that day's gate failures landed.
+
+### Two decisions argued rather than copied
+
+1. **`CASCADE` is omitted deliberately.** With it, a table added by a later feature that
+   references one of the eight and is missing from `TRUNCATED_TABLES` would be emptied
+   **silently** — wrong data, no error. Without it Postgres refuses the whole reset and
+   names the table.
+
+   The reviewer proved it by construction rather than by reading. It created
+   `ZzProbeChild` referencing `Item`, absent from the list, and ran the reset:
+
+   ```
+   ERROR: cannot truncate a table referenced in a foreign key constraint
+   DETAIL: Table "ZzProbeChild" references "Item".
+   ```
+
+   The probe was written and deleted in one shell invocation; `git status` was byte-for-byte
+   as found, and the test database was left holding exactly the two seeded yards.
+
+2. **`RESTART IDENTITY` is omitted**, and proved a no-op rather than dropped by assumption:
+   the schema owns zero sequences (`pg_class`) and all nine `@id` columns are
+   `@default(cuid())`, read from the schema text.
+
+**AC-4** is the criterion that keeps the truncate list honest — `information_schema`
+equality, so a table added by #8 and forgotten turns it red instead of leaving rows between
+tests.
+
+### AC-15, added before implementation, and recorded as an experiment
+
+#7's closing gate went red twice on `npm run test:db` alone — 18 failures then 5, **zero
+assertions**, every error a dropped connection to the **pooled** test endpoint — while
+`typecheck`, `lint`, 378 unit tests and 90 end-to-end tests passed throughout.
+
+But `vitest.db.config.ts` sets `fileParallelism: false`: the suite runs one file at a time,
+so at most one client is ever live. **It gains nothing from a pooler**, while transaction-mode
+pooling is the classic source of exactly that error under many short exchanges.
+`scripts/run-db-tests.mjs` already read the unpooled string — it used it only for
+`prisma migrate deploy`. The suite now connects through it; `prisma migrate deploy` reports
+`ep-odd-boat-zamat29w.c-2…` with no `-pooler`.
+
+**The report calls the result encouraging but not conclusive**, and that is the right call:
+three green unpooled runs cannot distinguish "the pooler was the fault" from "the branch was
+healthy", the branch having recovered on its own twice that day. It records what would
+settle it if the error recurs.
+
+### A collision the coordinator caused, and the rule that came out of it
+
+The approval gate went red with real assertion failures in #7's `count-service.db.test.ts`,
+which had been green minutes earlier. **The coordinator had dispatched the implementer onto
+a tree its own gate was reading**, so the gate tested a half-rewritten `test-db.ts`.
+
+The implementer diagnosed it better than the coordinator had: it found the gate's process
+with `Win32_Process` and — the part that cleared its own code — **reproduced the identical
+failures against the pre-#20 implementation**.
+
+Two rules now in the permanent record:
+
+- **Only one `npm run test:db` may be in flight at a time.** Two runs truncate the same
+  tables in the same branch and corrupt each other, whoever starts them.
+- **No gate while an agent is active on the tree.** When agents ran the gate themselves this
+  was serialised by construction; moving the gate to the coordinator removed that
+  serialisation, and the gap was not noticed until it cost a run.
+
+And two diagnostic habits worth keeping: re-run a failure against the previous
+implementation before suspecting new code, and check for another `run-db-tests.mjs` before
+starting one.
+
+### Honesty in the report, unprompted
+
+The implementer's first line on returning was that **one of its own runs was invalid** — it
+had `test-db.ts` stashed to the pre-#20 state at the time, so that run used the old reset
+for at least its first files. It disclosed the bad measurement rather than quietly quoting
+the good ones. The reviewer verified no figure depended on it.
+
+### One defect in the spec, and it was the coordinator's
+
+The amendment that added AC-15 relaxed AC-10's byte-identity clause but **did not carry
+through** to AC-12's changed-file list or to the *Out of scope* entry, both of which still
+pinned `scripts/run-db-tests.mjs` as unmodified — which AC-15 cannot satisfy. The reviewer
+found it, declined to edit the spec itself, and recorded it so the next feature would not
+inherit the contradiction. Corrected at close.
+
+### Carried into #8
+
+- **AC-4 will fire** when #8 adds a table to the schema and not to `TRUNCATED_TABLES`. That
+  is the criterion working, not a nuisance.
+- `TRUNCATE` is the second DDL any test in this repository issues, after #7's
+  `tmp_ac13_line_write_fails`. If a third appears, the add/drop pattern belongs behind a
+  helper in `src/server/test-db.ts`, which is now doubly its right home.
+
+**Closed 2026-09-11 after user sign-off.**
