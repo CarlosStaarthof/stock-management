@@ -1,4 +1,8 @@
+import type { Role } from "@/server/auth/roles";
+import type { SessionUser } from "@/server/auth/session-user";
+import { approveCount, submitCount } from "@/server/counts/count-lifecycle-service";
 import { db } from "@/server/db";
+import { strokesToPath } from "@/lib/signature-path";
 
 /**
  * Fixtures for the stock-entry end-to-end specs.
@@ -32,6 +36,15 @@ export const RESERVED_YEAR = {
   quantities: 2095,
   filters: 2096,
   autosave: 2097,
+  // #9's three, one each (009 AC-32). Ten files, ten years.
+  //
+  // 2100 IS THE LAST RESERVABLE YEAR, and that is recorded here rather than discovered:
+  // 007 AC-8 caps a submitted period at 2100, and every e2e count is created through that
+  // flow. The next stock-entry spec file needs that cap raised or a file merged - there is
+  // no eleventh year to take.
+  submit: 2098,
+  approve: 2099,
+  signature: 2100,
 } as const;
 
 export function assertReserved(year: number): void {
@@ -283,4 +296,136 @@ const PAST_DRAFT = "SUBMITTED" as const;
 /** Move a count out of `DRAFT`, as #9 will, so #8 can be asked to refuse it (008 AC-9). */
 export async function markPastDraft(countId: string): Promise<void> {
   await db.stockCount.update({ where: { id: countId }, data: { status: PAST_DRAFT } });
+}
+
+/* ------------------------------------------------------------------ #9, the lifecycle */
+
+/**
+ * A signature the grammar accepts, spelled once for every spec that needs one.
+ *
+ * It is built by `strokesToPath` rather than typed as a literal, so a change to the format
+ * moves the fixture with it - the same reason the pad, the service and the parser all read
+ * `src/lib/signature-path.ts` (009 AC-5).
+ */
+export const DRAWN_SIGNATURE = strokesToPath([
+  [
+    { x: 20, y: 40 },
+    { x: 80, y: 120 },
+    { x: 140, y: 60 },
+  ],
+  [
+    { x: 200, y: 100 },
+    { x: 260, y: 40 },
+  ],
+]);
+
+/** A `SessionUser` for a test account, so a spec can call a service the way a page does. */
+export function actorFor(user: { id: string; email: string; role: Role }): SessionUser {
+  return {
+    id: user.id,
+    email: user.email,
+    name: user.role === "ADMIN" ? "E2E Administrator" : "E2E Yard Staff",
+    role: user.role,
+  };
+}
+
+/**
+ * Every line of a count given a quantity, except `leaveUncounted` of them.
+ *
+ * Invariant 5 is what this exists for: a count with one `null` cannot be submitted, and a
+ * spec that wants the blocked state and a spec that wants the submittable one differ by
+ * this one number (009 AC-3, AC-4).
+ */
+export async function fillQuantities(
+  countId: string,
+  leaveUncounted = 0,
+): Promise<{ counted: number; uncounted: string[] }> {
+  const lines = await db.stockCountLine.findMany({
+    where: { stockCountId: countId },
+    select: { id: true, itemId: true },
+    orderBy: { itemId: "asc" },
+  });
+
+  const uncounted = lines.slice(0, leaveUncounted);
+  const toCount = lines.slice(leaveUncounted);
+
+  await db.stockCountLine.updateMany({
+    where: { id: { in: toCount.map((line) => line.id) } },
+    // A number, not a zero: `0` is counted and none held, and both are counted (008 AC-5).
+    data: { quantity: 3 },
+  });
+  await db.stockCountLine.updateMany({
+    where: { id: { in: uncounted.map((line) => line.id) } },
+    data: { quantity: null },
+  });
+
+  return { counted: toCount.length, uncounted: uncounted.map((line) => line.itemId) };
+}
+
+/** The whole lifecycle of a count, read straight from Postgres (009 AC-14, AC-18). */
+export async function lifecycleOf(countId: string): Promise<{
+  status: string;
+  signaturePath: string | null;
+  signedById: string | null;
+  approvedById: string | null;
+  submittedOn: Date | null;
+  approvedOn: Date | null;
+  notes: string | null;
+}> {
+  const row = await db.stockCount.findUniqueOrThrow({
+    where: { id: countId },
+    select: {
+      status: true,
+      signatureSvg: true,
+      signedById: true,
+      approvedById: true,
+      submittedAt: true,
+      approvedAt: true,
+      notes: true,
+    },
+  });
+
+  return {
+    status: row.status,
+    signaturePath: row.signatureSvg,
+    signedById: row.signedById,
+    approvedById: row.approvedById,
+    submittedOn: row.submittedAt,
+    approvedOn: row.approvedAt,
+    notes: row.notes,
+  };
+}
+
+/**
+ * A count submitted through the REAL service, for a spec that needs one to look at.
+ *
+ * The fixture goes through `submitCount` rather than through Prisma precisely because the
+ * snapshot write is what makes a valued summary possible: writing `status` directly would
+ * leave every `unitPriceSnapshot` null and the summary would be a page of `No price` tags
+ * that proved nothing (Invariant 2).
+ */
+export async function submitAs(
+  countId: string,
+  user: { id: string; email: string; role: Role },
+  signaturePath = DRAWN_SIGNATURE,
+): Promise<void> {
+  await submitCount(actorFor(user), countId, { signaturePath });
+}
+
+/**
+ * A count approved through the REAL service, for a spec that needs an `APPROVED` one to
+ * look at.
+ *
+ * Through `approveCount` and never through Prisma, for the same reason as `submitAs`: a
+ * direct `status` write would leave `approvedById` and `approvedAt` null and the screens
+ * would render a state the product can never actually be in (009 AC-16).
+ *
+ * The actor must be an `ADMIN`; a staff one is refused by the service, which is 009 AC-15's
+ * assertion and not this fixture's.
+ */
+export async function approveAs(
+  countId: string,
+  user: { id: string; email: string; role: Role },
+): Promise<void> {
+  await approveCount(actorFor(user), countId);
 }

@@ -55,3 +55,145 @@ export function formatPriceExact(value: string): string {
 
   return `${sign}${CURRENCY_SYMBOL}${groupThousands(whole)}.${fraction}`;
 }
+
+/* ===================================================================================
+ * Feature #9 — the arithmetic, in strings.
+ *
+ * `lineValue = quantity x (the snapshot ?? 0)` and `countTotal = the sum of them`, and
+ * NEITHER EVER PASSES THROUGH A JAVASCRIPT `number`. `roundHalfUp("2.675", 2)` is `"2.68"`
+ * and `Number(2.675).toFixed(2)` is `"2.67"`, and that one cent is the whole argument:
+ * Invariant 10 says a stock system that disagrees with the file it replaced, by any
+ * amount, will not be trusted.
+ *
+ * The digits are carried in `bigint`, which is exact at any size; the scale is carried
+ * beside them as an integer count of decimal places. The parameters keep neutral names for
+ * the reason the header gives: 006 AC-31 holds `src/lib/**` at zero files naming the price
+ * column, so these three functions take `left`, `right` and `values`.
+ * =================================================================================== */
+
+/** The digits of a decimal string, with its sign and its number of decimal places. */
+type ScaledDigits = { negative: boolean; digits: bigint; scale: number };
+
+/**
+ * `"6.1176"` -> `{ negative: false, digits: 61176n, scale: 4 }`, or `null` for a string
+ * that is not a plain decimal.
+ *
+ * Every value that reaches these functions is a `Decimal` column stringified by Prisma, so
+ * `null` means a bug rather than a user. The callers answer it with zero rather than by
+ * throwing: 009 AC-28 requires the two services to raise only typed domain errors, and a
+ * `RangeError` escaping from a formatter would be neither typed nor catchable by a screen.
+ */
+function scaledDigitsOf(value: string): ScaledDigits | null {
+  const parsed = DECIMAL.exec(value.trim());
+  if (parsed === null) return null;
+
+  const [, sign, whole, fraction = ""] = parsed;
+  return {
+    negative: sign === "-",
+    digits: BigInt(`${whole}${fraction}`),
+    scale: fraction.length,
+  };
+}
+
+/** `10^places`, built as a literal rather than by exponentiation, so nothing is a float. */
+function powerOfTen(places: number): bigint {
+  return BigInt(`1${"0".repeat(places)}`);
+}
+
+/** The same digits carried to a deeper scale, exactly. */
+function atScale(value: ScaledDigits, scale: number): bigint {
+  return value.digits * powerOfTen(scale - value.scale);
+}
+
+/**
+ * Digits and a scale back to a decimal string.
+ *
+ * `trim` drops trailing zeros the scale left behind, which is what makes
+ * `multiplyDecimal("9.83", "890")` read `"8748.7"` rather than `"8748.700"`. It is off for
+ * `roundHalfUp`, which must render exactly the places it was asked for.
+ */
+function render(value: ScaledDigits, trim: boolean): string {
+  const padded = value.digits.toString().padStart(value.scale + 1, "0");
+  const whole = padded.slice(0, padded.length - value.scale);
+  const rawFraction = value.scale === 0 ? "" : padded.slice(padded.length - value.scale);
+  const fraction = trim ? rawFraction.replace(/0+$/, "") : rawFraction;
+
+  const magnitude = fraction === "" ? whole : `${whole}.${fraction}`;
+  // Zero has no sign: `-0.00` is a value nobody wants to read on an invoice.
+  return value.negative && value.digits !== 0n ? `-${magnitude}` : magnitude;
+}
+
+/**
+ * `quantity x price`, exact to the last digit, with no rounding anywhere (009 AC-24).
+ *
+ * `multiplyDecimal("21.6128", "6.11764706")` is `"132.219482378368"` — fourteen decimal
+ * places, because one of the four Clonmel prices is a non-terminating workbook formula and
+ * Invariant 10 forbids losing its tail before the total is taken.
+ */
+export function multiplyDecimal(left: string, right: string): string {
+  const first = scaledDigitsOf(left);
+  const second = scaledDigitsOf(right);
+  if (first === null || second === null) return "0";
+
+  return render(
+    {
+      negative: first.negative !== second.negative,
+      digits: first.digits * second.digits,
+      scale: first.scale + second.scale,
+    },
+    true,
+  );
+}
+
+/**
+ * The sum of the EXACT values, at the deepest scale any of them uses (009 AC-25).
+ *
+ * Invariant 10 and Open question 3: the total is the sum of the exact line values, rounded
+ * once for display — never the sum of the rounded lines. The stated cost is that the
+ * rendered column may not add to the rendered total to the last cent, and the total is the
+ * figure that agrees with the workbook.
+ */
+export function sumDecimals(values: readonly string[]): string {
+  const parsed = values.map(scaledDigitsOf).filter((value): value is ScaledDigits => value !== null);
+
+  const scale = parsed.reduce((deepest, value) => Math.max(deepest, value.scale), 0);
+  const total = parsed.reduce(
+    (running, value) => (value.negative ? running - atScale(value, scale) : running + atScale(value, scale)),
+    0n,
+  );
+
+  return render({ negative: total < 0n, digits: total < 0n ? -total : total, scale }, true);
+}
+
+/**
+ * Half away from zero, to exactly `places` decimal places (009 AC-24).
+ *
+ * `roundHalfUp("2.675", 2)` is `"2.68"`. `Number(2.675).toFixed(2)` is `"2.67"`, because
+ * the nearest double to 2.675 is slightly below it — the single most quoted reason this
+ * module is string arithmetic.
+ *
+ * The result always carries `places` decimals, so `"8748.7"` rounds to `"8748.70"` and a
+ * column of values lines up on the point.
+ */
+export function roundHalfUp(value: string, places: number): string {
+  const parsed = scaledDigitsOf(value);
+  // Unreadable in, unchanged out: showing the raw string is honest, and inventing a
+  // rounded number from one this function could not read is not.
+  if (parsed === null) return value;
+
+  if (parsed.scale <= places) {
+    return render(
+      { ...parsed, digits: atScale(parsed, places), scale: places },
+      false,
+    );
+  }
+
+  const divisor = powerOfTen(parsed.scale - places);
+  const quotient = parsed.digits / divisor;
+  const remainder = parsed.digits % divisor;
+  // `remainder + remainder >= divisor` rather than `2n * remainder`: the doubling is an
+  // addition, so the module keeps exactly one multiplication in it and a scan can say so.
+  const rounded = remainder + remainder >= divisor ? quotient + 1n : quotient;
+
+  return render({ negative: parsed.negative, digits: rounded, scale: places }, false);
+}

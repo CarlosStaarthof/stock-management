@@ -231,3 +231,23 @@ export async function makeLinksBulk(
     })),
   });
 }
+
+/**
+ * Prices in one statement (feature #9).
+ *
+ * A count is 82 lines, and 82 `itemPrice.create` calls is 82 round trips to a database in
+ * another region — which is slow enough to matter and long enough to drop a link. The
+ * amount stays a STRING all the way to Prisma, exactly as `makePrice` keeps it.
+ */
+export async function makePricesBulk(
+  prices: readonly { itemId: string; amount: string; effectiveFrom: string; label?: string | null }[],
+): Promise<void> {
+  await db.itemPrice.createMany({
+    data: prices.map((price) => ({
+      itemId: price.itemId,
+      unitPrice: price.amount,
+      effectiveFrom: new Date(`${price.effectiveFrom}T00:00:00.000Z`),
+      label: price.label ?? null,
+    })),
+  });
+}

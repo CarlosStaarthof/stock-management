@@ -55,6 +55,29 @@ function read(file: string): string {
 
 const FEATURE_TREES = ["src/app/stock-entry", "src/server/counts"] as const;
 
+/**
+ * THE TWO MODULES FEATURE #9 ADDED TO THESE TREES, and the only two in them permitted to
+ * name a status past `DRAFT`, a lifecycle column or the price snapshot (009 AC-26).
+ *
+ * 007 AC-25 asserted that NO shipping module in these trees named any of them, because #7
+ * only ever creates a `DRAFT`. #9 is the feature that moves a count out of one, so the
+ * assertion is AMENDED to an exact two-file exemption rather than deleted or loosened into
+ * a directory. Each addition earns its place:
+ *
+ *   * `count-lifecycle-service.ts` performs every transition and is the only writer of
+ *     `unitPriceSnapshot` (Invariant 2), the signature and the approval columns;
+ *   * `count-summary-service.ts` reads the snapshot to value a line on the one ADMIN-only
+ *     surface that carries a euro.
+ *
+ * Every other module in both trees — and every page #9 adds in its second phase — branches
+ * through `src/lib/count-lifecycle.ts` and labels through `COUNT_STATUS_LABEL`, so the
+ * `src/app/stock-entry/**` half of this scan stays at ZERO offenders.
+ */
+const LIFECYCLE_EXEMPT: string[] = [
+  "src/server/counts/count-lifecycle-service.ts",
+  "src/server/counts/count-summary-service.ts",
+];
+
 describe("AC-3: the refusal is the server's answer and stays one", () => {
   it("AC-3: no loading.tsx exists at or above src/app/stock-entry/", () => {
     // A loading.tsx puts a Suspense boundary above every page below it; once the shell has
@@ -68,6 +91,12 @@ describe("AC-3: the refusal is the server's answer and stays one", () => {
       "src/app/stock-entry",
       "src/app/stock-entry/new",
       "src/app/stock-entry/counts",
+      // `[id]` is a PARENT now: 009 puts `/submit`, `/summary` and `/reopen` under it, and
+      // two of those answer a YARD_STAFF session with a 307 (009 AC-1). A loading.tsx here
+      // would degrade both refusals into 200s carrying a shell, and the list is the only
+      // thing that would notice - #3, #6 and #7 each recorded the same failure mode one
+      // directory higher.
+      "src/app/stock-entry/counts/[id]",
     ]) {
       expect(existsSync(`${directory}/loading.tsx`), `${directory}/loading.tsx`).toBe(false);
       expect(existsSync(`${directory}/loading.ts`), `${directory}/loading.ts`).toBe(false);
@@ -132,7 +161,23 @@ describe("AC-4, AC-5: the actor is the session and there is no second identity",
    * It is the same narrowing 008 AC-28 made to the mutation scan below: name what is
    * allowed, exactly, rather than widen the scan to a directory.
    */
-  const EXPORTED_ACTIONS = ["startCountAction", "saveQuantitiesAction"];
+  /**
+   * GROWN FROM TWO TO FIVE BY 009 AC-2, which asks for the count in those words: "a source
+   * scan of `src/app/stock-entry/actions.ts` finds exactly FIVE `await requireUser()`
+   * calls, one inside each of the five actions". #9's three are the three deliberate acts
+   * that close a count, and each is a `<form>` posting to a server action rather than a
+   * `fetch`, because each must still work when the bundle does not (009 AC-10).
+   *
+   * The number is an equality and not a floor: a sixth action, or a second call inside any
+   * of these five, turns this red.
+   */
+  const EXPORTED_ACTIONS = [
+    "startCountAction",
+    "saveQuantitiesAction",
+    "submitCountAction",
+    "approveCountAction",
+    "reopenCountAction",
+  ];
 
   /** One exported action's source, from its signature to the end of the file or the next. */
   function bodyOf(name: string): string {
@@ -151,8 +196,8 @@ describe("AC-4, AC-5: the actor is the session and there is no second identity",
     return actions.slice(from, to);
   }
 
-  it("AC-4, 008 AC-19: each action obtains its actor with exactly one requireUser() call", () => {
-    // Exactly two actions in the file, and they are these two.
+  it("AC-4, 008 AC-19, 009 AC-2: each action obtains its actor with exactly one requireUser() call", () => {
+    // Exactly five actions in the file, and they are these five.
     const exported = [...actions.matchAll(/export async function (\w+)\(/g)].map(
       (match) => match[1],
     );
@@ -183,10 +228,37 @@ describe("AC-4, AC-5: the actor is the session and there is no second identity",
     expect(read.sort()).toEqual(["countDate", "locationCode", "period"]);
   });
 
-  it("AC-5: no file in the feature refers to the artefact #9 owns", () => {
-    for (const file of shippingModulesUnder(...FEATURE_TREES)) {
-      expect(read(file), file).not.toMatch(/signature/i);
-    }
+  it("AC-5 amended by 009: the signature is #9's, and only #9's modules refer to it", () => {
+    // 007 AC-5 held this at zero for the whole tree: #7 must not invent a second identity,
+    // and a typed "signed by" field is exactly that. #9 ships the drawn signature, so the
+    // assertion becomes an EXACT LIST of the modules that own it rather than disappearing.
+    // Who you are is still the session (007 AC-5); the signature is the second, deliberate
+    // artefact, and there is still no third.
+    // Phase A put the two modules that OWN the grammar and the column on this list; Phase
+    // B adds the two that own the transport and the screen, and no others:
+    //
+    //   * `actions.ts` reads the `signature` field a form posts — 009 AC-6 names that field
+    //     and asserts that a submission with it ABSENT is refused identically;
+    //   * `submit/page.tsx` renders the pad, which is `SignaturePad.tsx`, and an import
+    //     names what it imports.
+    //
+    // `form-state.ts`, `counts/[id]/page.tsx` and `summary/page.tsx` are NOT on it and do
+    // not say the word: the record block is `CountRecord`, which takes the whole lifecycle
+    // shape, so a page renders a drawing without naming one. Who you are is still the
+    // session (007 AC-5); the drawn signature is the second, deliberate artefact, and there
+    // is still no third.
+    const SIGNATURE_MODULES = [
+      "src/app/stock-entry/actions.ts",
+      "src/app/stock-entry/counts/[id]/submit/page.tsx",
+      "src/server/counts/count-lifecycle-service.ts",
+      "src/server/counts/submit-input.ts",
+    ];
+
+    const offenders = shippingModulesUnder(...FEATURE_TREES)
+      .filter((file) => /signature/i.test(read(file)))
+      .sort();
+
+    expect(offenders).toEqual(SIGNATURE_MODULES);
   });
 
   it("AC-5: /stock-entry/new renders no input, select or textarea that names a person", () => {
@@ -236,8 +308,20 @@ describe("AC-15: nothing in this feature reads or writes a price", () => {
     expect(scanned).toContain("src/server/counts/count-service.ts");
     expect(scanned).toContain("src/lib/count-messages.ts");
 
+    // AMENDED BY 009 AC-26. #7 reads and writes no price at all and still does not; #9 is
+    // the first writer of the snapshot column, so its two services are exempt BY NAME and
+    // nothing else in either tree - or in the three `src/lib/` modules scanned alongside
+    // them - may say the word.
     for (const file of scanned) {
+      if (LIFECYCLE_EXEMPT.includes(file)) continue;
+
       expect(read(file), file).not.toContain("unitPrice");
+    }
+
+    // Non-vacuity: both exempt files really are in the scan, and really do name it.
+    for (const file of LIFECYCLE_EXEMPT) {
+      expect(scanned, file).toContain(file);
+      expect(read(file), file).toContain("unitPriceSnapshot");
     }
   });
 
@@ -251,10 +335,12 @@ describe("AC-15: nothing in this feature reads or writes a price", () => {
 describe("AC-25: this feature inserts and reads, and does nothing else", () => {
   const shipping = shippingModulesUnder(...FEATURE_TREES);
 
-  it("AC-25: no shipping module names a status or a column past DRAFT", () => {
+  it("AC-25 amended by 009 AC-26: only the two lifecycle modules name a status past DRAFT", () => {
     expect(shipping).toContain("src/server/counts/count-service.ts");
 
     for (const file of shipping) {
+      if (LIFECYCLE_EXEMPT.includes(file)) continue;
+
       const source = read(file);
       for (const forbidden of [
         "SUBMITTED",
@@ -262,6 +348,28 @@ describe("AC-25: this feature inserts and reads, and does nothing else", () => {
         "submittedAt",
         "approvedAt",
         "signatureSvg",
+      ]) {
+        expect(source, `${file} names ${forbidden}`).not.toContain(forbidden);
+      }
+    }
+  });
+
+  it("AC-25, 009 AC-26: the src/app/stock-entry half stays at ZERO offenders", () => {
+    // The exemption is for two SERVICES. No page, no layout and no component branches on a
+    // status by naming one: they ask `src/lib/count-lifecycle.ts` and label through
+    // `COUNT_STATUS_LABEL`.
+    const pages = shippingModulesUnder("src/app/stock-entry", "src/components/stock-entry");
+    expect(pages.length).toBeGreaterThan(0);
+
+    for (const file of pages) {
+      const source = read(file);
+      for (const forbidden of [
+        "SUBMITTED",
+        "APPROVED",
+        "submittedAt",
+        "approvedAt",
+        "signatureSvg",
+        "unitPrice",
       ]) {
         expect(source, `${file} names ${forbidden}`).not.toContain(forbidden);
       }
@@ -291,13 +399,25 @@ describe("AC-25: this feature inserts and reads, and does nothing else", () => {
    * asserted structurally by `count-entry-service.db.test.ts` (008 AC-8), which compares
    * every other column of every line before and after the write.
    */
-  const MUTATION_EXEMPT: string[] = ["src/server/counts/count-entry-service.ts"];
+  /**
+   * GROWN FROM ONE FILE TO TWO by 009 AC-26 — and by exactly one file, named as a literal.
+   *
+   * #9 is the feature that moves a count out of `DRAFT`, so `count-lifecycle-service.ts`
+   * is the second and last module in these trees that may write. What it may write is
+   * asserted immediately below as an EXACT SET of Prisma operations, and structurally by
+   * `count-lifecycle-service.db.test.ts`, which compares whole rows before and after every
+   * transition (009 AC-14, AC-16).
+   */
+  const MUTATION_EXEMPT: string[] = [
+    "src/server/counts/count-entry-service.ts",
+    "src/server/counts/count-lifecycle-service.ts",
+  ];
 
-  it("AC-25, 008 AC-28: no update, upsert or delete except in the one exempt file", () => {
-    // Non-vacuity: the exemption names a file that really is in the scanned tree, and
-    // there is exactly one of them.
-    expect(shipping).toContain(MUTATION_EXEMPT[0]);
-    expect(MUTATION_EXEMPT).toHaveLength(1);
+  it("AC-25, 008 AC-28, 009 AC-26: no update, upsert or delete except in the two exempt files", () => {
+    // Non-vacuity: the exemption names files that really are in the scanned tree, and
+    // there are exactly two of them.
+    for (const file of MUTATION_EXEMPT) expect(shipping).toContain(file);
+    expect(MUTATION_EXEMPT).toHaveLength(2);
 
     for (const file of shipping) {
       if (MUTATION_EXEMPT.includes(file)) continue;
@@ -328,17 +448,50 @@ describe("AC-25: this feature inserts and reads, and does nothing else", () => {
     expect(source).toContain("data: { quantity }");
   });
 
+  it("009 AC-26: the second exempt file performs exactly four Prisma operations", () => {
+    const source = read(MUTATION_EXEMPT[1]);
+
+    // The exact set, in no particular order of appearance: read the count, compare-and-set
+    // the count, read the lines, fill the snapshots. No create, no delete, no upsert, on
+    // either model - so this feature inserts nothing and deletes nothing (009 AC-14).
+    const operations = new Set(
+      [...source.matchAll(/stockCount(Line)?\s*\.\s*(\w+)/g)].map(
+        (match) => `stockCount${match[1] ?? ""}.${match[2]}`,
+      ),
+    );
+
+    expect(operations).toEqual(
+      new Set([
+        "stockCount.findUnique",
+        "stockCount.updateMany",
+        "stockCountLine.findMany",
+        "stockCountLine.updateMany",
+      ]),
+    );
+  });
+
   it("AC-25: the only files in those trees naming the forbidden strings are tests", () => {
     // The exclusion above, made explicit. A shipping module that grew one of these would
     // appear here as well as in the first test of this block.
-    const offenders = everyFileUnder(...FEATURE_TREES).filter((file) =>
-      /SUBMITTED|APPROVED|submittedAt|approvedAt|signatureSvg|unitPrice/.test(read(file)),
-    );
+    // Sorted, because `git ls-files --cached --others` lists tracked and untracked files
+    // in two runs and the answer must not depend on what has been committed yet.
+    const offenders = everyFileUnder(...FEATURE_TREES)
+      .filter((file) => /SUBMITTED|APPROVED|submittedAt|approvedAt|signatureSvg|unitPrice/.test(read(file)))
+      .sort();
 
+    // AMENDED BY 009 AC-26: the two lifecycle modules join the list, and they are the only
+    // shipping modules on it. Everything else naming one of these strings is a test.
     expect(offenders).toEqual([
+      "src/server/counts/count-lifecycle-service.db.test.ts",
+      "src/server/counts/count-lifecycle-service.ts",
       "src/server/counts/count-service.db.test.ts",
       "src/server/counts/count-shape.test.ts",
+      "src/server/counts/count-summary-service.db.test.ts",
+      "src/server/counts/count-summary-service.ts",
     ]);
+
+    const shippingOffenders = offenders.filter((file) => !/\.test\.ts$/.test(file));
+    expect(shippingOffenders).toEqual(LIFECYCLE_EXEMPT);
   });
 });
 
@@ -360,7 +513,12 @@ describe("AC-26, AC-29: the layering and the no-database path", () => {
       file.endsWith("page.tsx"),
     );
 
-    expect(pages).toHaveLength(4);
+    // #7 shipped four. 009's Contract adds THREE — `/submit`, `/summary` and `/reopen` —
+    // and 009 AC-31 requires every one of them to declare it, so that `npm run build`
+    // prerenders none of them against a database. The number moves with the routes rather
+    // than being loosened into a `toBeGreaterThan`: the value of this assertion is that it
+    // is an equality, so a page added without the declaration turns it red.
+    expect(pages).toHaveLength(7);
     for (const page of pages) {
       expect(read(page), page).toContain('export const dynamic = "force-dynamic";');
     }
@@ -429,8 +587,10 @@ describe("AC-30: the e2e suite keeps 006 AC-35's shape", () => {
     const specs = shippingModulesUnder("tests/e2e").filter((file) =>
       /stock-entry-.*\.spec\.ts$/.test(file),
     );
-    expect(specs).toHaveLength(7);
-    expect(years.size).toBe(7);
+    // 009 AC-32 adds three - `submit: 2098`, `approve: 2099`, `signature: 2100` - and the
+    // number moves with them, as it did in #8. TEN files, TEN distinct years.
+    expect(specs).toHaveLength(10);
+    expect(years.size).toBe(10);
   });
 });
 

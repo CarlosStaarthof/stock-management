@@ -1035,3 +1035,138 @@ inside Phase B and cost only that phase; the ninth of the project. The implement
 closing line before hand-back was *"the feature is not `done` until it has been re-reviewed"*.
 
 **Closed 2026-09-12 after user sign-off.**
+
+## 2026-09-12 — feature #9 `entry_submit`
+
+Sign, submit, approve. **M2 is complete**: a count can now be started, walked on a phone,
+signed, submitted, and approved with its prices frozen. Implementation in
+`progress/impl_entry_submit.md` (three phases); review in `progress/review_entry_submit.md`.
+34 criteria. **CHANGES_REQUESTED on the first pass, APPROVED on the second.**
+
+### What shipped
+
+Three routes — `/submit` (both roles), `/summary` (ADMIN-only), `/reopen` (ADMIN-only) —
+three server actions, one lifecycle service, the signature pad, and the price snapshot.
+**No JSON endpoint and no `fetch` anywhere**: each act is one deliberate submission, so a
+`<form>` posting to a server action is the transport, and it keeps working when the bundle
+does not. Only the signature pad needs JavaScript, and the screen says so.
+
+Test counts: unit 501 → **614**, service ~362 → **~400**, end-to-end 117 → **133**.
+
+### Five invariants, made real and then broken on purpose
+
+| Invariant | What it stops | Proved by |
+|---|---|---|
+| 2 — snapshot written once, from the price on `countDate` | A price change next March altering last September's total | Mutation: take today's price, or rewrite on re-submit |
+| 5 — `null` blocks submission | A half-walked yard becoming a signed record | Mutation: accept an uncounted line |
+| 11 — no signature; reopening clears it | A count nobody signed; a signature attached to numbers that changed after it | Two mutations, each half separately |
+| 4 — no price contributes `0` **and warns** | €486 counted and never valued, invisible as in the workbook | Mutation: drop the warning, keep the arithmetic |
+| 3 — an approved count is immutable | History rewritten after sign-off | Mutation M7 — **and see below** |
+
+Eleven mutations in all. The reviewer re-ran five and reports every transcript reproduced
+character for character.
+
+### The money boundary, resolved by splitting surfaces
+
+#8 carried no money at all. #9 must show an `ADMIN` a total and per-line warnings and show a
+`YARD_STAFF` user none of it. Rather than shape one screen per role, the **surfaces split**:
+`/stock-entry/counts/[id]` and `/submit` carry **no euro for either role**, and every
+monetary figure lives on `/summary`, which `307`s a staff session.
+
+That keeps Part 6's *"Stock Takes is money-free for both roles"* literally true, and it is
+why 007 AC-17 and 008 AC-17 pass **unmodified**. The admin's submit-time warning is a **list
+of item names, not a number**.
+
+### The mapper rule, discovered twice
+
+Phase A flagged that the summary shape's key **is** `unitPriceSnapshot`, so a component
+reading it would turn 006 AC-31 red — and proposed a mapper rather than an exemption, leaving
+it unwritten rather than shipping dead code. Phase B implemented it (`summaryRows` →
+`SummaryRow.unitAmount`) and then found **a second, unflagged instance**:
+`CountLifecycleFacts` carrying `submittedAt`/`approvedAt`, which 007 AC-25 forbids in
+`src/app/stock-entry/**`. Same answer generalised — `lifecycleSentences()`, so the pages read
+**no instant at all**.
+
+**The rule, now in the spec for later features: when a shape's key is a forbidden string, the
+boundary is crossed by a mapper in the service, not by a scan exemption for the screen.**
+
+### Two blocking findings, both "enumerated but untested"
+
+**B1 — nothing in the repository stopped the API editing an approved count.** AC-17 lists
+five refusals; the test performed four, and the missing one was the endpoint. The only
+route-level 409 test ran through a helper where "past draft" means `SUBMITTED`, so **`APPROVED`
+never reached that endpoint in any test**. Loosening the guard left the route's suite green.
+
+It travelled three phases to get there: Phase A **deferred** the browser half and said so,
+Phase B **replaced** it with a read-only-DOM assertion, Phase C's table **carried the
+substitution forward** — and none of the three listed it under Deviations. A criterion quietly
+changed meaning across three handoffs, each step locally reasonable.
+
+**B2 — AC-21's money walk named three count states and the test looped over two**, leaving
+`/submit` on an approved count unchecked for either role.
+
+A third was promoted from a recommendation: the `loading.tsx` guard list omitted
+`src/app/stock-entry/counts/[id]`, now the parent of three protected routes. A file dropped
+there would have degraded `/summary`'s and `/reopen`'s refusals into `200`s **with nothing to
+notice** — the failure #3, #6 and #7 each recorded, at an address the guard was not watching.
+
+### An obvious mutation proved the wrong thing — twice
+
+**M7**: making an `APPROVED` count editable turned #9's test red but left **#8's own 30-test
+service suite green**; the string `APPROVED` does not occur in it.
+
+**M12**: the reviewer's own suggested mutation for B1 went red at refusal *1*, not at the new
+fifth assertion — both go through one shared guard. The implementer built **M12b** (the same
+loosening with refusal 1 voided) to get `expected 200 to be 409`.
+
+**M14**: the reviewer then built a sharper one still — breaking **only the route's response
+mapping**, so the service still raises `ConflictError` and only the client is misinformed. A
+defect refusal 1 is *structurally incapable* of seeing, caught by the new assertion alone,
+with no test edited and the service untouched.
+
+**The lesson: a mutation turning something red is not evidence that the right thing is
+protected.**
+
+### AC-33: wrong four times, and what replaces it
+
+Six, nine, fourteen, fifteen. Not carelessness — **a criterion whose subject is other criteria
+has no mechanical check and no owner**, so any change anywhere falsifies it and nothing
+recomputes it. Its failure mode is worse than being wrong: a stale count reads as a *completed*
+reconciliation, which is exactly how B1 and B2 travelled three phases inside a report that said
+AC-33 was satisfied.
+
+The coordinator's first replacement was itself corrected by the reviewer. The claim that
+"three contradictions surfaced because someone reconciled a list" was wrong: **two surfaced
+because the suite went red** — the list only forced them to be written down — and the third
+was found by comparing a scan's *input list* against the route tree, which AC-33 would not have
+caught either. *Nothing catches an assertion that is missing.*
+
+**The replacement, and it should be mechanical**: derive the set from the tree — intersect
+`git diff -U0` with each `it()`'s line range, subtract new blocks and module-level consts, about
+twenty lines — and assert that the changed pre-existing `it()` blocks equal the spec's list. It
+goes red in the session that causes it, which is the one property AC-33 never had.
+
+### Three coordinator overstatements, each corrected on the record
+
+The AC-33 replacement above; the claim that the 008 AC-18 amendment made the scan "a stronger
+claim about a larger surface" when `SCANNED` was unchanged and only one exempt file holds a
+`€`; and AC-33's own counts. Each was disproved by a reviewer reading the diff, and each
+correction is narrower and true.
+
+### Decisions the user made
+
+Self-approval permitted and **recorded** (two people at most; a single admin must be able to
+close the month). A `SUBMITTED` count reopenable, so a known-wrong count need not be approved
+in order to be undone. The total is the sum of **exact** line values rounded once, not the sum
+of rounded lines — with the cost stated rather than hidden: the rendered column may not add to
+the rendered total to the last cent. The audit trail is `StockCount.notes`, append-only; an
+audit table would mean amending Part 3 and is scheduled separately if wanted.
+
+### Process
+
+Three cold phases with the coordinator gating between each. One rate-limit kill landed in
+Phase C, after the mutations and before the report — the tenth of the project. The
+coordinator verified the reverts independently (`55 passed`) rather than accepting the claim,
+and Phase C had taken byte copies **before** each edit, the fix adopted after #8 lost one.
+
+**Closed 2026-09-12 after user sign-off. M2 complete.**

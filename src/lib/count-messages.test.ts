@@ -7,6 +7,43 @@ import {
 } from "@/lib/item-master-messages";
 import {
   ALL_CHANGES_SAVED,
+  APPROVE_THIS_COUNT,
+  AUDIT_EVENT_LABEL,
+  AUDIT_TRAIL_HEADING,
+  BACK_TO_THE_COUNT,
+  COUNT_SUMMARY_LINK,
+  COUNT_TOTAL_LABEL,
+  LINES_WITHOUT_PRICE_HEADING,
+  REOPEN_DESTROYS,
+  REOPEN_LINK,
+  REOPEN_REASON_LABEL,
+  SIGNATURE_HEADING,
+  UNCOUNTED_HEADING,
+  auditSentence,
+  lifecycleSentences,
+  CLEAR_SIGNATURE,
+  COUNT_ALREADY_APPROVED,
+  COUNT_ALREADY_DRAFT,
+  COUNT_ALREADY_SUBMITTED,
+  COUNT_NOT_SUBMITTED,
+  NO_PRICE,
+  REOPEN_REASON_REQUIRED,
+  REOPEN_REASON_SINGLE_LINE,
+  REOPEN_REASON_TOO_LONG,
+  REOPEN_THIS_COUNT,
+  REVIEW_AND_SIGN,
+  SIGNATURE_FULL,
+  SIGNATURE_NEEDS_JS,
+  SIGNATURE_REQUIRED,
+  SIGNATURE_TOO_LONG,
+  SIGNATURE_UNREADABLE,
+  SIGNED_AND_APPROVED_BY_SAME_PERSON,
+  SIGN_AND_SUBMIT,
+  approvedByMessage,
+  linesWithoutPriceMessage,
+  reopenedNotice,
+  signedByMessage,
+  uncountedBlocksSubmit,
   APPLY_FILTERS,
   BACK_TO_THE_CALENDAR,
   CHOOSE_A_YARD,
@@ -61,6 +98,7 @@ import {
   showingSummary,
   yardNotFound,
 } from "@/lib/count-messages";
+import type { AuditEntry, CountLifecycleFacts } from "@/types/stock-count";
 import { COUNT_STATUSES } from "@/types/stock-count";
 
 /**
@@ -285,5 +323,220 @@ describe("008 AC-26: every literal spec 008 quotes is exported from this module"
   it("008 AC-24: the progress line is #7's, unchanged, and `0` counts as counted", () => {
     expect(countedSummary(12, 82)).toBe("12 of 82 counted");
     expect(countedSummary(0, 82)).toBe("0 of 82 counted");
+  });
+});
+
+/**
+ * Spec 009 AC-29: every literal a criterion quotes is exported from this module and
+ * asserted FROM IT, so the screen and the test cannot drift apart. All of it runs with no
+ * database (AC-31).
+ */
+describe("what feature 009 added to the single-sourced messages", () => {
+  it("AC-3: the block names the number, and 1 is not 1 items", () => {
+    expect(uncountedBlocksSubmit(12)).toBe(
+      "12 items have not been counted. Every line must hold a number, or 0, before this " +
+        "count can be submitted.",
+    );
+    expect(uncountedBlocksSubmit(1)).toBe(
+      "1 item has not been counted. Every line must hold a number, or 0, before this " +
+        "count can be submitted.",
+    );
+  });
+
+  it("AC-5, AC-6, AC-8, AC-10: the five signature sentences", () => {
+    expect(SIGNATURE_REQUIRED).toBe("Draw your signature before submitting this count.");
+    expect(SIGNATURE_UNREADABLE).toBe("That signature could not be read. Clear it and sign again.");
+    expect(SIGNATURE_TOO_LONG).toBe("That signature is too long to store. Clear it and sign again.");
+    expect(SIGNATURE_FULL).toBe("That is as much as this signature can hold. Clear it and sign again.");
+    expect(SIGNATURE_NEEDS_JS).toBe(
+      "A signature is drawn on screen, so this step needs JavaScript. Open this count in a " +
+        "browser with JavaScript enabled to sign it.",
+    );
+  });
+
+  it("AC-17, AC-18: Invariant 3, as four sentences a person can act on", () => {
+    expect(COUNT_ALREADY_SUBMITTED).toBe("This count has already been submitted.");
+    expect(COUNT_ALREADY_APPROVED).toBe("This count has already been approved.");
+    expect(COUNT_NOT_SUBMITTED).toBe("This count has not been submitted yet.");
+    expect(COUNT_ALREADY_DRAFT).toBe("This count is already a draft.");
+  });
+
+  it("AC-18: the three refusals of a reopen reason", () => {
+    expect(REOPEN_REASON_REQUIRED).toBe("Give a reason for reopening this count.");
+    expect(REOPEN_REASON_TOO_LONG).toBe("A reason may be at most 200 characters.");
+    expect(REOPEN_REASON_SINGLE_LINE).toBe("A reason must be a single line.");
+  });
+
+  it("AC-16, AC-23: the lifecycle sentences, with the yard's day and no euro in any of them", () => {
+    expect(signedByMessage("Jo Byrne", "2026-09-01T09:15:00.000Z")).toBe(
+      "Signed by Jo Byrne on 1 September 2026.",
+    );
+    expect(approvedByMessage("Ann Doyle", "2026-09-02T17:40:00.000Z")).toBe(
+      "Approved by Ann Doyle on 2 September 2026.",
+    );
+    expect(reopenedNotice("Ann Doyle", "2026-09-03T11:00:00.000Z", "the MMA price was wrong")).toBe(
+      "Reopened by Ann Doyle on 3 September 2026: the MMA price was wrong.",
+    );
+    expect(SIGNED_AND_APPROVED_BY_SAME_PERSON).toBe("Signed and approved by the same person.");
+
+    for (const sentence of [
+      signedByMessage("Jo Byrne", "2026-09-01T09:15:00.000Z"),
+      approvedByMessage("Ann Doyle", "2026-09-02T17:40:00.000Z"),
+      reopenedNotice("Ann Doyle", "2026-09-03T11:00:00.000Z", "the MMA price was wrong"),
+    ]) {
+      expect(sentence).not.toContain("€");
+    }
+  });
+
+  it("AC-23: the day is the YARD's day, not the server's", () => {
+    // 23:30 UTC on 31 August is already 1 September in Dublin (IST, UTC+1). A signature
+    // made in the evening must not read as the day before on the count page.
+    expect(signedByMessage("Jo Byrne", "2026-08-31T23:30:00.000Z")).toBe(
+      "Signed by Jo Byrne on 1 September 2026.",
+    );
+  });
+
+  it("AC-12: Invariant 4, before the fact and after it", () => {
+    expect(itemsWithoutPriceMessage(3)).toBe(
+      "3 items on this sheet have no price recorded. Their lines will count as 0 when this " +
+        "count is submitted.",
+    );
+    expect(linesWithoutPriceMessage(3)).toBe(
+      "3 lines on this count have no price recorded and counted as zero.",
+    );
+    expect(linesWithoutPriceMessage(1)).toBe(
+      "1 line on this count has no price recorded and counted as zero.",
+    );
+    expect(NO_PRICE).toBe("No price");
+  });
+
+  it("AC-29: the controls each criterion names by its accessible name", () => {
+    expect(REVIEW_AND_SIGN).toBe("Review and sign");
+    expect(SIGN_AND_SUBMIT).toBe("Sign and submit");
+    expect(APPROVE_THIS_COUNT).toBe("Approve this count");
+    expect(REOPEN_THIS_COUNT).toBe("Reopen this count");
+    expect(CLEAR_SIGNATURE).toBe("Clear");
+  });
+});
+
+/* ===================================================================================
+ * Phase B — the sentences the three screens render, built where a page may not look.
+ * =================================================================================== */
+
+describe("AC-20, AC-23: the lifecycle as sentences", () => {
+  const FACTS: CountLifecycleFacts = {
+    countId: "count_1",
+    status: "APPROVED",
+    submittedAt: "2026-09-01T10:00:00.000Z",
+    signedByName: "Jo Byrne",
+    signedAt: "2026-09-01T10:00:00.000Z",
+    signaturePath: "M 10 10 L 20 20",
+    approvedByName: "Ann Doyle",
+    approvedAt: "2026-09-02T11:00:00.000Z",
+    signedAndApprovedBySamePerson: false,
+    audit: [],
+  };
+
+  it("AC-23: a page renders strings, so it never reads an instant off the shape", () => {
+    const said = lifecycleSentences(FACTS);
+
+    expect(said.signed).toBe("Signed by Jo Byrne on 1 September 2026.");
+    expect(said.approved).toBe("Approved by Ann Doyle on 2 September 2026.");
+    expect(said.samePerson).toBeNull();
+    expect(said.reopened).toBeNull();
+  });
+
+  it("AC-16: self-approval is a FACT on the page, not a refusal", () => {
+    const said = lifecycleSentences({ ...FACTS, signedAndApprovedBySamePerson: true });
+
+    expect(said.samePerson).toBe("Signed and approved by the same person.");
+  });
+
+  it("AC-23: a draft nobody has touched has nothing to say", () => {
+    const said = lifecycleSentences({
+      ...FACTS,
+      status: "DRAFT",
+      submittedAt: null,
+      signedByName: null,
+      signedAt: null,
+      signaturePath: null,
+      approvedByName: null,
+      approvedAt: null,
+    });
+
+    expect(said).toEqual({ signed: null, approved: null, samePerson: null, reopened: null });
+  });
+
+  it("AC-18: the reopen notice is shown while the reopen is the LAST thing that happened", () => {
+    const reopened: AuditEntry = {
+      at: "2026-09-03T09:00:00.000Z",
+      event: "REOPENED",
+      actorName: "Ann Doyle",
+      actorEmail: "ann@macroads.ie",
+      reason: "the MMA price was wrong",
+    };
+
+    expect(
+      lifecycleSentences({ ...FACTS, status: "DRAFT", audit: [reopened] }).reopened,
+    ).toBe("Reopened by Ann Doyle on 3 September 2026: the MMA price was wrong.");
+
+    // Signed and submitted again: the notice has been acted on, and the history is the
+    // trail on `/summary` rather than a banner on the count.
+    const resubmitted: AuditEntry = {
+      at: "2026-09-04T09:00:00.000Z",
+      event: "SUBMITTED",
+      actorName: "Jo Byrne",
+      actorEmail: "jo@macroads.ie",
+      reason: null,
+    };
+    expect(lifecycleSentences({ ...FACTS, audit: [reopened, resubmitted] }).reopened).toBeNull();
+  });
+
+  it("AC-20: each entry of the trail is one sentence, with its actor and a formatted day", () => {
+    expect(
+      auditSentence({
+        at: "2026-09-12T14:03:11.482Z",
+        event: "SUBMITTED",
+        actorName: "Jo Byrne",
+        actorEmail: "jo@macroads.ie",
+        reason: null,
+      }),
+    ).toBe("Submitted by Jo Byrne on 12 September 2026.");
+
+    expect(
+      auditSentence({
+        at: "2026-09-12T15:02:44.900Z",
+        event: "REOPENED",
+        actorName: "Ann Doyle",
+        actorEmail: "ann@macroads.ie",
+        reason: "the MMA price was wrong",
+      }),
+    ).toBe("Reopened by Ann Doyle on 12 September 2026: the MMA price was wrong.");
+
+    // The three events read as words a person uses, never as the column's value.
+    expect(Object.values(AUDIT_EVENT_LABEL)).toEqual(["Submitted", "Approved", "Reopened"]);
+  });
+
+  it("AC-29: the labels the three screens Phase B adds render, and no euro in any of them", () => {
+    for (const message of [
+      COUNT_SUMMARY_LINK,
+      BACK_TO_THE_COUNT,
+      UNCOUNTED_HEADING,
+      LINES_WITHOUT_PRICE_HEADING,
+      SIGNATURE_HEADING,
+      AUDIT_TRAIL_HEADING,
+      COUNT_TOTAL_LABEL,
+      REOPEN_DESTROYS,
+      REOPEN_LINK,
+      REOPEN_REASON_LABEL,
+    ]) {
+      expect(message, message).not.toContain("€");
+      expect(message.trim(), message).not.toBe("");
+    }
+
+    // What reopening destroys, said before it happens - and what it does NOT destroy.
+    expect(REOPEN_DESTROYS).toContain("draft");
+    expect(REOPEN_DESTROYS).toContain("signature is destroyed");
+    expect(REOPEN_DESTROYS).toContain("prices already captured on its lines are kept");
   });
 });

@@ -116,8 +116,23 @@ describe("the money boundary, and where the first monetary column may be named",
   //   * src/lib/ and scripts/ stay at ZERO, which is why `formatPriceExact` takes
   //     `value: string`, and under src/app/ and src/components/ only the three named
   //     files may say it - each behind a route no YARD_STAFF session can reach (006 AC-2);
-  //   * `unitPriceSnapshot` stays forbidden everywhere outside a test, because its first
-  //     reader is still #9 and it must go through shapeForRole.
+  //   * `unitPriceSnapshot` is named by EXACTLY the two modules #9 added.
+  //
+  // AMENDED AGAIN by 009 AC-26, and for the reason the whole mechanism exists: #9 is the
+  // FIRST WRITER AND THE FIRST READER of `unitPriceSnapshot`, so the list grows from nine
+  // files to ELEVEN. The two additions are named as literals, never as a directory:
+  //
+  //   * `src/server/counts/count-lifecycle-service.ts` writes the column, once, at submit,
+  //     from the `ItemPrice` in force on `countDate` (Invariant 2). It cannot be written
+  //     by anything that may not name it.
+  //   * `src/server/counts/count-summary-service.ts` reads it, values the line on it, and
+  //     declares `ValuedLine` - which is why that type is NOT in `src/types/`. The ADMIN
+  //     summary is the one surface in this product that carries a euro, and it is a 307
+  //     for every staff session (009 AC-22).
+  //
+  // #9's own screens still name it NOWHERE: the value crosses the boundary on a field the
+  // shape declares, so the list below for src/app/ and src/components/ stays at the three
+  // item-master files #6 put on it.
   //
   // Test files are excluded from the scan throughout: a test that names the string is
   // asserting about it, not returning it to a session - src/lib/money-boundary.test.ts has
@@ -140,7 +155,16 @@ describe("the money boundary, and where the first monetary column may be named",
       .filter((file) => !IS_TEST.test(file));
   }
 
-  it("006 AC-31 amending 005 AC-29: exactly nine modules may name unitPrice", () => {
+  /**
+   * The two modules 009 AC-26 adds, and the only two files in the tree that may name the
+   * price snapshot column or the signature column.
+   */
+  const LIFECYCLE_MODULES = [
+    "src/server/counts/count-lifecycle-service.ts",
+    "src/server/counts/count-summary-service.ts",
+  ];
+
+  it("009 AC-26 amending 006 AC-31: exactly eleven modules may name unitPrice", () => {
     const scanned = shippingModules();
 
     // The scan must have looked at something, or the assertion below is vacuous.
@@ -151,14 +175,17 @@ describe("the money boundary, and where the first monetary column may be named",
       .sort();
 
     // #6 is the first feature that legitimately RENDERS a price, so the permitted list
-    // grows from two to nine - and stays a list of FILES, never a directory exemption.
-    // The two presentation files on it sit behind a route no YARD_STAFF session can
-    // reach at all (006 AC-2), which is what justifies them being on it. A tenth module
-    // naming the column turns this red.
+    // grew from two to nine; #9 is the first that WRITES the snapshot, so it grows to
+    // eleven - and stays a list of FILES, never a directory exemption. The two
+    // presentation files on it sit behind a route no YARD_STAFF session can reach at all
+    // (006 AC-2), and the two #9 adds are services no session reaches directly. A twelfth
+    // module naming the column turns this red.
     expect(offenders).toEqual([
       "src/app/item-master/actions.ts",
       "src/components/item-master/ItemTable.tsx",
       "src/components/item-master/PricePanel.tsx",
+      "src/server/counts/count-lifecycle-service.ts",
+      "src/server/counts/count-summary-service.ts",
       "src/server/items/item-master-input.ts",
       "src/server/items/item-price-service.ts",
       "src/server/items/item-service.ts",
@@ -166,6 +193,7 @@ describe("the money boundary, and where the first monetary column may be named",
       "src/server/items/workbook-import-service.ts",
       "src/server/items/workbook-plan.ts",
     ]);
+    expect(offenders).toHaveLength(11);
   });
 
   it("006 AC-31: src/lib and scripts stay at ZERO files naming it", () => {
@@ -204,14 +232,29 @@ describe("the money boundary, and where the first monetary column may be named",
     ]);
   });
 
-  it("006 AC-31: unitPriceSnapshot is STILL named by no shipping module anywhere", () => {
-    // Its first reader is #9. #6 renders a price and never a snapshot, and the fixture
-    // that writes one for AC-11 lives under tests/, which this scan does not reach.
-    const offenders = shippingModules().filter((file) =>
-      /unitPriceSnapshot/.test(readFileSync(file, "utf8")),
-    );
+  it("009 AC-26 replacing 006 AC-31: unitPriceSnapshot is named by exactly those two files", () => {
+    // 006 AC-31 held this at ZERO because the column had no legitimate reader yet. #9 is
+    // both its first writer and its first reader, so the assertion becomes an EXACT LIST
+    // rather than being deleted. A third module naming the snapshot turns this red.
+    const offenders = shippingModules()
+      .filter((file) => /unitPriceSnapshot/.test(readFileSync(file, "utf8")))
+      .sort();
 
-    expect(offenders).toEqual([]);
+    expect(offenders).toEqual(LIFECYCLE_MODULES);
+  });
+
+  it("009 AC-26: signatureSvg is named by the lifecycle service and by nothing else", () => {
+    // The parallel assertion. The signature crosses every other boundary as
+    // `signaturePath` on a shape, so the column itself is named by the one module that
+    // writes it - and by no page, no component and no other service.
+    const offenders = shippingModules()
+      .filter((file) => /signatureSvg/.test(readFileSync(file, "utf8")))
+      .sort();
+
+    expect(offenders).toEqual(["src/server/counts/count-lifecycle-service.ts"]);
+    for (const file of offenders) {
+      expect(LIFECYCLE_MODULES, `${file} may not name the signature column`).toContain(file);
+    }
   });
 });
 

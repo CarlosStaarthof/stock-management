@@ -233,11 +233,29 @@ describe("AC-29, AC-31: no rounding, no price, no migration", () => {
     }
   });
 
-  it("AC-31: nothing Phase A adds names a price column", () => {
+  it("AC-31 amended by 009 AC-26: nothing but #9's two services names a price column", () => {
+    // 008 held this at ZERO for both trees, because the snapshot column had no legitimate
+    // writer yet: `unitPriceSnapshot` stays null while a count is a DRAFT (Invariant 2).
+    // #9 is its first writer and its first reader, so the two modules it adds are exempt
+    // BY NAME - an exact list, never a directory - and #8's own files are unchanged and
+    // still name nothing. `src/lib/count-messages.ts` stays at zero as well, which is why
+    // `itemsWithoutPriceMessage` counts ITEMS.
+    const LIFECYCLE_EXEMPT = [
+      "src/server/counts/count-lifecycle-service.ts",
+      "src/server/counts/count-summary-service.ts",
+    ];
+
     for (const file of [
       ...shippingModulesUnder(...PHASE_A_TREES),
       "src/lib/count-messages.ts",
     ]) {
+      if (LIFECYCLE_EXEMPT.includes(file)) continue;
+
+      expect(read(file), file).not.toContain("unitPrice");
+    }
+
+    // #8's three modules, named, so this cannot pass by the scan finding nothing.
+    for (const file of [SERVICE, PARSER, ENDPOINT]) {
       expect(read(file), file).not.toContain("unitPrice");
     }
   });
@@ -460,17 +478,78 @@ describe("AC-18: there is no running total on this screen, for either role", () 
     "itemsWithoutPrice",
     "itemsWithoutPriceMessage",
     "lineCount",
+    // 009 AC-12: the ADMIN half of `/submit` names WHICH items have no price, because a
+    // warning that names the items is actionable and a number is not. It is a list of item
+    // descriptions and a heading over it — no figure, and no euro (009 AC-21).
+    "LINES_WITHOUT_PRICE_HEADING",
+    "linesWithoutPrice",
     "uncountedLineCount",
     "value",
   ];
 
   const SCANNED = [SERVICE, "src/app/api/counts", ...SCREEN_TREES] as const;
 
-  it("AC-18: the permitted money-shaped names are an exact set of eight", () => {
+  /**
+   * THE TWO FILES 009 ADDS TO THESE TREES THAT DO CARRY A EURO, and the only two.
+   *
+   * AC-18 held all four trees at zero money-shaped names because #8's screen has none:
+   * the price snapshot is null until a count is submitted, so a draft total could only
+   * come from today's prices. #9 is the feature that submits one, and its ADMIN-only
+   * valued summary is where the first total in this product comes from — 009 AC-25 quotes
+   * the rendered figures and 009 AC-24 names
+   * `src/components/stock-entry/ValuedLines.tsx` BY PATH in a source scan, so that file
+   * has to exist, has to be in this tree, and has to be called that.
+   *
+   * So the assertion is AMENDED to an exact TWO-FILE exemption rather than deleted or
+   * loosened into a directory, exactly as 009 AC-26 amended the four scans before it. Both
+   * files sit behind `/stock-entry/counts/[id]/summary`, which is a 307 for every
+   * YARD_STAFF session at the route (009 AC-1, AC-22) — the money boundary here is a SPLIT
+   * OF SURFACES, and these two files are the far side of it.
+   *
+   * Every other file in the four trees stays at zero, which is the assertion that still
+   * matters: #8's counting screen, #9's `/submit` and #9's `/reopen` carry no euro for
+   * either role.
+   */
+  const SUMMARY_SURFACE = [
+    "src/app/stock-entry/counts/[id]/summary/page.tsx",
+    "src/components/stock-entry/ValuedLines.tsx",
+  ];
+
+  /** Every scanned file that is not the ADMIN-only summary. */
+  function moneyFreeSurface(): string[] {
+    return shippingModulesUnder(...SCANNED).filter((file) => !SUMMARY_SURFACE.includes(file));
+  }
+
+  it("009 AC-22: the exempt surface is exactly two files, and both really exist", () => {
+    // Non-vacuity, in both directions: the exemption names files that are really in the
+    // scanned trees, and each really does what it is exempted for.
+    const scanned = shippingModulesUnder(...SCANNED);
+
+    for (const file of SUMMARY_SURFACE) expect(scanned, file).toContain(file);
+    expect(SUMMARY_SURFACE).toHaveLength(2);
+
+    expect(read(SUMMARY_SURFACE[0])).toContain("count-total");
+    expect(read(SUMMARY_SURFACE[1])).toContain("formatPriceExact");
+
+    // And they are the ONLY files in the four scanned trees carrying a euro, which is the
+    // fact 009 AC-22 turns into a browser assertion: of the four count routes, an ADMIN
+    // finds the character in exactly one.
+    //
+    // It belongs HERE rather than beside the per-file loop below, where it could never fail
+    // on its own: that loop already refuses a euro in every non-exempt file, so the same
+    // claim made after it was a restatement. Here the two anchors above carry it, and they
+    // are about RENDERED OUTPUT - `count-total` on the page and `formatPriceExact` in the
+    // component - rather than about a doc comment that happens to spell the character.
+    const carriers = scanned.filter((file) => read(file).includes("€")).sort();
+
+    for (const file of carriers) expect(SUMMARY_SURFACE, file).toContain(file);
+  });
+
+  it("AC-18, 009 AC-12: the permitted money-shaped names are an exact set of ten", () => {
     const scanned: string[] = [];
     const offenders = new Set<string>();
 
-    for (const file of shippingModulesUnder(...SCANNED)) {
+    for (const file of moneyFreeSurface()) {
       for (const identifier of identifiersIn(read(file))) {
         scanned.push(identifier);
         if (/price|value|total|amount/i.test(identifier)) offenders.add(identifier);
@@ -493,8 +572,13 @@ describe("AC-18: there is no running total on this screen, for either role", () 
     // and `uncountedLineCount` are permitted by AC-18 by name but carry no money word, so
     // the scan can never see them. They are asserted present separately, below, which is
     // what keeps the list honest rather than padded.
-    const visibleToTheScan = PERMITTED.filter((name) => /price|value|total|amount/i.test(name));
-    expect(visibleToTheScan).toHaveLength(5);
+    // Sorted, because the list is kept in the reading order of the thing it describes and
+    // a SCREAMING_SNAKE constant does not sort where its lowercase neighbours do.
+    const visibleToTheScan = PERMITTED.filter((name) =>
+      /price|value|total|amount/i.test(name),
+    ).sort();
+    // Seven of the ten now, the two additions being #9's list of unpriced ITEMS.
+    expect(visibleToTheScan).toHaveLength(7);
     expect([...offenders].sort()).toEqual(visibleToTheScan);
 
     for (const counted of ["countedLineCount", "lineCount", "uncountedLineCount"]) {
@@ -503,7 +587,7 @@ describe("AC-18: there is no running total on this screen, for either role", () 
   });
 
   it("AC-18: nothing on the screen multiplies, reduces or imports money", () => {
-    for (const file of shippingModulesUnder(...SCANNED)) {
+    for (const file of moneyFreeSurface()) {
       const source = codeOf(read(file));
 
       expect(source, file).not.toMatch(/quantity\s*\*|\*\s*quantity/);
@@ -513,7 +597,7 @@ describe("AC-18: there is no running total on this screen, for either role", () 
   });
 
   it("AC-18: no euro sign is written anywhere on this surface", () => {
-    for (const file of [...shippingModulesUnder(...SCANNED), QUEUE]) {
+    for (const file of [...moneyFreeSurface(), QUEUE]) {
       expect(read(file), file).not.toContain("€");
     }
   });

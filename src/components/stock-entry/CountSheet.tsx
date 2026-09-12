@@ -656,11 +656,15 @@ export function CountSheet({
             return (
               <li
                 key={line.itemId}
+                // The anchor #9's uncounted list points at: `/stock-entry/counts/<id>#line-
+                // <itemId>`, with no query string, so a filtered view is not what a person
+                // comes back to and the row is guaranteed to be rendered (009 AC-4).
+                id={`line-${line.itemId}`}
                 data-testid="count-line"
                 data-item-id={line.itemId}
                 data-counted={line.quantity === null ? "false" : "true"}
                 data-save-state={state}
-                className="flex flex-col gap-1 border-b border-slate-200 py-2"
+                className="flex scroll-mt-4 flex-col gap-1 border-b border-slate-200 py-2"
               >
                 <div className="flex items-baseline justify-between gap-2">
                   <span className="min-w-0 break-words text-sm font-medium">

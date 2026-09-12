@@ -527,7 +527,7 @@ is what places them in the `chromium-stock-entry` project.
 30. **AC-30** — **No migration, no new table, and the workbook untouched.** `prisma/schema.prisma`, every directory under `prisma/migrations/` and `prisma/migrations/migration_lock.toml` are **byte-identical** to their state before this feature — every column #9 writes was shipped by #4 — and `npx prisma migrate status` reports no drift and no pending migration. `TRUNCATED_TABLES` in `src/server/test-db.ts` is unchanged and still equal as a set to exactly `["Item", "ItemLocation", "ItemPrice", "ItemType", "StockCount", "StockCountLine", "Supplier", "User"]`, so **020 AC-4's `information_schema` equality passes untouched**: this feature adds no table, and the audit trail is `StockCount.notes` for the reason argued under *The audit record*. `git status --porcelain -- Samples` is empty.
 31. **AC-31** — **Which checks survive with no database,** mirroring 003 AC-23, 004 AC-26, 005 AC-27, 006 AC-32, 007 AC-29 and 008 AC-32. With `DATABASE_URL`, `DIRECT_URL`, `TEST_DATABASE_URL` and `TEST_DIRECT_URL` all pointing at a hostname that does not resolve: `npx prisma validate`, `npm run typecheck`, `npm run lint`, `npm run test:unit` and `npm run build` each exit `0`, and both `init` scripts exit `0` ending with `[OK] Environment ready (database checks skipped)`. No module this feature adds opens a connection at import time, and each of the three new pages declares `export const dynamic = "force-dynamic"`, so none is prerendered against a database during `build`. The criteria provable without Postgres are AC-3's message half, AC-5, AC-8's reducer and scan halves, AC-18's `parseReopenReason` half, AC-20's pure half, AC-22's spy-thunk half, AC-24, AC-25's rounding half, AC-26, AC-29's message half and AC-30's scan half; every other criterion needs a database or a browser and lives in `*.db.test.ts` or `tests/e2e/`. `docs/architecture.md` gains **no** new dependency exception, because `signature-path.ts` lives in `src/lib/` (see *Services*).
 32. **AC-32** — **The gate is green in full, and the e2e suite stays self-cleaning at `retries: 0`.** `npx prisma validate`, `npm run typecheck`, `npm run lint`, `npm run test:unit`, `npm run test:e2e`, `npx prisma migrate status` and `npm run test:db` all pass, and `./init.ps1` ends with `[OK] Environment ready` having **executed** the database checks. `playwright.config.ts` is **byte-identical**: the three new specs are named `tests/e2e/stock-entry-submit.spec.ts`, `stock-entry-approve.spec.ts` and `stock-entry-signature.spec.ts`, so the existing `testMatch: /stock-entry-.*\.spec\.ts/` places them in the `chromium-stock-entry` project. `RESERVED_YEAR` in `tests/e2e/support/stock-entry.ts` gains `submit: 2098`, `approve: 2099`, `signature: 2100`; each file deletes only **its own** year in `beforeAll` and `afterAll`, never the range, and asserts through `realCountIds()` that the set of `StockCount` ids with `periodYear < 2090` is identical before and after (007 AC-30). `Item`, `ItemPrice` and `ItemLocation` row counts are unchanged by the run, and no spec adds or removes an `ItemPrice` outside a transaction it reverses. **2100 is the last reservable year**, because 007 AC-8 caps a submitted period at 2100 and every e2e count is created through that flow; the next stock-entry spec file needs that cap raised or a file merged, and the implementer records this in `tests/e2e/support/stock-entry.ts` beside `RESERVED_YEAR`. Two consecutive full `npm run test:e2e` runs report `0 flaky` and `0 failed`; if the suite is not stable at `retries: 0`, the implementer reports that rather than restoring retries or raising a timeout.
-33. **AC-33** — **Exactly which shipped assertions change, and they are named.** Six, and no others: (a) `tests/unit/project-contract.test.ts`'s nine-file `unitPrice` list becomes eleven; (b) its `unitPriceSnapshot` "no shipping module anywhere" assertion becomes an exact two-file list; (c) `tests/unit/stock-entry-contract.test.ts`'s "no shipping module names a status or a column past DRAFT" gains the same exact two-file exemption; (d) the same file's "the only files in those trees naming the forbidden strings are tests" list gains those two files; (e) its `MUTATION_EXEMPT` grows from one file to two; (f) its "each action obtains its actor with exactly one `requireUser()` call" expects **five** actions rather than two. `git diff` on those two test files shows no other change. Everything else passes **unmodified**: 006 AC-2 and AC-24, 007 AC-17 (whose admin clause is still "exactly one offender, `itemsWithoutPrice`", because `getCount`'s shape is untouched), 007 AC-25's `src/app/stock-entry/**` half, 008 AC-9, AC-17, AC-22, AC-24 and AC-31, 020 AC-4, `tests/unit/hashing-boundary.test.ts`, `tests/unit/lint-fence.test.ts`, `tests/unit/count-entry-contract.test.ts`, and every `*.db.test.ts` and `tests/e2e/*.spec.ts` shipped by #3 through #20. If any of those cannot pass unmodified, that is a blocker to report in `progress/impl_entry_submit.md`, not a licence to edit it.
+33. **AC-33** — **Exactly which shipped assertions change, and they are named.** **Fifteen**, and no others: (a) `tests/unit/project-contract.test.ts`'s nine-file `unitPrice` list becomes eleven; (b) its `unitPriceSnapshot` "no shipping module anywhere" assertion becomes an exact two-file list; (c) `tests/unit/stock-entry-contract.test.ts`'s "no shipping module names a status or a column past DRAFT" gains the same exact two-file exemption; (d) the same file's "the only files in those trees naming the forbidden strings are tests" list gains those two files; (e) its `MUTATION_EXEMPT` grows from one file to two; (f) its "each action obtains its actor with exactly one `requireUser()` call" expects **five** actions rather than two; **(g)** the same file's 007 AC-15 price scan gains the same exact two-file exemption; **(h)** its 007 AC-5 signature scan gains it too; and **(i)** in `tests/unit/count-entry-contract.test.ts`, 008 AC-31's price scan gains it as well. **(g), (h) and (i) follow from AC-26 rather than being a separate choice:** AC-26 authorises the two new services to name `unitPriceSnapshot` and `signatureSvg`, and those three scans forbid exactly those strings in exactly the tree the services live in, so AC-26 cannot hold while they are unmodified. Each exemption is an exact list of the same two files, never a directory, and each carries a non-vacuity assertion naming #8's own modules so the scan cannot pass by finding nothing. **(j) to (n), added 2026-09-12 after Phase B — four bookkeeping, one substantive.** Bookkeeping, each forced by this spec's own Contract: the action count becomes **five**; the `force-dynamic` page count becomes **seven**; the e2e spec count becomes **ten**; and the signature-naming list grows from two files to **four**. Substantive: **008 AC-18** holds `src/app/stock-entry/**` and `src/components/stock-entry/**` at **zero** money-shaped identifiers and zero `€`, while this spec's AC-24 names `src/components/stock-entry/ValuedLines.tsx` by path and AC-25 puts a total on `/summary`. Those cannot both hold. The scan gains an **exact two-file exemption** and, with it, a **new** assertion that those two are the *only* files in the four trees carrying a euro — so the criterion becomes stricter in the trees it still governs rather than merely smaller. **(o), added 2026-09-12 at review:** `tests/unit/stock-entry-contract.test.ts`'s `AC-3: no loading.tsx at or above src/app/stock-entry/` gains `src/app/stock-entry/counts/[id]` to its directory list — a hunk of `+` lines only, in a block this feature had not previously touched. It is required because that directory is now the parent of three routes whose `307`s AC-1 asserts, and a `loading.tsx` dropped there would degrade `/summary`'s and `/reopen`'s refusals into `200`s with nothing to notice — the failure #3, #6 and #7 each recorded, at an address the guard was not watching. `git diff` on the contract test files shows no other change. Everything else passes **unmodified**: 006 AC-2 and AC-24, 007 AC-17 (whose admin clause is still "exactly one offender, `itemsWithoutPrice`", because `getCount`'s shape is untouched), 007 AC-25's `src/app/stock-entry/**` half, 008 AC-9, AC-17, AC-22 and AC-24, 020 AC-4, `tests/unit/hashing-boundary.test.ts`, `tests/unit/lint-fence.test.ts`, and every `*.db.test.ts` and `tests/e2e/*.spec.ts` shipped by #3 through #20. If any of those cannot pass unmodified, that is a blocker to report in `progress/impl_entry_submit.md`, not a licence to edit it.
 34. **AC-34** — **The guarantees are proved by mutation, because TypeScript does not protect any of them.** Before closing, the implementer breaks each of six guarantees on purpose, records the failing test name and the exit code in `progress/impl_entry_submit.md`, and restores the tree byte-identically (verified by `git status --porcelain` and a hash): (1) add `currentPrice` to `SubmitReviewForStaff` and populate it — `npm run typecheck` stays exit `0`, and AC-21's walk goes red; (2) write `unitPriceSnapshot = 0` instead of `null` for a priceless line — AC-12 goes red; (3) rewrite an existing snapshot on re-submit — AC-19 goes red; (4) let `submitCount` proceed with one `null` quantity — AC-3 goes red; (5) let `submitCount` accept an empty signature — AC-6 goes red; (6) leave `signatureSvg` in place on reopen — AC-18 goes red. Mutation (1) is reported explicitly against #8's finding that a money leak typechecks cleanly and is caught only by scans. If any mutation leaves the suite green, that is the finding, and it is reported rather than patched over.
 
 ## Out of scope
@@ -574,6 +574,140 @@ is what places them in the `chromium-stock-entry` project.
   is one deliberate act at the end, with the phone in hand, and it may require a connection.
 - **Bulk approval.** No "approve both yards", no "approve everything for September".
 - **CI.** `init` remains the gate.
+
+## Post-approval amendments
+
+### AC-33 undercounted, 2026-09-12 — found by the implementer before the gate
+
+AC-33 said **six** shipped assertions change and listed
+`tests/unit/count-entry-contract.test.ts` and 008 AC-31 among those passing **unmodified**.
+The tree needs **nine**, and three of the extra three are in assertions AC-33 promised would
+not move.
+
+The contradiction is between two of this spec's own criteria, and AC-26 is the substantive
+one: it **authorises** `count-lifecycle-service.ts` and `count-summary-service.ts` to name
+`unitPriceSnapshot` and `signatureSvg`. But 007 AC-15's price scan, 007 AC-5's signature scan
+and 008 AC-31's price scan each **forbid exactly those strings in exactly the tree those two
+services live in**. AC-26 cannot hold while all three are unmodified. AC-33 was the
+bookkeeping of AC-26 and the bookkeeping was wrong.
+
+The implementer applied the minimal exact-file amendment to each rather than stopping,
+recorded all three, and noted each is a three-line revert — leaving the judgement to the
+reviewer rather than to itself. The coordinator has ratified them here because the argument
+is forced: the alternative is to forbid the first writer of a column from naming it.
+
+Each exemption is an **exact list of the same two files**, never a directory, and each keeps
+a non-vacuity assertion naming #8's own modules so the scan cannot pass by finding nothing —
+the rule established in #5 and held through every feature since.
+
+Two further notes from the same report, recorded rather than amended:
+
+- **`ValuedLine` and `CountSummaryForAdmin` are declared in `count-summary-service.ts`, not
+  in `src/types/stock-count.ts`.** They name the snapshot column, and AC-26 pins that string
+  to exactly two files. The criterion beat the prose; it is the layout #6 used for `PriceRow`.
+- **A Phase B hazard, left unwritten rather than solved with dead code:** the summary shape's
+  key *is* `unitPriceSnapshot`, so any page or component reading it directly would turn 006
+  AC-31's `src/app` / `src/components` half red. The route out is a mapper inside
+  `count-summary-service.ts` handing the component a row keyed `amount`. Phase B's problem,
+  flagged here so it is not discovered at review.
+
+### AC-33 undercounted again, 2026-09-12 — nine to fourteen, after Phase B
+
+The same bookkeeping problem as the first amendment, one phase later, and found the same
+way: by the implementer counting what actually had to move rather than trusting the list.
+
+Four of the five are bookkeeping this spec's own Contract forces — five server actions,
+seven `force-dynamic` pages, ten e2e specs, and a signature-naming list that grows from two
+files to four. None of them is a choice.
+
+**The fifth is substantive and worth recording properly.** 008 AC-18 holds
+`src/app/stock-entry/**` and `src/components/stock-entry/**` at **zero** money-shaped
+identifiers and zero `€`. That was right for #8, which carried no money on any surface. It
+cannot survive #9, whose AC-24 names `ValuedLines.tsx` by path and whose AC-25 puts a total
+on `/summary`.
+
+The resolution is an **exact two-file exemption**, plus an assertion that those two files are
+the only ones in the scanned trees carrying a euro — the same shape every exemption in this
+project has taken since #5: a list of files, never a directory.
+
+**Corrected 2026-09-12, after the #9 review.** This paragraph originally claimed the scanned
+surface grew "from two trees to four" and that the amendment was therefore "a stronger claim
+about a larger surface". Neither is true: `SCANNED` is unchanged in the diff, and only **one**
+of the two exempt files contains a `€` at all — `summary/page.tsx` holds none, because the
+symbol comes from `formatPriceExact`. The honest statement is narrower: the criterion went
+from "none in these trees" to "exactly these two files and no others in the same trees",
+which is the smallest change that lets AC-24 and AC-25 hold. The coordinator wrote the
+overstatement while ratifying the amendment; the reviewer disproved it by reading the diff.
+
+### A second instance of the Phase A hazard, found unflagged
+
+Phase A flagged that the summary shape's key *is* `unitPriceSnapshot`, so a component reading
+it would turn 006 AC-31 red, and proposed a mapper. Phase B implemented it — `summaryRows`
+maps on to `SummaryRow.unitAmount`, and 006 AC-31's `src/app` / `src/components` half is
+**unmodified** at the three item-master files.
+
+It then found **a second instance nobody had flagged**: `CountLifecycleFacts` carries
+`submittedAt` and `approvedAt`, which 007 AC-25 forbids in `src/app/stock-entry/**`. The
+answer generalises the same rule — `lifecycleSentences()` in `src/lib/count-messages.ts`, so
+the pages read **no instant at all** and render a sentence instead.
+
+The pattern is now explicit for later features: **when a shape's key is a forbidden string,
+the boundary is crossed by a mapper in the service, not by a scan exemption for the screen.**
+
+### AC-33 undercounted a third time, 2026-09-12 — fourteen to fifteen
+
+Ruled by the coordinator at review. The fifteenth is **(o)**: the `loading.tsx` guard list
+gains `src/app/stock-entry/counts/[id]`, promoted from the reviewer's R2 to a required
+change because that directory became the parent of three protected routes in this feature,
+and the guard did not know about it.
+
+**AC-33 has now been wrong three times — six, nine, fourteen, fifteen.** That is not bad
+luck. It is a criterion whose subject is *other criteria* rather than the code, so every
+change elsewhere in the feature can falsify it, and nothing recomputes it. The three
+corrections were each found by an agent counting what actually moved rather than reading the
+list.
+
+**For #10, #11 and later: do not write another AC-33.**
+
+**Corrected 2026-09-12 by the #9 reviewer.** This paragraph first claimed *"three separate
+contradictions surfaced because someone had to reconcile a list."* Two did; the third did not,
+and the difference decides the replacement:
+
+| Contradiction | What surfaced it |
+|---|---|
+| AC-26 vs 007 AC-15 / 007 AC-5 / 008 AC-31 | **The suite went red.** The list only forced it to be written down |
+| 008 AC-18 vs AC-24 / AC-25 | **The suite went red**, same mechanism |
+| The fifteenth — `loading.tsx` at `counts/[id]` | **Nothing was red.** A reviewer compared a scan's *input list* against the new route tree. **AC-33 would not have caught it either** — nothing catches an assertion that is *missing* |
+
+So the **number** never caught anything. What caught things was a red suite forcing a decision,
+and the requirement that every amended assertion be **named and justified**, which made those
+decisions visible to a reviewer. The replacement keeps the second and drops the first.
+
+Its failure mode is also worse than being wrong: **a stale count reads as a completed
+reconciliation**, which is exactly how B1 and B2 travelled three phases inside a report that
+said AC-33 was satisfied.
+
+**The replacement, and it should be mechanical rather than human.** The reviewer's addition,
+which is stronger than what it replaces: derive the set from the tree instead of maintaining
+it. Intersect `git diff -U0 <base>` with each `it()`'s line range, subtract new blocks and
+module-level consts — about twenty lines — and assert *"the set of pre-existing `it()` blocks
+whose bodies changed equals the list in this spec"*. That goes red **in the session that caused
+it**, not three phases later, which is the one property AC-33 never had. The `it()`-range
+heuristic needs the const-between-tests subtraction to be honest — four false positives across
+three files in this feature — and § 3 of `progress/impl_entry_submit.md` documents that step
+precisely enough to encode.
+
+### One further correction to the record
+
+The implementer found that the reviewer's suggested mutation for Required 1 — loosening
+`count-entry-service.ts:117` to `status === "SUBMITTED"` — turns the suite red at refusal
+**1**, not at the new fifth assertion, because both go through one shared guard. A mutation
+that goes red for the wrong reason is not evidence for the assertion under test.
+
+It therefore built **M12b**: the same loosening with refusal 1 voided, which produced
+`expected 200 to be 409` — the endpoint genuinely accepting a write against an `APPROVED`
+count. That is the transcript AC-17's fifth refusal rests on, and the sharper mutation was
+the implementer's own, not the review's.
 
 ## Open questions
 

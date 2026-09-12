@@ -1,4 +1,9 @@
-import { ConflictError, NotFoundError, ValidationError } from "@/server/errors";
+import {
+  ConflictError,
+  ForbiddenError,
+  NotFoundError,
+  ValidationError,
+} from "@/server/errors";
 
 /**
  * What `startCountAction` hands back to the confirm form when the write was refused.
@@ -112,5 +117,51 @@ export function toStartCountState(
   if (error instanceof NotFoundError) {
     return { error: error.message, field: null, existingCountId: null, attempt: attempt + 1 };
   }
+  throw error;
+}
+
+/* ------------------------------------------------------------------ #9, the lifecycle */
+
+/**
+ * What `submitCountAction`, `approveCountAction` and `reopenCountAction` hand back.
+ *
+ * ONE SHAPE FOR THE THREE, because the three screens answer a refusal the same way and a
+ * second spelling of "what came back" is a second thing to keep in step. `field` is what
+ * turns a message into an inline one: `ValidationError.field` names the control that was
+ * refused — the pad, the reason or the lines — and the screen puts the sentence beside
+ * that control, which is how a rejected submission keeps what was drawn on screen rather
+ * than making somebody draw it twice for a reason that was not the drawing (009 AC-29).
+ *
+ * A `ConflictError` and a `NotFoundError` name no field and render above the form.
+ * Anything that is not a domain error is re-thrown to #2's error boundary, which is why no
+ * Prisma or Postgres string can reach a screen through this path (009 AC-28).
+ */
+export type CountActionState = {
+  error: string | null;
+  /** The control the sentence belongs beside: the pad, the reason or the lines. */
+  field: string | null;
+  /** Bumped on every response, so a client can key on "something happened". */
+  attempt: number;
+};
+
+export const EMPTY_COUNT_ACTION_STATE: CountActionState = {
+  error: null,
+  field: null,
+  attempt: 0,
+};
+
+export function toCountActionState(error: unknown, attempt: number): CountActionState {
+  if (error instanceof ValidationError) {
+    return { error: error.message, field: error.field, attempt: attempt + 1 };
+  }
+  if (error instanceof ConflictError || error instanceof NotFoundError) {
+    return { error: error.message, field: null, attempt: attempt + 1 };
+  }
+  if (error instanceof ForbiddenError) {
+    // Part 6 at the SERVICE, surfaced rather than swallowed: a staff session that reaches
+    // one of these actions by any route is told the same sentence 006 AC-4 pinned.
+    return { error: error.message, field: null, attempt: attempt + 1 };
+  }
+
   throw error;
 }

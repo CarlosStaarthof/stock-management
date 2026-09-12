@@ -171,3 +171,126 @@ export type SaveQuantitiesResult = {
   countedLineCount: number;
   uncountedLineCount: number;
 };
+
+/* --------------------------------------------------- #9, signing and approving */
+
+/**
+ * The three things that ever happen to a count after it leaves `DRAFT`.
+ *
+ * There is no audit TABLE (009 Open question 6): `specs/domain-model.md` Part 3 is the
+ * schema field for field, so a `StockCountEvent` model would mean amending the domain
+ * model, writing a migration and adding an entry to `TRUNCATED_TABLES` — a decision for
+ * the user rather than a side effect of this feature. The trail is `StockCount.notes`,
+ * append-only, one line per event, built and parsed by `src/lib/count-audit.ts`.
+ */
+export type AuditEvent = "SUBMITTED" | "APPROVED" | "REOPENED";
+
+export type AuditEntry = {
+  /** ISO instant, exactly as `Date.prototype.toISOString` spells it. */
+  at: string;
+  event: AuditEvent;
+  actorName: string;
+  actorEmail: string;
+  /** `REOPENED` only, and validated to a single line of 1–200 characters (009 AC-18). */
+  reason: string | null;
+};
+
+/**
+ * Who signed, who approved, when, and the drawn signature itself.
+ *
+ * ONE SHAPE FOR BOTH ROLES (009 AC-21), because there is no monetary fact it could
+ * carry: `getLifecycleFacts` returns values that are deeply equal for a `YARD_STAFF`
+ * actor and for an `ADMIN` on the same count, and a criterion asserts exactly that.
+ */
+export type CountLifecycleFacts = {
+  countId: string;
+  status: CountStatus;
+  /** ISO instant. */
+  submittedAt: string | null;
+  signedByName: string | null;
+  signedAt: string | null;
+  /** The exact stored `d`, byte for byte (009 AC-7). Never a raster, never a document. */
+  signaturePath: string | null;
+  approvedByName: string | null;
+  approvedAt: string | null;
+  /**
+   * Permitted, and recorded rather than refused (009 Open question 2, AC-16): the team is
+   * two people at most, and a single administrator must be able to close the month.
+   */
+  signedAndApprovedBySamePerson: boolean;
+  audit: AuditEntry[];
+};
+
+/** A line nobody has counted, named so the way out of Invariant 5 is a link (009 AC-4). */
+export type UncountedLine = { itemId: string; description: string; unitLabel: string | null };
+
+/**
+ * The review-and-sign screen, for either role. NO EURO, FOR EITHER ROLE (009 AC-21):
+ * every monetary figure in this feature lives on `/summary`, which no staff session can
+ * reach at all.
+ */
+export type SubmitReviewForStaff = {
+  countId: string;
+  locationName: string;
+  /** `"2026-09"`. */
+  periodKey: string;
+  /** `"September 2026"`. */
+  periodLabel: string;
+  /** `"YYYY-MM-DD"`. */
+  countDate: string;
+  status: CountStatus;
+  lineCount: number;
+  countedLineCount: number;
+  uncountedLineCount: number;
+  /** Every uncounted line, in sheet order. Never truncated, never filtered (009 AC-4). */
+  uncounted: UncountedLine[];
+  lifecycle: CountLifecycleFacts;
+};
+
+export type SubmitReviewForAdmin = SubmitReviewForStaff & {
+  /** Invariant 4, as a count of ITEMS rather than a euro figure. */
+  itemsWithoutPrice: number;
+  /** Which ones. A warning that names the items is actionable; a number is not. */
+  linesWithoutPrice: { itemId: string; description: string }[];
+};
+
+/**
+ * There is no staff summary, and `never` is the honest spelling of that.
+ *
+ * `getCountSummary` raises `ForbiddenError` for a staff actor rather than returning a
+ * reduced object, because there is no money-free thing it could usefully answer — that is
+ * `getCount`'s job and it already exists (009 AC-22). `ValuedLine` and
+ * `CountSummaryForAdmin` are NOT declared here: they name the price snapshot column, and
+ * 009 AC-26 permits exactly two files in the whole tree to do that. They are declared in
+ * `src/server/counts/count-summary-service.ts`, which is one of them — the same layout
+ * #6 used for `PriceRow` in `src/server/items/price-selection.ts`.
+ */
+export type CountSummaryForStaff = never;
+
+/** What `submitCount` receives after the signature grammar has had it (009 AC-5). */
+export type SubmitCountInput = { signaturePath: string };
+
+/**
+ * ONE ROW OF THE ADMIN SUMMARY, AS A SCREEN MAY HOLD IT (009 AC-26).
+ *
+ * The service's own `ValuedLine` carries the price on the snapshot column itself, and 009
+ * AC-26 pins that string to exactly two files — neither a page nor a component. So the
+ * value crosses the last boundary on a field named for what it IS on a screen, an amount,
+ * rather than for the column it came from: `summaryRows` in
+ * `src/server/counts/count-summary-service.ts` is the one mapper, and it lives in a file
+ * that is allowed to say both words.
+ *
+ * `unitAmount` is `null` and never `0` for a line whose item had no price in force
+ * (Invariant 4): `noPrice` is what the row is tagged with, and `lineValue` is `"0"`.
+ */
+export type SummaryRow = {
+  itemId: string;
+  description: string;
+  unitLabel: string | null;
+  quantity: string | null;
+  /** A decimal STRING, or `null` when no price was in force (Invariant 4). */
+  unitAmount: string | null;
+  /** `quantity × (the amount ?? 0)`, exact and unrounded. Rendered rounded. */
+  lineValue: string;
+  noPrice: boolean;
+};

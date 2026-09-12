@@ -1,55 +1,12 @@
 # Current session
 
-**Feature:** #9 `entry_submit`
-**Spec:** `specs/features/009-entry_submit.md` (approved 2026-09-12, 34 criteria)
-**Started:** 2026-09-12
-**Status:** in_progress — spec approved by the user, implementation not started
+**Feature:** none
+**Status:** idle
 
 ## Plan
 
-**The last feature of M2.** Three new routes under `/stock-entry/counts/[id]` — `/submit`,
-`/summary` (ADMIN-only), `/reopen` (ADMIN-only) — three server actions, one lifecycle
-service, and the price snapshot. **No JSON endpoint and no `fetch`**: each act is one
-deliberate submission, and a `<form>` posting to a server action still works when the bundle
-does not.
-
-Dispatched as cold phases:
-
-- **Phase A** — `count-lifecycle-service.ts` (`submitCount`, `approveCount`, `reopenCount`,
-  `getLifecycleFacts`), the price-snapshot selection, the signature validator, the money
-  shaping for the three surfaces, and their `*.db.test.ts`.
-- **Phase B** — the three screens, the signature pad, the three server actions, and the e2e.
-- **Phase C** — mutation proofs, the report, the work log.
-
-## Approach
-
-**The money boundary is resolved by splitting surfaces, not by hiding fields.**
-`/stock-entry/counts/[id]` and `/submit` carry **no euro for either role**; every monetary
-figure lives on `/summary`, which 307s a staff session. That keeps Part 6's "Stock Takes is
-money-free for both roles" literally true, and it is why 007 AC-17 and 008 AC-17 pass
-**unmodified**. The admin's submit-time warning is a **list of item names, not a number**.
-
-The money-key walk runs on three surfaces with three exact expected sets, asserted as sets so
-a seventh money-shaped key turns them red.
-
-Decisions the user approved (spec § Open questions), each strikeable:
-
-1. A `SUBMITTED` count can be reopened, not only an `APPROVED` one — otherwise a known-wrong
-   count must be approved before it can be undone.
-2. **Self-approval is permitted and recorded**, not refused: two people at most, and a single
-   admin must be able to close the month. `signedAndApprovedBySamePerson` makes it visible.
-3. **The total is the sum of exact line values, rounded once**, not the sum of rounded lines
-   (Invariant 10). Stated cost: the rendered column may not add to the rendered total to the
-   last cent.
-4. Signature is SVG path data in a fixed `0 0 600 300` space, capped at 400 points / 6000
-   characters, as named constants.
-5. Signing needs JavaScript and the screen says so; everything else works with the bundle off.
-6. **The audit trail is `StockCount.notes`, append-only — no audit table**, because one would
-   mean amending Part 3, a migration and a `TRUNCATED_TABLES` entry. Scheduled separately if
-   wanted.
-7. The reopen reason is shown to both roles; the full trail is ADMIN-only.
-8. Approve and reopen each get a confirming screen — one of them destroys a signature.
-9. Every euro lives on `/summary`; nothing on the shared pages.
+<!-- On starting a feature: record the feature, the time, and a brief plan here BEFORE
+     writing any code. See AGENTS.md section 4. -->
 
 ## Work log
 
@@ -57,18 +14,7 @@ Decisions the user approved (spec § Open questions), each strikeable:
 
 ## Verification
 
-Gate at the moment of approval — full run, database checks executed:
-
-```
-bash ./init.sh                        ->  init exit=0, 580 s
-    [ok]   19 features, 1 in progress
-    [ok]   typecheck / lint / test:unit (501) / test:e2e (117)
-==> Database
-    [ok]   database reachable / prisma migrate status / npm run test:db
-[OK] Environment ready
-```
-
-<!-- Paste the closing run here. It must not say "(database checks skipped)" — C2.1. -->
+<!-- Paste the tail of the init run, including the [OK] line. -->
 
 ## Blockers
 
@@ -76,33 +22,62 @@ None.
 
 ## Next
 
-Phase A, gate, Phase B, gate, Phase C, gate, reviewer, sign-off. Then M2 is complete and
-**#16 deploy** becomes reachable.
+Feature **#10 `stock_takes_history`**. Its spec `specs/features/010-stock_takes_history.md`
+does not exist yet, so the next action is a `spec-writer` run.
 
-### Rules in force
+**M2 is complete.** #9 is closed; `progress/history.md` holds its summary. A count can be
+started, walked on a phone, signed, submitted and approved with its prices frozen.
 
-- **The coordinator runs `init`; agents run targeted commands only.**
+## Order from here, decided by the user on 2026-09-12
+
+**#10 history → #11 analysis → #16 deploy.** The user was offered deploying now — counting
+works, and they had asked early on to deploy "after counting works" — and chose to finish the
+read-only screens first so the first real users see a complete picture.
+
+The reason that is right: a yard user can currently count and submit but **cannot look at
+anything they submitted**. Deploying before #10 would hand someone a phone app that takes
+numbers and shows nothing back, which is how people quietly return to the paper sheet.
+
+## What #10 is
+
+Part 6: **Stock Takes is money-free for BOTH roles**, and **"one version of the screen, not
+two"** — a screen that renders differently per role is a screen whose every future change has
+to be checked twice. This is the first screen where that is the design, rather than a
+consequence of splitting routes as #9 did.
+
+A calendar of historical counts, a Dublin / Clonmel / Both selector, previous- and next-count
+jumps, and a read-only detail of item, quantity and unit. Phone-first.
+
+Note the starting state: the database holds the counts #7, #8 and #9's own e2e specs created
+in reserved years (2090+), and whatever real counts have been made. #10's empty state and its
+reserved-year hygiene both matter (007 AC-30: a spec deletes only counts carrying **its own**
+reserved `periodYear`, never a range).
+
+## Rules in force
+
+- The coordinator runs `init`; agents run targeted commands only.
 - **Only one `npm run test:db` in flight at a time.**
 - **No gate while an agent is active on the tree.**
 - Cold phases, not resumed agents. Reviewers told what not to re-derive, starting from
   `git diff`.
 
-### The five invariants this feature makes real
+## Carried into #10 and #11
 
-- **5** — `null` blocks submission.
-- **11** — no submission without a signature; reopening **clears** it.
-- **2** — `unitPriceSnapshot` written **once**, at submit, never rewritten. #9 is its first
-  writer, so **006 AC-31's permitted-module list must be amended deliberately** — an exact
-  list, never a directory exemption.
-- **4** — a line whose item has no price contributes `0` **and raises a warning**; never
-  silently zero-valued stock. Eleven items currently have no price.
-- **3** — an APPROVED count is immutable; only an ADMIN reopens it, audited.
-
-### Carried forward
-
-- **TypeScript does not protect the money boundary.** #8 proved it: a `currentPrice` added to
-  a staff shape typechecked cleanly, twice, and six scans caught it. Every guarantee here is
-  an assertion over a value or a response body.
-- **020 AC-4 turns red if a table is added and not to `TRUNCATED_TABLES`.** #9 should need no
-  migration — #4 already shipped the signature and approval columns.
-- 008's Observation 8: the `pagehide` flush e2e cannot prove the listener fired.
+- **Do not write another AC-33.** #9's amendments explain why: a criterion whose subject is
+  *other criteria* has no mechanical check and no owner, and it was wrong four times — six,
+  nine, fourteen, fifteen. Worse, a stale count reads as a *completed* reconciliation, which
+  is how two findings travelled three phases inside a report that said it was satisfied. If
+  the guarantee is wanted, derive it from the tree: intersect `git diff -U0` with each
+  `it()`'s line range, subtract new blocks and module-level consts, and assert the set. That
+  fails in the session that causes it.
+- **The mapper rule:** when a shape's key is a forbidden string, the boundary is crossed by a
+  **mapper in the service**, not by a scan exemption for the screen.
+- **A mutation turning something red is not evidence that the right thing is protected.** #9
+  hit that three times: M7 (red in #9, green in #8's own suite), M12 (red at the wrong
+  refusal, sharing a guard), M14 (the reviewer's own, which broke only the route's response
+  mapping and was the only one that proved the assertion under test).
+- **TypeScript does not protect the money boundary.** Assertions do — #8 proved it with
+  `typecheck` exit 0 twice.
+- **020 AC-4 turns red** if a table is added to the schema and not to `TRUNCATED_TABLES`.
+- The Neon test branch degraded twice on 2026-09-11 and recovered both times. A failure
+  reading `Can't reach database server` rather than an assertion is the branch, not the tree.
