@@ -118,11 +118,53 @@ describe("AC-1: the section needs no new route protection", () => {
 describe("AC-4, AC-5: the actor is the session and there is no second identity", () => {
   const actions = read("src/app/stock-entry/actions.ts");
 
-  it("AC-4: startCountAction obtains its actor with exactly one requireUser() call", () => {
-    // Call sites, not mentions: the file's own comment says there is exactly one, and a
-    // scan that counted the comment would be asserting about prose.
-    expect(actions.match(/await requireUser\(\)/g)).toHaveLength(1);
-    expect(actions).toContain("const actor = await requireUser();");
+  /**
+   * NARROWED BY 008 AC-19 — per action rather than per file, and strictly stronger.
+   *
+   * #7 shipped one action in this file and counted `await requireUser()` over the whole
+   * file, which was the same thing. #8 adds the second and last one, `saveQuantitiesAction`
+   * (008 AC-16's no-JavaScript transport), and 008 AC-19 requires "one `requireUser()` call
+   * each" — so the count moves from the file to each action's own body, and the number of
+   * actions in the file is itself asserted. A third action, or a second call inside either
+   * of these two, turns this red; under the old spelling a third action with no call at all
+   * would have kept it green.
+   *
+   * It is the same narrowing 008 AC-28 made to the mutation scan below: name what is
+   * allowed, exactly, rather than widen the scan to a directory.
+   */
+  const EXPORTED_ACTIONS = ["startCountAction", "saveQuantitiesAction"];
+
+  /** One exported action's source, from its signature to the end of the file or the next. */
+  function bodyOf(name: string): string {
+    const starts = EXPORTED_ACTIONS.map((action) => ({
+      action,
+      at: actions.indexOf(`export async function ${action}(`),
+    }))
+      .filter((found) => found.at !== -1)
+      .sort((left, right) => left.at - right.at);
+
+    const index = starts.findIndex((found) => found.action === name);
+    expect(index, `${name} is not exported from actions.ts`).toBeGreaterThanOrEqual(0);
+
+    const from = starts[index].at;
+    const to = index + 1 < starts.length ? starts[index + 1].at : actions.length;
+    return actions.slice(from, to);
+  }
+
+  it("AC-4, 008 AC-19: each action obtains its actor with exactly one requireUser() call", () => {
+    // Exactly two actions in the file, and they are these two.
+    const exported = [...actions.matchAll(/export async function (\w+)\(/g)].map(
+      (match) => match[1],
+    );
+    expect(exported.sort()).toEqual([...EXPORTED_ACTIONS].sort());
+
+    for (const action of EXPORTED_ACTIONS) {
+      // Call sites, not mentions: the file's own comment says there is exactly one per
+      // action, and a scan that counted the comment would be asserting about prose.
+      expect(bodyOf(action).match(/await requireUser\(\)/g), action).toHaveLength(1);
+      expect(bodyOf(action), action).toContain("const actor = await requireUser();");
+    }
+
     // No wrapper that could grow a second path.
     expect(actions).not.toMatch(/getCurrentUser|requireRole|requireAdminPage/);
   });
@@ -239,12 +281,51 @@ describe("AC-25: this feature inserts and reads, and does nothing else", () => {
     expect(read("src/app/stock-entry/new/confirm/page.tsx")).toContain('status === "DRAFT"');
   });
 
-  it("AC-25: no update, upsert or delete of a count or a line anywhere in the feature", () => {
+  /**
+   * NARROWED BY 008 AC-28 — not deleted, and not loosened into a directory exemption.
+   *
+   * #8 is the feature that types the numbers in, so exactly one module in these two trees
+   * may now write a line: `saveQuantities`. It is named as a LITERAL in an exact list, so
+   * a second exemption turns this test red, which is the whole difference between a
+   * permission and a hole. What that one file may write is asserted immediately below, and
+   * asserted structurally by `count-entry-service.db.test.ts` (008 AC-8), which compares
+   * every other column of every line before and after the write.
+   */
+  const MUTATION_EXEMPT: string[] = ["src/server/counts/count-entry-service.ts"];
+
+  it("AC-25, 008 AC-28: no update, upsert or delete except in the one exempt file", () => {
+    // Non-vacuity: the exemption names a file that really is in the scanned tree, and
+    // there is exactly one of them.
+    expect(shipping).toContain(MUTATION_EXEMPT[0]);
+    expect(MUTATION_EXEMPT).toHaveLength(1);
+
     for (const file of shipping) {
+      if (MUTATION_EXEMPT.includes(file)) continue;
+
       expect(read(file), file).not.toMatch(
         /stockCount(Line)?\s*\.\s*(update|updateMany|upsert|delete|deleteMany)\b/,
       );
     }
+  });
+
+  it("008 AC-28: the exempt file writes one column of one model, and nothing else", () => {
+    const source = read(MUTATION_EXEMPT[0]);
+
+    // No mutation of a count of ANY kind, and no insert or delete of anything at all: #7
+    // created the lines and #8 only ever fills them in.
+    expect(source).not.toMatch(
+      /stockCount\s*\.\s*(update|updateMany|upsert|create|createMany|delete|deleteMany)\b/,
+    );
+    expect(source).not.toMatch(
+      /stockCountLine\s*\.\s*(upsert|create|createMany|delete|deleteMany)\b/,
+    );
+
+    // The only operations it performs on a line, in the order it performs them.
+    const operations = [...source.matchAll(/stockCountLine\s*\.\s*(\w+)/g)].map(
+      (match) => match[1],
+    );
+    expect(operations).toEqual(["updateMany", "findMany"]);
+    expect(source).toContain("data: { quantity }");
   });
 
   it("AC-25: the only files in those trees naming the forbidden strings are tests", () => {
@@ -338,9 +419,18 @@ describe("AC-30: the e2e suite keeps 006 AC-35's shape", () => {
       years.add(match?.[1] ?? "");
     }
 
-    // Four spec files, four distinct years: two files can never collide on a yard and a
+    // Seven spec files, seven distinct years: two files can never collide on a yard and a
     // month, which `@@unique([locationId, periodYear, periodMonth])` would otherwise refuse.
-    expect(years.size).toBe(4);
+    //
+    // #7 shipped four. 008 AC-33 adds three — `quantities: 2095`, `filters: 2096` and
+    // `autosave: 2097` — and the number moves with them rather than being loosened into a
+    // `toBeGreaterThan`: the whole value of this assertion is that it is an equality, so a
+    // spec file that quietly reused a sibling's year would turn it red.
+    const specs = shippingModulesUnder("tests/e2e").filter((file) =>
+      /stock-entry-.*\.spec\.ts$/.test(file),
+    );
+    expect(specs).toHaveLength(7);
+    expect(years.size).toBe(7);
   });
 });
 

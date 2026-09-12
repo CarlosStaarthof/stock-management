@@ -1,8 +1,15 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  QUANTITY_INVALID,
+  SAVE_HAS_NO_EDITS,
+  SAVE_HAS_TOO_MANY_EDITS,
+  SAVE_REQUEST_INVALID,
+} from "@/lib/count-messages";
+import {
   parseCountDateOrDefault,
   parseMonthKeyParam,
+  parseSaveQuantitiesBody,
   parseStartCountInput,
   parseYardChoice,
   parseYardChoiceOrNull,
@@ -170,5 +177,128 @@ describe("the query parameters, which navigate and never throw", () => {
     expect(parseYardChoiceOrNull("BANANA")).toBeNull();
     expect(parseYardChoiceOrNull(undefined)).toBeNull();
     expect(parseYardChoiceOrNull(["DUBLIN", "CLONMEL"])).toBeNull();
+  });
+});
+
+/* ------------------------------------------------ 008 AC-10: the endpoint's body */
+
+/** The `ValidationError` a body must be refused with, or a failure naming the body. */
+function refusalFor(raw: unknown): ValidationError {
+  try {
+    parseSaveQuantitiesBody(raw);
+  } catch (error) {
+    if (error instanceof ValidationError) return error;
+    throw error;
+  }
+  throw new Error(`${JSON.stringify(raw)} was accepted`);
+}
+
+describe("008 AC-10: parseSaveQuantitiesBody", () => {
+  it("008 AC-10: a well-formed body becomes canonical edits, in the order sent", () => {
+    const edits = parseSaveQuantitiesBody({
+      edits: [
+        { itemId: "item_a", quantity: "12.5" },
+        { itemId: "item_b", quantity: null },
+        { itemId: "item_c", quantity: "0" },
+        { itemId: " item_d ", quantity: "21,6128" },
+      ],
+    });
+
+    expect(edits).toEqual([
+      { itemId: "item_a", quantity: "12.5" },
+      { itemId: "item_b", quantity: null },
+      { itemId: "item_c", quantity: "0" },
+      { itemId: "item_d", quantity: "21.6128" },
+    ]);
+  });
+
+  it("008 AC-5: an empty string is not counted, and is not a zero", () => {
+    const edits = parseSaveQuantitiesBody({ edits: [{ itemId: "item_a", quantity: "" }] });
+
+    expect(edits).toEqual([{ itemId: "item_a", quantity: null }]);
+    expect(edits[0].quantity).not.toBe("0");
+  });
+
+  it("008 AC-10: a quantity that is a JSON number is refused, never converted", () => {
+    // `docs/architecture.md` § Money and quantities: a quantity crosses this boundary as a
+    // decimal string. A float round trip is where `21.6128` goes to be lost.
+    const refusal = refusalFor({ edits: [{ itemId: "item_a", quantity: 12.5 }] });
+
+    expect(refusal.message).toBe(SAVE_REQUEST_INVALID);
+    expect(refusal.field).toBe("edits");
+  });
+
+  it("008 AC-10: a body that is not the documented shape is refused", () => {
+    for (const raw of [
+      null,
+      undefined,
+      "edits",
+      42,
+      [],
+      {},
+      { edits: "all of them" },
+      { edits: {} },
+      { edits: [{ itemId: 7, quantity: "1" }] },
+      { edits: [{ itemId: "", quantity: "1" }] },
+      { edits: [{ itemId: "item_a" }] },
+      { edits: [{ quantity: "1" }] },
+    ]) {
+      expect(refusalFor(raw).message, JSON.stringify(raw) ?? "undefined").toBe(
+        SAVE_REQUEST_INVALID,
+      );
+    }
+  });
+
+  it("008 AC-10, AC-19: an unknown extra key is refused rather than ignored", () => {
+    // A body carrying an identity is a forged body. It is refused outright, so there is no
+    // question of the key having been honoured (AC-19).
+    expect(refusalFor({ edits: [], role: "ADMIN" }).message).toBeTruthy();
+    expect(
+      refusalFor({ edits: [{ itemId: "item_a", quantity: "1" }], role: "ADMIN" }).message,
+    ).toBe(SAVE_REQUEST_INVALID);
+    expect(
+      refusalFor({ edits: [{ itemId: "item_a", quantity: "1", note: "x" }] }).message,
+    ).toBe(SAVE_REQUEST_INVALID);
+    expect(
+      refusalFor({
+        edits: [{ itemId: "item_a", quantity: "1" }],
+        userId: "user_admin",
+      }).message,
+    ).toBe(SAVE_REQUEST_INVALID);
+  });
+
+  it("008 AC-10: a save carries between 1 and 200 edits", () => {
+    expect(refusalFor({ edits: [] }).message).toBe(SAVE_HAS_NO_EDITS);
+
+    const many = Array.from({ length: 201 }, (_unused, index) => ({
+      itemId: `item_${index}`,
+      quantity: "1",
+    }));
+    expect(refusalFor({ edits: many }).message).toBe(SAVE_HAS_TOO_MANY_EDITS);
+
+    // The boundary itself is accepted: 200 is a ceiling, not a refusal.
+    expect(parseSaveQuantitiesBody({ edits: many.slice(0, 200) })).toHaveLength(200);
+  });
+
+  it("008 AC-7: a bad quantity is the parser's own sentence, naming the field", () => {
+    const refusal = refusalFor({
+      edits: [
+        { itemId: "item_a", quantity: "12.5" },
+        { itemId: "item_b", quantity: "21.61285" },
+      ],
+    });
+
+    expect(refusal.message).toBe(QUANTITY_INVALID);
+    expect(refusal.field).toBe("quantity");
+  });
+
+  it("008 AC-27: no refusal carries a Zod, Prisma or Postgres string", () => {
+    for (const raw of [null, { edits: [] }, { edits: [{ itemId: "a", quantity: 1 }] }]) {
+      const message = refusalFor(raw).message;
+
+      for (const forbidden of ["Zod", "zod", "expected", "prisma", "Prisma", "SQLSTATE"]) {
+        expect(message, forbidden).not.toContain(forbidden);
+      }
+    }
   });
 });

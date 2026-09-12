@@ -1,4 +1,13 @@
-import { CHOOSE_A_YARD, yardNotFound } from "@/lib/count-messages";
+import { z } from "zod";
+
+import {
+  CHOOSE_A_YARD,
+  SAVE_HAS_NO_EDITS,
+  SAVE_HAS_TOO_MANY_EDITS,
+  SAVE_REQUEST_INVALID,
+  yardNotFound,
+} from "@/lib/count-messages";
+import { parseQuantity } from "@/server/counts/quantity-input";
 import { NotFoundError, ValidationError } from "@/server/errors";
 import {
   parseCountDate,
@@ -8,7 +17,7 @@ import {
 } from "@/server/counts/period";
 import { locationCodeSchema } from "@/server/items/item-master-input";
 import type { LocationCode } from "@/server/items/item-master-input";
-import type { StartCountInput, StartCountRawInput } from "@/types/stock-count";
+import type { QuantityEdit, StartCountInput, StartCountRawInput } from "@/types/stock-count";
 
 /**
  * Every input crossing into `src/server/counts/`, parsed at the edge
@@ -114,4 +123,61 @@ export function parseYardChoiceOrNull(raw: string | string[] | undefined): Locat
 
   const parsed = locationCodeSchema.safeParse(value.trim());
   return parsed.success ? parsed.data : null;
+}
+
+/* ------------------------------------------------------- #8, the save at the edge */
+
+/**
+ * The body `POST /api/counts/<id>/lines` accepts, parsed at the edge of `src/server/`
+ * (`docs/architecture.md` § Validation), so `saveQuantities` receives already-valid data.
+ *
+ * A QUANTITY IS A DECIMAL STRING OR `null`, NEVER A JSON NUMBER (008 AC-10). The union
+ * below is the whole of that rule: `12.5` as a number is refused with `400` rather than
+ * accepted and converted, because a JavaScript number is where `21.6128` goes to be
+ * quietly rounded and because a client that sends one has a bug worth hearing about.
+ *
+ * STRICT, at both levels. An unknown key is refused rather than ignored — a body carrying
+ * `role` or `userId` is a forged body, and answering it with `400` is a clearer thing than
+ * silently dropping the key it hoped would be honoured (008 AC-10, AC-19).
+ *
+ * 200 edits is the ceiling: two and a half Dublin sheets in one request, which no counter
+ * types and no autosave batch reaches.
+ */
+const MAX_EDITS_PER_SAVE = 200;
+
+const quantityEditSchema = z.strictObject({
+  itemId: z.string().trim().min(1),
+  quantity: z.union([z.string(), z.null()]),
+});
+
+export const saveQuantitiesBodySchema = z.strictObject({
+  edits: z.array(quantityEditSchema).min(1).max(MAX_EDITS_PER_SAVE),
+});
+
+/** The three refusals, told apart by which rule the body broke rather than by Zod's text. */
+function saveRequestMessage(issue: z.core.$ZodIssue | undefined): string {
+  const isEditsLength = issue?.path.length === 1 && issue.path[0] === "edits";
+
+  if (isEditsLength && issue?.code === "too_small") return SAVE_HAS_NO_EDITS;
+  if (isEditsLength && issue?.code === "too_big") return SAVE_HAS_TOO_MANY_EDITS;
+  return SAVE_REQUEST_INVALID;
+}
+
+/**
+ * The edits in a request body, canonical and in the order they were sent.
+ *
+ * Each quantity goes through `parseQuantity` — the same function the no-JavaScript action
+ * and the client call — so a bad number is a `ValidationError` naming `quantity` before any
+ * database work happens, and no other module needs a numeric regular expression (AC-7).
+ */
+export function parseSaveQuantitiesBody(raw: unknown): QuantityEdit[] {
+  const result = saveQuantitiesBodySchema.safeParse(raw);
+  if (!result.success) {
+    throw new ValidationError("edits", saveRequestMessage(result.error.issues[0]));
+  }
+
+  return result.data.edits.map((edit) => ({
+    itemId: edit.itemId,
+    quantity: parseQuantity(edit.quantity),
+  }));
 }

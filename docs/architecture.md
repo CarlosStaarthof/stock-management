@@ -26,6 +26,7 @@ app/  →  server/  →  prisma
 app/  →  components/
 app/  →  lib/
 server/ → lib/
+components/ → server/   (PURE shared rules only — the named exception below)
 ```
 
 Arrows point one way only.
@@ -72,6 +73,29 @@ Arrows point one way only.
   cleaner layering and remains open; it was not done here because it would touch every
   file #3 committed.
 - `src/server/` **never** imports from `src/app/` or `src/components/`.
+- `src/components/**` may import from `src/server/**` **only** where the module is a pure
+  rule the client and the server are required to share, and it may import nothing else from
+  `src/server/`. A component still **never** imports `PrismaClient`, `@/server/db`, or any
+  module that reaches a database, a clock or the environment.
+
+  *The exception, added 2026-09-12 while closing #8.* Spec 008's Contract places
+  `quantity-input.ts` (the accepted-quantity grammar) and `entry-filters.ts` (the facet
+  build and the filter predicate) in `src/server/counts/`, and AC-7 requires the browser to
+  refuse exactly what the server refuses — which is only guaranteed if both call the **same
+  function**, not two spellings of one rule. `src/components/stock-entry/CountSheet.tsx` and
+  `EntryFilters.tsx` therefore import `parseQuantity`, the facet helpers
+  (`ENTRY_FACET_CATEGORIES`, `emptySelection`, `isEmptySelection`, `filterEntryRows`,
+  `hiddenSummary`) and their types from there, plus `DomainError` from `@/server/errors`
+  under exactly the reasoning of the `lib` exception above. Both modules are genuinely pure —
+  `quantity-input.ts` imports only `@/lib/count-messages` and `@/server/errors`,
+  `entry-filters.ts` only `@/lib/count-messages` and a type — so neither drags a server-only
+  runtime into a bundle. Like the `lib → @/server/errors` exception above, this one is
+  narrow and named: it permits a shared **rule**, never a shared **service**. It is
+  **not** enforced by ESLint — the constraint is kept by review, and the invariant that is
+  enforced (no component imports `PrismaClient` or `@/server/db`) is asserted by
+  `tests/unit/count-entry-contract.test.ts` over both screen trees. If a third such module
+  appears, the better answer is to move all of them under `src/lib/` rather than to widen
+  this paragraph again.
 
 Why: the Excel workbook this replaces failed because presentation and calculation were
 the same thing. When a formula lived in a cell, moving the cell broke the number.

@@ -406,7 +406,17 @@ export async function getCount(
         select: {
           itemId: true,
           quantity: true,
-          item: { select: { description: true, unitLabel: true } },
+          item: {
+            select: {
+              description: true,
+              unitLabel: true,
+              // The Supplier and Type filters of #8 read their values from here, so the
+              // panel is built from the count's own lines rather than from a second query
+              // that could disagree with them (008 AC-20).
+              supplier: { select: { name: true } },
+              itemType: { select: { name: true } },
+            },
+          },
         },
       },
     },
@@ -422,6 +432,10 @@ export async function getCount(
       itemId: line.itemId,
       description: line.item.description,
       unitLabel: line.item.unitLabel,
+      // Nullable because Dublin!A45 has no supplier in the workbook; the screen renders
+      // the item master's own `No supplier` for it (008 AC-20).
+      supplierName: line.item.supplier?.name ?? null,
+      typeName: line.item.itemType.name,
       // A line whose link was unassigned after the count started has no position left on
       // the sheet; it sorts to the end rather than to the top, where a 0 would put it.
       sortOrder: sortOrders.get(line.itemId) ?? Number.MAX_SAFE_INTEGER,

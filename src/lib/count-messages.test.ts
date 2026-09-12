@@ -1,36 +1,64 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  CLEAR_FILTERS as ITEM_MASTER_CLEAR_FILTERS,
+  NO_SUPPLIER as ITEM_MASTER_NO_SUPPLIER,
+  NO_UNIT as ITEM_MASTER_NO_UNIT,
+} from "@/lib/item-master-messages";
+import {
+  ALL_CHANGES_SAVED,
+  APPLY_FILTERS,
   BACK_TO_THE_CALENDAR,
   CHOOSE_A_YARD,
+  CLEAR_FILTERS,
   CONTINUE_THIS_COUNT,
   COUNT_DATE_INVALID,
+  COUNT_HAS_NO_ITEMS,
   COUNT_NO_LONGER_EXISTS,
+  COUNT_READ_ONLY,
   COUNT_STATUS_LABEL,
+  ITEM_NOT_ON_COUNT,
   MONTH_NAMES,
   NEXT_MONTH,
+  NONE_HELD,
   NOT_COUNTED,
+  NOT_SAVED,
   NO_COUNTS_IN_MONTH,
   NO_COUNTS_RECORDED_YET,
+  NO_MATCHING_LINES,
+  NO_SUPPLIER,
   NO_UNIT,
   OPEN_THE_EXISTING_COUNT,
   PERIOD_INVALID,
   PERIOD_LABEL,
   PREVIOUS_MONTH,
+  QUANTITY_INVALID,
+  QUANTITY_NEGATIVE,
+  QUANTITY_TOO_LARGE,
+  RETRY_NOW,
+  SAVE_NOW,
+  SAVING,
   START_A_COUNT,
   START_COUNT,
+  SUPPLIER_FILTER_LABEL,
   TODAY,
+  TYPE_FILTER_LABEL,
+  UNIT_FILTER_LABEL,
   WEEKDAY_HEADINGS,
+  changesNotSaved,
   countAlreadyExists,
   countClosesMessage,
   countedSummary,
   countingAs,
   draftAlreadyExists,
+  facetOptionLabel,
+  filtersHiding,
   formatDayLabel,
   formatMonthLabel,
   formatPeriodLabelOf,
   itemsWithoutPriceMessage,
   noItemsOnSheet,
+  showingSummary,
   yardNotFound,
 } from "@/lib/count-messages";
 import { COUNT_STATUSES } from "@/types/stock-count";
@@ -188,5 +216,74 @@ describe("the date formatters", () => {
     // The failure path docs/verification.md Level 1 requires. Callers validate first
     // (`parsePeriodKey`, `buildMonthGrid`); this asserts what a bug would look like.
     expect(formatMonthLabel("2026-13")).toContain("undefined");
+  });
+});
+
+/* --------------------------------------------------- 008 AC-26: the entry screen */
+
+describe("008 AC-26: every literal spec 008 quotes is exported from this module", () => {
+  it("008 AC-26: the controls and the save states read exactly as the criteria quote them", () => {
+    expect(NOT_COUNTED).toBe("Not counted");
+    expect(NONE_HELD).toBe("None held");
+    expect(SAVE_NOW).toBe("Save now");
+    expect(RETRY_NOW).toBe("Retry now");
+    expect(APPLY_FILTERS).toBe("Apply filters");
+    expect(CLEAR_FILTERS).toBe("Clear filters");
+
+    expect(ALL_CHANGES_SAVED).toBe("All changes saved");
+    expect(SAVING).toBe("Saving…");
+    expect(NOT_SAVED).toBe("Not saved");
+  });
+
+  it("008 AC-26: Clear filters, No supplier and No unit are #6's words, not a second spelling", () => {
+    // One literal, two screens: a message that exists twice will one day exist in two
+    // spellings, and the counting screen and the item master must agree.
+    expect(CLEAR_FILTERS).toBe(ITEM_MASTER_CLEAR_FILTERS);
+    expect(NO_SUPPLIER).toBe(ITEM_MASTER_NO_SUPPLIER);
+    expect(NO_UNIT).toBe(ITEM_MASTER_NO_UNIT);
+  });
+
+  it("008 AC-20: the three filter categories are labelled Supplier, Type and Unit", () => {
+    expect(SUPPLIER_FILTER_LABEL).toBe("Supplier");
+    expect(TYPE_FILTER_LABEL).toBe("Type");
+    expect(UNIT_FILTER_LABEL).toBe("Unit");
+    expect(facetOptionLabel("Kelly", 14)).toBe("Kelly (14)");
+  });
+
+  it("008 AC-13, AC-14: the unsaved banner counts changes, and says what happens next", () => {
+    expect(changesNotSaved(3)).toBe(
+      "3 changes not saved. They will be sent when the connection returns.",
+    );
+    expect(changesNotSaved(1)).toBe(
+      "1 change not saved. It will be sent when the connection returns.",
+    );
+  });
+
+  it("008 AC-23: showing and hiding, including the two singulars and the empty string", () => {
+    expect(showingSummary(12, 82)).toBe("Showing 12 of 82 items");
+
+    expect(filtersHiding(70, 31)).toBe("Filters are hiding 70 items, 31 not counted.");
+    expect(filtersHiding(1, 1)).toBe("Filters are hiding 1 item, 1 not counted.");
+    expect(filtersHiding(70, 0)).toBe("Filters are hiding 70 items, all counted.");
+    // Nothing hidden is nothing to say, and the element is not rendered at all.
+    expect(filtersHiding(0, 0)).toBe("");
+  });
+
+  it("008 AC-9, AC-25: the refusals a counter can actually meet", () => {
+    expect(COUNT_READ_ONLY).toBe("This count has been submitted and can no longer be edited.");
+    expect(COUNT_HAS_NO_ITEMS).toBe("This count has no items.");
+    expect(NO_MATCHING_LINES).toBe("No items match these filters.");
+    expect(ITEM_NOT_ON_COUNT).toBe("That item is not on this count.");
+  });
+
+  it("008 AC-7: the three quantity messages, quoted verbatim by the criterion", () => {
+    expect(QUANTITY_INVALID).toBe("Quantity must be a number with up to 4 decimal places.");
+    expect(QUANTITY_NEGATIVE).toBe("Quantity cannot be negative.");
+    expect(QUANTITY_TOO_LARGE).toBe("Quantity must be less than 100000000.");
+  });
+
+  it("008 AC-24: the progress line is #7's, unchanged, and `0` counts as counted", () => {
+    expect(countedSummary(12, 82)).toBe("12 of 82 counted");
+    expect(countedSummary(0, 82)).toBe("0 of 82 counted");
   });
 });

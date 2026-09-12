@@ -1,8 +1,13 @@
-import { NO_UNIT as ITEM_MASTER_NO_UNIT, locationNotFound } from "@/lib/item-master-messages";
+import {
+  CLEAR_FILTERS as ITEM_MASTER_CLEAR_FILTERS,
+  NO_SUPPLIER as ITEM_MASTER_NO_SUPPLIER,
+  NO_UNIT as ITEM_MASTER_NO_UNIT,
+  locationNotFound,
+} from "@/lib/item-master-messages";
 import type { CountStatus, Period } from "@/types/stock-count";
 
 /**
- * Every user-facing literal spec 007 quotes, in one module.
+ * Every user-facing literal specs 007 and 008 quote, in one module.
  *
  * AC-26: the screen and the test read the SAME literal, so they cannot drift apart — a
  * message that exists twice is a message that will one day exist in two spellings.
@@ -210,3 +215,137 @@ export function itemsWithoutPriceMessage(count: number): string {
   const items = count === 1 ? "1 item on this sheet has" : `${count} items on this sheet have`;
   return `${items} no price recorded. Their lines will count as 0 when this count is submitted.`;
 }
+
+/* ===================================================================================
+ * Feature #8 — the counting screen.
+ *
+ * Everything below is a literal spec 008 quotes, in the module 008 AC-26 names: the screen,
+ * the service, the endpoint and the test all read the SAME string, so a re-spelling is a
+ * compile error rather than a silently failing assertion. `Clear filters`, `No supplier`
+ * and `No unit` are imported from `src/lib/item-master-messages.ts` rather than re-spelled,
+ * as #7 already does for `No unit`.
+ * =================================================================================== */
+
+/* -------------------------------------------------------------- entry: the controls */
+
+/**
+ * `0` is one tap (008 AC-6). The most recent Dublin count has 35 of 82 rows at zero or
+ * blank, and a counter who has to type `0` thirty-five times goes back to paper.
+ */
+export const NONE_HELD = "None held";
+
+/** The no-JavaScript submit control (008 AC-16). With JavaScript it flushes the queue. */
+export const SAVE_NOW = "Save now";
+
+/** 008 AC-13: an immediate retry, beside the banner that says how many are waiting. */
+export const RETRY_NOW = "Retry now";
+
+/** The `<noscript>` submit of the filter panel (008 AC-22). */
+export const APPLY_FILTERS = "Apply filters";
+
+/** #6's words, one literal, two screens (008 AC-23, AC-26). */
+export const CLEAR_FILTERS = ITEM_MASTER_CLEAR_FILTERS;
+
+/* ---------------------------------------------------------------- entry: save state */
+
+/** The header when nothing is pending (008 AC-12). */
+export const ALL_CHANGES_SAVED = "All changes saved";
+
+/** The header while a request is in flight — text, never a spinner that hides the row. */
+export const SAVING = "Saving…";
+
+/** The row that the server has not taken yet (008 AC-13). The typed value stays put. */
+export const NOT_SAVED = "Not saved";
+
+/**
+ * `3 changes not saved. They will be sent when the connection returns.` (008 AC-13, AC-14).
+ *
+ * It is the counterweight to the progress line: the page never claims a number is stored,
+ * only that it has been entered, so a counter always knows which of the two they have.
+ */
+export function changesNotSaved(pending: number): string {
+  return pending === 1
+    ? "1 change not saved. It will be sent when the connection returns."
+    : `${pending} changes not saved. They will be sent when the connection returns.`;
+}
+
+/* ------------------------------------------------------------------ entry: filters */
+
+/** The three filter categories, in the order the panel renders them (008 AC-20). */
+export const SUPPLIER_FILTER_LABEL = "Supplier";
+export const TYPE_FILTER_LABEL = "Type";
+export const UNIT_FILTER_LABEL = "Unit";
+
+/** An item with no supplier, spelled as the item master spells it (008 AC-20). */
+export const NO_SUPPLIER = ITEM_MASTER_NO_SUPPLIER;
+
+/** `Kelly (14)` — an option's accessible name is its own value and its own count. */
+export function facetOptionLabel(value: string, count: number): string {
+  return `${value} (${count})`;
+}
+
+/** `Showing 12 of 82 items` (008 AC-23). Rendered only while a filter is active. */
+export function showingSummary(shown: number, total: number): string {
+  return `Showing ${shown} of ${total} items`;
+}
+
+/**
+ * `Filters are hiding 70 items, 31 not counted.` (008 AC-23).
+ *
+ * A FILTER MUST NOT BE ABLE TO HIDE THE FACT THAT YOU HAVE NOT FINISHED, which is why the
+ * second clause exists at all: hiding 70 rows is ordinary, hiding 31 uncounted ones is the
+ * thing that ends with a count submitted half done. `(0, 0)` is the empty string and the
+ * element is not rendered — there is nothing to warn about when nothing is hidden.
+ */
+export function filtersHiding(hidden: number, hiddenUncounted: number): string {
+  if (hidden === 0) return "";
+
+  const items = hidden === 1 ? "1 item" : `${hidden} items`;
+  const rest = hiddenUncounted === 0 ? "all counted" : `${hiddenUncounted} not counted`;
+  return `Filters are hiding ${items}, ${rest}.`;
+}
+
+/** A filter that matches nothing — the moment the trap above is most likely to spring. */
+export const NO_MATCHING_LINES = "No items match these filters.";
+
+/* ----------------------------------------------------------------- entry: refusals */
+
+/**
+ * A count that can no longer be edited (008 AC-9). The branch that raises it is written
+ * `status !== "DRAFT"`; the sentence lives here so no module under `src/server/counts/` or
+ * `src/app/stock-entry/` has to name a status past DRAFT (007 AC-25).
+ */
+export const COUNT_READ_ONLY = "This count has been submitted and can no longer be edited.";
+
+/** 007 AC-13 refuses a yard with an empty sheet, so this is a state only a bug reaches. */
+export const COUNT_HAS_NO_ITEMS = "This count has no items.";
+
+/** An edit naming a line this count does not have (008 AC-8). */
+export const ITEM_NOT_ON_COUNT = "That item is not on this count.";
+
+/* --------------------------------------------------------------- entry: a quantity */
+
+/**
+ * The three refusals `parseQuantity` raises (008 AC-7), each naming what is wrong with the
+ * number rather than what Postgres would have said about it.
+ *
+ * FIVE DECIMAL PLACES ARE REFUSED, NEVER ROUNDED: `specs/product-brief.md` says never
+ * round, and `Decimal(12, 4)` would round `21.61285` silently.
+ */
+export const QUANTITY_INVALID = "Quantity must be a number with up to 4 decimal places.";
+export const QUANTITY_NEGATIVE = "Quantity cannot be negative.";
+
+/**
+ * `Decimal(12, 4)` holds 8 digits before the point. The refusal is what keeps a
+ * `numeric field overflow` (SQLSTATE 22003) from ever reaching a screen (008 AC-27).
+ */
+export const QUANTITY_TOO_LARGE = "Quantity must be less than 100000000.";
+
+/** A request body that is not the shape the endpoint documents (008 AC-10). */
+export const SAVE_REQUEST_INVALID = "That save could not be read.";
+
+/** A save carrying no edit at all: the client has nothing to send and should not have. */
+export const SAVE_HAS_NO_EDITS = "A save must carry at least one line.";
+
+/** 200 lines is more than two and a half Dublin sheets, so a larger batch is not a count. */
+export const SAVE_HAS_TOO_MANY_EDITS = "A save may carry at most 200 lines.";

@@ -2,9 +2,12 @@ import Link from "next/link";
 import type { JSX } from "react";
 
 import { requireUserPage } from "@/app/page-guards";
+import { CountSheet } from "@/components/stock-entry/CountSheet";
 import {
   BACK_TO_THE_CALENDAR,
+  COUNT_HAS_NO_ITEMS,
   COUNT_NO_LONGER_EXISTS,
+  COUNT_READ_ONLY,
   COUNT_STATUS_LABEL,
   NOT_COUNTED,
   NO_UNIT,
@@ -14,24 +17,38 @@ import {
   itemsWithoutPriceMessage,
 } from "@/lib/count-messages";
 import { getCount } from "@/server/counts/count-service";
+import { buildEntryFacets, parseFilterSelection } from "@/server/counts/entry-filters";
 import { NotFoundError } from "@/server/errors";
 import type { CountForAdmin, CountForStaff } from "@/types/stock-count";
 
 /**
- * THE COUNT — the yard, the period, the day, who is counting, and the sheet.
+ * THE COUNT — the yard, the period, the day, who is counting, and the sheet you type into.
  *
- * Every quantity reads `Not counted` (Invariant 5), and there is no input, select or
- * textarea anywhere in the line list: typing a quantity is #8's, and submitting is #9's.
- * This feature creates the thing all three operate on and does nothing to it afterwards.
+ * #7 created this page and left every quantity reading `Not counted`; #8 turns those cells
+ * into inputs. The page itself stays a Server Component and stays `force-dynamic`: it
+ * reads the count, builds the three filter categories from the count's OWN lines, parses
+ * the query string into a selection, and hands all of it to `CountSheet`, which is
+ * server-rendered into the first response and only then hydrates (008 AC-16).
+ *
+ * THERE IS STILL NO `loading.tsx` AT OR ABOVE `src/app/stock-entry/`, and this is the
+ * third feature to record why: a Suspense boundary flushes the shell, after which a
+ * `redirect()` thrown by a Server Component can no longer be a `307` (007 AC-3, 008 AC-1).
  *
  * THE SHAPE IS THE SESSION'S. `getCount` chooses it through `shapeForRole` from
  * `actor.role` alone, so an `ADMIN` is told how many items on this sheet have no price and
- * a `YARD_STAFF` user is not — and is not merely not shown it, but never has it built
- * (AC-16, AC-17). `countId` is the only argument this page derives from the request.
+ * a `YARD_STAFF` user is not — and is not merely not shown it, but never has it built.
+ * Nothing else differs between the two roles' markup, and neither role gets a running
+ * total, a line value or a per-row tag: `SaveQuantitiesResult` carries no money either, so
+ * a staff session can obtain none of it from this screen at all (008 AC-17, AC-18).
  *
- * A `countId` that does not exist renders a sentence and a way back rather than throwing
- * into the error boundary (AC-24), because a stale link is an ordinary thing to click and
- * not a bug.
+ * NO QUERY STRING CAN MAKE THIS PAGE THROW (007 AC-21, 008 AC-22). An unknown filter value,
+ * a repeated one, an empty one or a parameter that is not one of the three is ignored by
+ * `parseFilterSelection`, which is given the facets precisely so it knows which values
+ * really exist.
+ *
+ * THREE STATES BESIDES THE ORDINARY ONE (008 AC-25): a `countId` that does not exist is a
+ * sentence and a way back, a count that is no longer a `DRAFT` is read-only, and a count
+ * with no lines says so rather than rendering an empty table.
  */
 export const dynamic = "force-dynamic";
 
@@ -41,8 +58,10 @@ function hasPriceWarning(count: CountForStaff | CountForAdmin): count is CountFo
 
 export default async function CountPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }): Promise<JSX.Element> {
   const user = await requireUserPage();
   const { id } = await params;
@@ -75,6 +94,14 @@ export default async function CountPage({
     throw error;
   }
 
+  const path = `/stock-entry/counts/${count.countId}`;
+  const facets = buildEntryFacets(count.lines);
+  const selection = parseFilterSelection(await searchParams, facets);
+
+  // Written `!== "DRAFT"` and never by naming the two statuses past it: those words live in
+  // `src/types/stock-count.ts` and the sentence in `src/lib/count-messages.ts` (007 AC-25).
+  const editable = count.status === "DRAFT";
+
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-col gap-4 p-4 sm:p-6">
       <header className="flex flex-col gap-2">
@@ -99,15 +126,12 @@ export default async function CountPage({
           >
             {COUNT_STATUS_LABEL[count.status]}
           </span>
-          <span data-testid="counted-summary" className="text-slate-700">
-            {countedSummary(count.countedLineCount, count.lineCount)}
-          </span>
         </p>
       </header>
 
       {/*
         ADMIN only, and by construction rather than by a component deciding: a YARD_STAFF
-        value has no such key, so there is nothing here to hide (Invariant 4, AC-16).
+        value has no such key, so there is nothing here to hide (Invariant 4, 008 AC-17).
       */}
       {hasPriceWarning(count) && count.itemsWithoutPrice > 0 ? (
         <p
@@ -118,40 +142,65 @@ export default async function CountPage({
         </p>
       ) : null}
 
-      <div data-testid="count-lines" className="w-full">
-        <table className="w-full border-collapse text-sm">
-          <thead>
-            <tr className="border-b border-slate-300 text-left">
-              <th scope="col" className="px-2 py-2 font-semibold">
-                Item
-              </th>
-              <th scope="col" className="px-2 py-2 font-semibold">
-                Unit
-              </th>
-              <th scope="col" className="px-2 py-2 text-right font-semibold">
-                Quantity
-              </th>
-            </tr>
-          </thead>
-          <tbody>
+      {count.lineCount === 0 ? (
+        <p
+          data-testid="count-empty"
+          className="rounded border border-slate-300 bg-slate-50 px-3 py-2 text-sm"
+        >
+          {COUNT_HAS_NO_ITEMS}
+        </p>
+      ) : editable ? (
+        <CountSheet
+          countId={count.countId}
+          userId={user.id}
+          path={path}
+          lines={count.lines}
+          facets={facets}
+          initialSelection={selection}
+        />
+      ) : (
+        <>
+          {/*
+            A count that is away is read-only, and says so in the domain's own words: no
+            input, no *None held*, and the quantities as text (008 AC-9, AC-25).
+          */}
+          <p
+            data-testid="count-read-only"
+            role="alert"
+            className="rounded border border-slate-300 bg-slate-50 px-3 py-2 text-sm"
+          >
+            {COUNT_READ_ONLY}
+          </p>
+          <p data-testid="counted-summary" className="text-sm text-slate-700">
+            {countedSummary(count.countedLineCount, count.lineCount)}
+          </p>
+
+          {/* The same stacked shape the editable sheet uses, for the same reason (AC-30). */}
+          <ul data-testid="count-lines" className="flex w-full flex-col">
             {count.lines.map((line) => (
-              <tr
+              <li
                 key={line.itemId}
                 data-testid="count-line"
                 data-item-id={line.itemId}
-                className="border-b border-slate-200 align-top"
+                data-counted={line.quantity === null ? "false" : "true"}
+                className="flex flex-col gap-1 border-b border-slate-200 py-2"
               >
-                <td className="px-2 py-2">{line.description}</td>
-                <td className="px-2 py-2 text-slate-600">{line.unitLabel ?? NO_UNIT}</td>
-                <td data-testid="count-quantity" className="px-2 py-2 text-right text-slate-600">
-                  {/* Read-only. #8 replaces this cell with an input. */}
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className="min-w-0 break-words text-sm font-medium">
+                    {line.description}
+                  </span>
+                  <span className="shrink-0 text-xs text-slate-600">
+                    {line.unitLabel ?? NO_UNIT}
+                  </span>
+                </div>
+                <span data-testid="count-quantity" className="text-sm text-slate-600">
                   {line.quantity ?? NOT_COUNTED}
-                </td>
-              </tr>
+                </span>
+              </li>
             ))}
-          </tbody>
-        </table>
-      </div>
+          </ul>
+        </>
+      )}
 
       <Link
         data-testid="back-to-calendar"

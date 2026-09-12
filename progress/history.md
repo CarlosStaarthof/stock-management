@@ -923,3 +923,115 @@ inherit the contradiction. Corrected at close.
   helper in `src/server/test-db.ts`, which is now doubly its right home.
 
 **Closed 2026-09-11 after user sign-off.**
+
+## 2026-09-12 — feature #8 `stock_entry_ui`
+
+The phone counting screen — the feature the project exists for. Implementation in
+`progress/impl_stock_entry_ui.md` (three phases); review in
+`progress/review_stock_entry_ui.md`. 35 criteria. **CHANGES_REQUESTED on the first pass,
+APPROVED on the second.**
+
+The first feature dispatched as **cold phases** rather than one long-lived agent.
+
+### What shipped
+
+#7's read-only rows became inputs. Quantity entry with autosave, a *None held* control, three
+filter categories, a progress line, a save-state header, and an offline queue that survives
+losing signal. One JSON endpoint; **no new page route and no migration**.
+
+Test counts: unit 464 → **501**, service 278 → **~362**, end-to-end 90 → **117**.
+
+### The feature, in two sentences
+
+**An empty input is never saved as `0`, and a `0` is never rendered as an empty input.**
+`null` means nobody looked; `0` means somebody looked and none is held. Each has its own
+rendering, its own `data-counted` value, its own effect on the progress line, and its own
+consequence at #9 — `null` blocks submission, `0` submits. It is the one distinction the
+workbook cannot express, and the reason its blank cells are ambiguous.
+
+`0` is **one tap**: a *None held* control, at least 44 × 44 px, saving immediately with no
+debounce — because the most recent Dublin count has 35 of 82 rows at zero or blank.
+
+### Three ways a counting screen dies, closed by criteria
+
+- **Losing signal behind the shed.** Typed values stay in their inputs, rows read
+  `Not saved`, the header says how many changes are queued, retries back off 1/2/4/8/30 s,
+  and the queue drains in one batch when the route recovers. No typed value is ever removed,
+  replaced by the server's older value, or dropped, and the failure path never reloads.
+- **A filter hiding an uncounted row.** Progress is `n of 82` over the **whole** count, never
+  the filtered view, and with a filter active the page states how many rows are hidden and
+  how many of those are uncounted.
+- **A dead JavaScript bundle.** Proved in a real `javaScriptEnabled: false` context: React
+  emits `action=""`, `method=POST` and a hidden action ref, and the submit persists with no
+  bundle at all.
+
+### Decisions argued rather than assumed
+
+- **The sheet is a stacked list, not a table** — a five-column row **measures 413 px** against
+  007 AC-28's 320 px no-sideways-scroll assertion. Measured, not preferred.
+- **`tabIndex={-1}` on *None held***, so `Tab` from the 81st input reaches the 82nd rather
+  than the button between them — otherwise counting 82 rows by keyboard costs 164 presses.
+- **No running total, for either role** — a draft total from today's prices would disagree
+  with the same count's approved total if a price changed in between (Invariant 2).
+- **No per-row *No price* tag**; it is a submit-time fact and belongs on #9's summary.
+- **Last write wins, no lock** — a lock held by a phone that walked out of signal is worse
+  than a conflict, and a conflict screen would have to be resolved on a device that may be
+  offline.
+
+### Two shipped tests narrowed, both strictly stronger
+
+- 007's `AC-4: exactly one requireUser() call` counted over the **whole file**, so two actions
+  with one call between them would have passed. Now per action: one call each, exactly two.
+- AC-18's permitted-identifier set is exact at **8**; the screen adds none, the typed text
+  living in `quantities` rather than `values`.
+
+### Five mutations, four red — and the fifth was the finding
+
+Phase C broke each guarantee on purpose. Four failed for the right reason, including the one
+that matters most: **an empty input saved as `0` broke the `IS NULL` assertion.** That is the
+most damaging plausible bug in this application — it silently converts "nobody looked" into
+"counted, none held", and the count then submits because every line has a number.
+
+**The fifth turned nothing red.** Making *None held* debounce passed the AC-6 test, the whole
+61-test project and 501 unit tests, because `settled()` waits up to 20 s for the resting state
+and a debounced tap still yields exactly one `POST`. **AC-6's "no debounce" clause lived in a
+comment, not in an assertion.** The implementer reported it rather than patching it; the
+reviewer reproduced it and required a real assertion. It now records `Date.now()` before the
+tap and asserts the `POST` lands within 400 ms — and the debounced spelling **fails at 871 ms**.
+
+A second gap came from the same species: **AC-30's no-sideways-scroll check only ever measured
+the unfiltered page**, while a filter *adds* two wrapped sentences and a *Clear filters*
+control — exactly when a 320 px screen is most likely to overflow. Now measured at 390 px and
+320 px with a facet applied.
+
+### The neighbour audit
+
+Asked whether the `settled()` blind spot affected anything else, the reviewer defined the
+defect precisely — *an assertion is blind only if it claims a timing property and is evaluated
+after an unbounded wait* — and classified **every** `settled()` call in all three specs: safe
+by construction, safe by direction, safe because the bound is the claim, or not a timing claim
+at all. Twenty call sites listed individually.
+
+**One residue**, graded honestly rather than inflated: the `pagehide` flush polls for a `POST`
+within 3 s of a keystroke whose own 800 ms debounce would produce one anyway, so the browser
+test does not prove the *listener* fired. Unlike AC-6, it is not untested — a unit test pins
+the `addEventListener` call sites. Non-blocking, recorded.
+
+### Things that held
+
+- **The money boundary is held by assertions, not by types.** When a `currentPrice` was added
+  to the staff shape, `typecheck` stayed exit 0 both times; six separate scans caught it.
+  Worth knowing: TypeScript does not protect Invariant 12 here.
+- `prisma/` and `Samples/` byte-identical — no migration, no new table, so 020 AC-4 stayed
+  green one feature after it was built.
+- Restore discipline corroborated independently: the reviewer's own `cmp` + SHA-256 hashes
+  **matched the ones the implementer recorded**.
+
+### Process
+
+Three cold phases — A (pure modules, service, endpoint), B (screen and e2e), C (mutation
+proofs and report) — with the coordinator gating between each. One rate-limit kill landed
+inside Phase B and cost only that phase; the ninth of the project. The implementer's own
+closing line before hand-back was *"the feature is not `done` until it has been re-reviewed"*.
+
+**Closed 2026-09-12 after user sign-off.**

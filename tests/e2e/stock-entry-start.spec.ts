@@ -223,9 +223,25 @@ test("AC-8, AC-24, AC-26: Start count writes one DRAFT and the page names what w
   expect(quantities).toHaveLength(rowCount);
   expect(new Set(quantities)).toEqual(new Set(["Not counted"]));
 
-  // No quantity input, no submit control and no signing control in the line list: #8's
-  // and #9's, not this feature's.
-  await expect(page.getByTestId("count-lines").locator("input, select, textarea")).toHaveCount(0);
+  // SUPERSEDED BY 008 AC-35, deliberately and in one line. #8 replaces the rows on this
+  // page, so 007 AC-24's "there is no quantity input on this page" clause is no longer
+  // true — and could not be, because typing a number is what #8 is. What replaces it is
+  // the same assertion made positively: exactly one `input` per rendered row, every one of
+  // them `inputmode="decimal"`, and still no `select` and no `textarea` (#9's, not this
+  // feature's). Every other clause of AC-24 above is unchanged, including the one
+  // immediately before it: a freshly started count still reads `0 of n counted` with every
+  // quantity cell reading exactly `Not counted`.
+  const fields = page.getByTestId("count-lines").locator("input, select, textarea");
+  await expect(fields).toHaveCount(rowCount);
+  await expect(page.getByTestId("count-lines").locator("select")).toHaveCount(0);
+  await expect(page.getByTestId("count-lines").locator("textarea")).toHaveCount(0);
+  expect(
+    new Set(
+      await fields.evaluateAll((elements) =>
+        elements.map((element) => element.getAttribute("inputmode")),
+      ),
+    ),
+  ).toEqual(new Set(["decimal"]));
 
   // AC-4: the row's creator is the signed-in staff user, not anybody else.
   const countId = new URL(page.url()).pathname.split("/").pop() as string;

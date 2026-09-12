@@ -35,6 +35,10 @@ const FOR_STAFF: CountForStaff = {
       itemId: "item_1",
       description: "White Extrusion 80/20",
       unitLabel: "20 Kg",
+      // The two fields 008 adds to the line, so the Supplier and Type filters read their
+      // values from the count's own lines. Neither names money (008 AC-17, AC-20).
+      supplierName: "Kelly",
+      typeName: "Thermo-P",
       sortOrder: 3,
       quantity: null,
     },
