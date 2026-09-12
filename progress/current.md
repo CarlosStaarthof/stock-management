@@ -1,12 +1,47 @@
 # Current session
 
-**Feature:** none
-**Status:** idle
+**Feature:** #10 `stock_takes_history`
+**Spec:** `specs/features/010-stock_takes_history.md` (approved 2026-09-12, 22 criteria)
+**Started:** 2026-09-12
+**Status:** in_progress — spec approved by the user, implementation not started
 
 ## Plan
 
-<!-- On starting a feature: record the feature, the time, and a brief plan here BEFORE
-     writing any code. See AGENTS.md section 4. -->
+Two routes — `/stock-takes` (the calendar, where an ADMIN lands) and
+`/stock-takes/counts/<id>` (read-only detail) — a yard selector, previous/next count jumps,
+and a held-only default. **Read-only: no route handler, no server action, no form, no client
+component.** Every control is an `<a>`, so the whole screen works with the bundle dead and
+emits no JSON.
+
+Two cold phases, since this is smaller than #8 and #9:
+
+- **Phase A** — the pure modules (`stock-takes-view.ts`, `held.ts`, `stock-takes-input.ts`,
+  `stock-takes-messages.ts`), the read services, and their tests.
+- **Phase B** — the two pages, the `CalendarGrid` optional props, the e2e specs, the mutation
+  proofs and the report.
+
+## Approach
+
+**Money-free by design, and asserted rather than promised.** AC-13: the page body is
+**byte-identical** between a `YARD_STAFF` session and an `ADMIN` session on the same URL — no
+role branch anywhere. Stronger than 009 AC-23's "identical except one link", and affordable
+only because this screen has nothing an admin needs that staff may not have.
+
+An admin still reaches the money: one link, same `href` and label for both roles, to
+`/stock-entry/counts/<id>` — #9's role-shaped screen, two clicks from the euros. **Nothing in
+#10 links to `/summary`, for anybody.** The admin-only shortcut was rejected because it would
+buy one click and cost the byte-identity assertion.
+
+**The two calendars are one calendar.** `/stock-entry` (do something) and `/stock-takes` (read
+something) call the **same** `listCalendarMonth`, `buildMonthGrid` and `CalendarGrid`. Yard
+scope is a **pure filter over the result**, not a second query. Drift is prevented
+mechanically: AC-4 asserts the badge sets rendered by both pages for the same month are
+**equal**, and `src/app/stock-entry/page.tsx` must be **byte-identical** afterwards.
+
+**No AC-33.** Per #9's ruling, no criterion counts other criteria. Every shipped assertion
+this feature amends is named inside the criterion that forces it, and the two hand-maintained
+lists it touches become **derivations from the tree**, so they fail in the session that causes
+the change.
 
 ## Work log
 
@@ -14,7 +49,18 @@
 
 ## Verification
 
-<!-- Paste the tail of the init run, including the [OK] line. -->
+Gate at the moment of approval — full run, database checks executed:
+
+```
+bash ./init.sh                        ->  init exit=0, 913 s
+    [ok]   19 features, 1 in progress
+    [ok]   typecheck / lint / test:unit (614) / test:e2e (133)
+==> Database
+    [ok]   database reachable / prisma migrate status / npm run test:db
+[OK] Environment ready
+```
+
+<!-- Paste the closing run here. It must not say "(database checks skipped)" — C2.1. -->
 
 ## Blockers
 
@@ -22,62 +68,27 @@ None.
 
 ## Next
 
-Feature **#10 `stock_takes_history`**. Its spec `specs/features/010-stock_takes_history.md`
-does not exist yet, so the next action is a `spec-writer` run.
+Phase A, gate, Phase B, gate, reviewer, sign-off. Then **#11 analysis**, then **#16 deploy** —
+the order the user chose on 2026-09-12, so the first real users see a complete picture rather
+than counting into something they cannot review.
 
-**M2 is complete.** #9 is closed; `progress/history.md` holds its summary. A count can be
-started, walked on a phone, signed, submitted and approved with its prices frozen.
+### Rules in force
 
-## Order from here, decided by the user on 2026-09-12
-
-**#10 history → #11 analysis → #16 deploy.** The user was offered deploying now — counting
-works, and they had asked early on to deploy "after counting works" — and chose to finish the
-read-only screens first so the first real users see a complete picture.
-
-The reason that is right: a yard user can currently count and submit but **cannot look at
-anything they submitted**. Deploying before #10 would hand someone a phone app that takes
-numbers and shows nothing back, which is how people quietly return to the paper sheet.
-
-## What #10 is
-
-Part 6: **Stock Takes is money-free for BOTH roles**, and **"one version of the screen, not
-two"** — a screen that renders differently per role is a screen whose every future change has
-to be checked twice. This is the first screen where that is the design, rather than a
-consequence of splitting routes as #9 did.
-
-A calendar of historical counts, a Dublin / Clonmel / Both selector, previous- and next-count
-jumps, and a read-only detail of item, quantity and unit. Phone-first.
-
-Note the starting state: the database holds the counts #7, #8 and #9's own e2e specs created
-in reserved years (2090+), and whatever real counts have been made. #10's empty state and its
-reserved-year hygiene both matter (007 AC-30: a spec deletes only counts carrying **its own**
-reserved `periodYear`, never a range).
-
-## Rules in force
-
-- The coordinator runs `init`; agents run targeted commands only.
+- **The coordinator runs `init`; agents run targeted commands only.**
 - **Only one `npm run test:db` in flight at a time.**
 - **No gate while an agent is active on the tree.**
 - Cold phases, not resumed agents. Reviewers told what not to re-derive, starting from
   `git diff`.
 
-## Carried into #10 and #11
+### Carried in
 
-- **Do not write another AC-33.** #9's amendments explain why: a criterion whose subject is
-  *other criteria* has no mechanical check and no owner, and it was wrong four times — six,
-  nine, fourteen, fifteen. Worse, a stale count reads as a *completed* reconciliation, which
-  is how two findings travelled three phases inside a report that said it was satisfied. If
-  the guarantee is wanted, derive it from the tree: intersect `git diff -U0` with each
-  `it()`'s line range, subtract new blocks and module-level consts, and assert the set. That
-  fails in the session that causes it.
-- **The mapper rule:** when a shape's key is a forbidden string, the boundary is crossed by a
-  **mapper in the service**, not by a scan exemption for the screen.
-- **A mutation turning something red is not evidence that the right thing is protected.** #9
-  hit that three times: M7 (red in #9, green in #8's own suite), M12 (red at the wrong
-  refusal, sharing a guard), M14 (the reviewer's own, which broke only the route's response
-  mapping and was the only one that proved the assertion under test).
-- **TypeScript does not protect the money boundary.** Assertions do — #8 proved it with
-  `typecheck` exit 0 twice.
-- **020 AC-4 turns red** if a table is added to the schema and not to `TRUNCATED_TABLES`.
-- The Neon test branch degraded twice on 2026-09-11 and recovered both times. A failure
-  reading `Can't reach database server` rather than an assertion is the branch, not the tree.
+- **The mapper rule** (#9): when a shape's key is a forbidden string, the boundary is crossed
+  by a mapper in the service, not by a scan exemption for the screen.
+- **A mutation turning something red is not evidence the right thing is protected.** #9 hit
+  that three times — M7, M12, M14.
+- **TypeScript does not protect the money boundary.** Assertions do.
+- **020 AC-4** turns red if a table is added and not to `TRUNCATED_TABLES`. #10 needs no
+  migration — every column it reads was shipped by #4.
+- e2e: `retries: 0`, each spec reserving its **own** `periodYear` and deleting only its own
+  (007 AC-30).
+- The Neon test branch degraded twice on 2026-09-11 and recovered both times.
