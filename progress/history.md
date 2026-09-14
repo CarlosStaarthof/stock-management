@@ -1170,3 +1170,128 @@ coordinator verified the reverts independently (`55 passed`) rather than accepti
 and Phase C had taken byte copies **before** each edit, the fix adopted after #8 lost one.
 
 **Closed 2026-09-12 after user sign-off. M2 complete.**
+
+## 2026-09-14 — feature #10 `stock_takes_history`
+
+The history calendar and the read-only count detail. Implementation in
+`progress/impl_stock_takes_history.md` (two phases plus two repair passes); review in
+`progress/review_stock_takes_history.md`. 22 criteria and **six post-approval amendments**.
+**CHANGES_REQUESTED on the first pass, APPROVED on the second.**
+
+### What shipped
+
+Two routes — `/stock-takes` and `/stock-takes/counts/<id>` — a Dublin/Clonmel/Both selector,
+previous- and next-count jumps that skip the months nobody counted, and a held-only default.
+**Read-only end to end**: no route handler, no server action, no form, no client component, no
+`"use client"` module. Every control is an `<a>`, so the whole screen works with the bundle
+dead. A yard user can finally look at what they submitted.
+
+Test counts: unit 679 → **700**, e2e 133 → **167**, service unchanged at 359 — every column
+this feature reads was shipped by #4, so there is no migration and 020 AC-4 stayed green.
+
+### One version of the screen, asserted byte for byte
+
+Part 6 asks for a money-free Stock Takes for **both** roles. This is the first screen where
+that is the design rather than a consequence of splitting routes. AC-13 asserts the page body
+is **byte-identical** between a `YARD_STAFF` session and an `ADMIN` session on the same URL,
+and AC-12 walks `assertNoMoneyKeys` for an **admin** actor — every feature before this one
+allowed the admin the money. There is no role branch to scan for.
+
+An admin still reaches the euros in one click, through a link with the same `href` and label
+for both roles. Nothing here links to `/summary`, for anybody.
+
+### The two calendars are one calendar
+
+`/stock-entry` (do something) and `/stock-takes` (read something) call the same
+`listCalendarMonth`, `buildMonthGrid` and `CalendarGrid`; yard scope is a pure filter over the
+result, not a second query. `src/app/stock-entry/page.tsx` is byte-identical afterwards, and
+`CalendarGrid` gains **exactly two** optional props — a bound the unit suite asserts, which is
+what made the badge conflict below unarguable rather than a matter of taste.
+
+### `<!-- -->` — a race before it was a proof
+
+AC-13's byte comparison failed twice, by exactly 8 characters in both directions, and would not
+reproduce in isolation. The cause was React's text separator: the server emits `<!-- -->`,
+hydration removes it, and the body **shrinks a moment after arrival**. Fixed at source —
+`countedBy(name)` is one expression — and both specs now assert `not.toContain("<!-- -->")`
+before comparing, so the fix cannot silently regress into a comparison of two strings that are
+both missing the interesting thing.
+
+### The money boundary, from the other side
+
+Phase A found `return { ...count }` passing `typecheck` at exit 0 with a price in the spread.
+Phase B found the **mirror**: the compiler caught an extra money key with `TS2353` *because*
+the mapper is field by field. Together they bound the standing lesson precisely — **TypeScript
+does not protect the money boundary, except exactly where the mapper is explicit.**
+
+### Three spec defects the implementation found, and the coordinator ruled on
+
+- **AC-19 vs AC-4.** The count badge measures 47.14 × 29, not 44 × 44. Meeting it needs taller
+  day cells in #7's component — two badges must fit one 64 px cell — so **AC-4 wins** and the
+  badge is excluded, narrowly, with its box pinned by a test. A read-only history feature does
+  not restyle the counting screen, even to improve it.
+- **AC-20's census** said 19 pages; it is **18**. `/stock-takes/page.tsx` has existed since #3
+  and is replaced, not created. Phase B followed the tree rather than the spec — an equality
+  agreeing with a wrong number is a test asserting a typo.
+- **AC-2 named a request that cannot degrade.** The signed-out `GET` is the *middleware's*
+  refusal and stays `307` with a `loading.tsx` present; the page's own `?yard=banana`
+  `redirect()` is what degrades. The rule was right, the example wrong — and the example is the
+  part a future reader would run.
+
+### Two coordinator errors, both caught, both recorded
+
+**The badge bound was one-sided and the amendment said it was not.** The reviewer shrank the
+badge from 29 px to 8 px and the replacement assertion **passed**: `toBeLessThan(44)` cannot be
+falsified by a reduction, and the cross-page equality is blind to a change in a component both
+pages render. Fixed by adding the floor, not only by correcting the sentence.
+
+**AC-19's 40-character floor was satisfiable by a run that cannot fail.** Picked by eye. A
+45-character label passed against the *broken* page; at ~6.6 px per character the break-even is
+**56**. The shipped test guards at 56 with the arithmetic beside it.
+
+Both have the same shape: *a claim about what an assertion protects, written without measuring.*
+Neither would have been caught by writing the amendment more carefully. The number has to be
+measured, and the measurement has to be what lands in the file.
+
+### The bug nobody was looking for — three routes, one element
+
+Told to satisfy a review finding, the implementer was also told to **verify the reasoning rather
+than trust it**. It did, and found the finding's lever was one step to the side of its own
+mechanism: fixture emails are hyphenated, browsers break after hyphens, and both roles' emails
+are identical in shape by construction — so the added ADMIN repetition **would have passed with
+the header broken**.
+
+With a 61-character hyphen-free local part, `/stock-takes` measured **`scrollWidth` 424 against
+a 390 px viewport** — 34 px of sideways scroll, at the *wider* of the two widths, in the first
+measurement the test takes. The reviewer then falsified the fix by removing `break-words` and
+reproduced 424 exactly.
+
+`/stock-entry` overflows by **the same 34 px and 104 px**, identical to the pixel at both
+viewports — left alone under AC-22 and recorded as a numbered debt against 008 AC-30.
+`/analysis` carries the same element at `text-base`, so it overflows *sooner*, and is carried
+into #11.
+
+**All three routes already had a no-sideways-scroll assertion. All three passed.** A layout
+guarantee asserted only against fixture data is a guarantee about the fixture — the sharpest
+lesson this feature produced, in a project whose brief is phone-first.
+
+### Process, and what it cost
+
+Two cold phases, a review, two repair passes and a scoped second review. AC-21's stability
+clause was honoured rather than waived: the gate ran full and green with the database checks
+executed, then a second consecutive full `npm run test:e2e` — **167 passed, then 167 passed,
+zero flaky, zero failed.**
+
+Per-task token accounting began here, at the user's instruction, split into input and output.
+The result rewrote an assumption: **input ran ~400× output, and 97% of it was cache reads** —
+the conversation re-sent on every tool call. The second review pass proved the lever directly:
+the same amount of writing as the first (26,031 output tokens against 27,684) for **one tenth
+the input**, because a scoped brief cut its tool calls from 70 to 26. Shortening reports saves
+nothing; cutting tool calls saves almost everything.
+
+One coordinator edit to shipped code: two stale sentences in a test-file comment that misquoted
+the criterion they cite, corrected directly rather than through an implementer run. Comment-only
+by construction; the constant and the guard beside them were untouched, and `typecheck` and
+`lint` are clean. Disclosed rather than absorbed.
+
+**Closed 2026-09-14 after user sign-off. M3 begins with #11 `analysis`.**

@@ -350,7 +350,7 @@ Tests that read the database are `*.db.test.ts` under `src/server/counts/`, call
 Playwright specs named `tests/e2e/stock-takes-*.spec.ts`.
 
 1. **AC-1** — **Both routes are closed to a signed-out request, open to both roles, and no route protection is added.** An unauthenticated `GET` of `/stock-takes` and of `/stock-takes/counts/<id>` responds `307` (or `302`) to `/sign-in?callbackUrl=<the URL-encoded path and query>` and sends none of the page's content; signing in from that page lands on the requested path. Signed in as `YARD_STAFF` and again as `ADMIN`, both URLs return `200`. `/stock-takes` renders an `<h1>` whose text is exactly `Stock Takes`, a `data-testid="signed-in-email"` carrying the signed-in email, and a `data-testid="sign-out"` control that ends the session; the month label is an `<h2>` carrying `data-testid="month-heading"`. `src/lib/auth-config.ts` and `src/middleware.ts` are **byte-identical** to their state before this feature, and `tests/e2e/role-access.spec.ts` and `tests/e2e/sign-in.spec.ts` pass **unmodified**, so 003 AC-9, AC-14 and AC-15 still hold against the new page.
-2. **AC-2** — **The refusal stays the server's answer, and the guard that protects it is derived from the route tree instead of typed out.** In the shipped tree no `loading.tsx` or `loading.ts` exists in any directory on the path from `src/app` to any `page.tsx` outside `src/app/(public)/`. The assertion in `tests/unit/stock-entry-contract.test.ts` that today lists five directories by hand is replaced by one that **computes that set from the tree**: it derives at least **14** directories, the derived set contains every one of the five it replaces and additionally `src/app/stock-takes` and `src/app/stock-takes/counts/[id]`, and the test fails if the derivation yields fewer than 10 directories. This implements the replacement #9's post-approval ruling required — the previous list was hand-maintained, was found stale once, and *nothing catches an assertion that is missing*. `src/app/(public)/loading.tsx` is unchanged and `/` still returns `200` with its loading fallback present. The implementer reproduces the degradation before closing — adding `src/app/stock-takes/loading.tsx` turns AC-1's unauthenticated `GET` of `/stock-takes/counts/<id>` from a `307` with a `Location` header into a `200` with none, **and turns the derived assertion red** — and records both status codes and the failing test name in `progress/impl_stock_takes_history.md`.
+2. **AC-2** — **The refusal stays the server's answer, and the guard that protects it is derived from the route tree instead of typed out.** In the shipped tree no `loading.tsx` or `loading.ts` exists in any directory on the path from `src/app` to any `page.tsx` outside `src/app/(public)/`. The assertion in `tests/unit/stock-entry-contract.test.ts` that today lists five directories by hand is replaced by one that **computes that set from the tree**: it derives at least **14** directories, the derived set contains every one of the five it replaces and additionally `src/app/stock-takes` and `src/app/stock-takes/counts/[id]`, and the test fails if the derivation yields fewer than 10 directories. This implements the replacement #9's post-approval ruling required — the previous list was hand-maintained, was found stale once, and *nothing catches an assertion that is missing*. `src/app/(public)/loading.tsx` is unchanged and `/` still returns `200` with its loading fallback present. The implementer reproduces the degradation before closing — adding `src/app/stock-takes/loading.tsx` turns the **page's own** refusal, the `?yard=banana` `redirect()`, from a `307` with a `Location` header into a `200` with none, **and turns the derived assertion red** — and records both status codes and the failing test name in `progress/impl_stock_takes_history.md`. AC-1's unauthenticated `GET` is **not** the request that degrades and must not be used as the probe: that refusal is the **middleware's** — `PROTECTED_PATHS` has held `/stock-takes` since #3 — and the middleware answers before any Suspense boundary exists. See the amendment below.
 3. **AC-3** — **Every service function takes an explicit actor, reads nothing else from the request, and this feature writes nothing anywhere.** `getCountHistory` and `findNeighbourCounts` each take `actor: SessionUser` as their first parameter and begin with `assertUser`; called with a `null` actor each raises `UnauthorizedError`. The actor comes from `requireUserPage()` and from nowhere else. `getCountHistory`'s only other argument is `countId`, and `findNeighbourCounts`'s only other arguments are the scope and the cursor — asserted by their signatures. A source scan of `src/server/counts/count-history-service.ts`, `src/app/stock-takes/**` and `src/lib/stock-takes-view.ts` finds no `.create`, `.createMany`, `.update`, `.updateMany`, `.upsert`, `.delete` or `.deleteMany` applied to any model, and no `db.` reference at all outside the service. Across every test in this feature the row counts of `StockCount`, `StockCountLine`, `Item`, `ItemPrice`, `ItemLocation`, `Supplier`, `ItemType`, `Location` and `User` are identical before and after, and so is every column of the fixture counts.
 4. **AC-4** — **One calendar, not two: the two pages render the same badges because they call the same function with the same arguments.** `src/server/counts/count-service.ts` and `src/app/stock-entry/page.tsx` are **byte-identical** after this feature; `listCalendarMonth`'s signature is unchanged and it is the only function in the repository that returns a `CalendarMonth`. `src/components/stock-entry/CalendarGrid.tsx` gains exactly two optional props — the badge `href` builder and the empty-day `href` builder, the latter accepting `null` for "render no link" — whose defaults reproduce today's behaviour, which is why `/stock-entry/page.tsx` needs no edit. End to end, against a fixture with counts at both yards on the same day and a count in a neighbouring month: for the same `?month`, the set of `(day cell test id, data-count-id, data-location-code, badge status text)` tuples parsed from `/stock-entry?month=X` equals the set parsed from `/stock-takes?month=X&yard=BOTH`, exactly and in the same per-day order. A source scan finds **no** second month-grid builder: `buildMonthGrid` is called from exactly one module, `CalendarGrid.tsx`, and `src/app/stock-takes/**` contains neither `buildMonthGrid` nor a weekday-heading literal.
 5. **AC-5** — **What each calendar owns, asserted by absence.** `/stock-takes` renders **zero** elements with `data-testid="start-count-day"`, and a day cell with no counts contains no `<a>` at all; `/stock-entry` renders **zero** elements with `data-testid="yard-scope"`, `data-testid="previous-count"` or `data-testid="next-count"`. Both pages render exactly one `data-testid="calendar"` table with the seven headings `Mon`, `Tue`, `Wed`, `Thu`, `Fri`, `Sat`, `Sun` in that order. For the same count, `/stock-takes` links its badge to `/stock-takes/counts/<id>` while `/stock-entry` links it to `/stock-entry/counts/<id>`, asserted in one test so the divergence is deliberate and visible.
@@ -367,8 +367,8 @@ Playwright specs named `tests/e2e/stock-takes-*.spec.ts`.
 16. **AC-16** — **The reading mode survives navigation.** Starting at `/stock-takes?yard=CLONMEL&month=<Y>-04`, every link the page renders — the three scope links, *Previous month*, *Next month*, *Today*, *Previous count*, *Next count* and every count badge — carries `yard=CLONMEL`. Following a badge, then *Show all items*, then *Previous count*, then *Back to the calendar*, ends on `/stock-takes` still carrying `yard=CLONMEL`; the URL after the *Previous count* step carries both `yard=CLONMEL` and `show=all` and that page still renders all rows. *Back to the calendar* carries `yard` and **not** `show`, because `show` means nothing to a calendar. The default scope is never spelled into a URL: `/stock-takes` with no query string is not redirected and renders the `Both` scope.
 17. **AC-17** — **No database error text ever reaches a screen, and no query parameter can make either page throw.** For each of five provoked failures — a `countId` that does not exist, a `countId` that is not a valid id at all, `?month=2026-13`, `?yard=banana` and `?show=banana` — the response is either the feature's own message or a `307`, and the rendered HTML contains none of `prisma`, `Prisma`, `violates`, `constraint`, `SQLSTATE`, `23514`, `23505`, `P2002`, `P2025` or a stack frame. Every function in `src/server/counts/count-history-service.ts` throws only `NotFoundError`, `ValidationError`, `ForbiddenError` or `UnauthorizedError` from `src/server/errors.ts`, never a bare `Error`. Each of `?month`, `?yard` and `?show` is additionally sent repeated twice and as an empty string, and neither page returns a `500` for any of the twelve combinations.
 18. **AC-18** — **The strings are single-sourced by re-export, and nothing here needs JavaScript.** Every literal quoted by any criterion above is exported from `src/lib/stock-takes-messages.ts` and asserted **from that module**, so the screen and the test cannot drift apart. The literals #7 already owns are **re-exported, not restated**: a unit test asserts equality by identity — the status-label record is the same object as `COUNT_STATUS_LABEL`, and the two empty-state sentences are the same strings as `NO_COUNTS_RECORDED_YET` and `NO_COUNTS_IN_MONTH`. `src/lib/stock-takes-messages.ts`, `src/lib/stock-takes-view.ts` and `src/lib/held.ts` import nothing from `src/server/` except `@/server/errors`, keeping `npm run lint`'s dependency fence green and `tests/unit/lint-fence.test.ts` passing unmodified. **This feature ships no `"use client"` module**: a source scan of `src/app/stock-takes/**` and `src/components/stock-takes/**` finds none, `docs/architecture.md` gains no new dependency exception, and in a `javaScriptEnabled: false` context both pages render and the scope links, the month links, the count jumps and the *Show all items* toggle all navigate.
-19. **AC-19** — **Phone-first, measured in the state most likely to overflow.** At a 390 × 844 viewport, signed in as `YARD_STAFF` and again as `ADMIN`, and again at **320 px**: on `/stock-takes` under each of the three scopes, in a month where one day carries two badges, and on `/stock-takes/counts/<id>` in **both** the held and the `show=all` views, `document.documentElement.scrollWidth` does not exceed its `clientWidth` — the document never scrolls sideways. The `show=all` measurement is taken on a count containing the longest `Item.description` in the database and a four-decimal quantity, because 008 AC-30 recorded that the overflow appears in the fuller state and not in the default one. Every control the flow touches — the three scope links, the month links, *Today*, *Previous count*, *Next count*, each count badge, the *Show all items* toggle, *Open this count in Stock Entry* and *Back to the calendar* — has a bounding box of at least **44 × 44** CSS px, except links inside a sentence; the calendar's seven columns all fit, each day cell at least 40 px wide. This is the primary case: no criterion above requires a control that exists only at desktop width.
-20. **AC-20** — **Which checks survive with no database,** mirroring 003 AC-23, 006 AC-32, 007 AC-29, 008 AC-32 and 009 AC-31. With `DATABASE_URL`, `DIRECT_URL`, `TEST_DATABASE_URL` and `TEST_DIRECT_URL` all pointing at a hostname that does not resolve: `npx prisma validate`, `npm run typecheck`, `npm run lint`, `npm run test:unit` and `npm run build` each exit `0`, and both `init` scripts exit `0` ending with `[OK] Environment ready (database checks skipped)`. No module this feature adds opens a connection at import time, and both new pages declare `export const dynamic = "force-dynamic"` — additionally asserted by a derived check that **every** `page.tsx` under `src/app/` outside `src/app/(public)/` declares it, which is true of all 17 today and of the 19 this feature leaves behind. The criteria provable without Postgres are AC-2, AC-3's scan half, AC-4's scan half, AC-7, AC-10, AC-13's scan half, AC-18's module half and AC-20 itself; every other criterion needs a database or a browser and lives in `*.db.test.ts` or `tests/e2e/`.
+19. **AC-19** — **Phone-first, measured in the state most likely to overflow.** At a 390 × 844 viewport, signed in as `YARD_STAFF` and again as `ADMIN`, and again at **320 px**: on `/stock-takes` under each of the three scopes, in a month where one day carries two badges, and on `/stock-takes/counts/<id>` in **both** the held and the `show=all` views, `document.documentElement.scrollWidth` does not exceed its `clientWidth` — the document never scrolls sideways. The `show=all` measurement is taken on a count containing the longest `Item.description` in the database and a four-decimal quantity, because 008 AC-30 recorded that the overflow appears in the fuller state and not in the default one. **At least one of the sessions signs in with an email whose local part is a single unbreakable run of at least 56 characters** — the header is `text-sm` inside `p-3`, measured at roughly **6.6 px per character**, so a 40-character run is about 264 px and cannot overflow either viewport; 56 is the measured floor and the test guards the constant against it, and the identity header wraps rather than widening the document — on `/stock-takes`, which is the only page of the two that renders one, `/stock-takes/counts/<id>` having no identity header at all — that header renders `{user.email}` *outside* the byte-compared body, an email is one unbreakable token, and every fixture label this suite builds contains hyphens, which browsers break after. A suite built only from those labels cannot reach the state that overflows. See the fifth amendment below. Every control the flow touches — the three scope links, the month links, *Today*, *Previous count*, *Next count*, the *Show all items* toggle, *Open this count in Stock Entry* and *Back to the calendar* — has a bounding box of at least **44 × 44** CSS px, except links inside a sentence. **The count badge is excluded, narrowly and deliberately** — it is #7's element and AC-4 forbids changing how #7 renders it; what is asserted in its place is that its width and height are **identical** on `/stock-entry` and on `/stock-takes` (AC-4 measured rather than scanned), that its width is at least **40** px, and that its height is bounded on **both** sides — below **44** and at least **24** — so a change to it in either direction is visible rather than silent. See the amendment below for why the two criteria could not both be met. The calendar's seven columns all fit, each day cell at least 40 px wide. This is the primary case: no criterion above requires a control that exists only at desktop width.
+20. **AC-20** — **Which checks survive with no database,** mirroring 003 AC-23, 006 AC-32, 007 AC-29, 008 AC-32 and 009 AC-31. With `DATABASE_URL`, `DIRECT_URL`, `TEST_DATABASE_URL` and `TEST_DIRECT_URL` all pointing at a hostname that does not resolve: `npx prisma validate`, `npm run typecheck`, `npm run lint`, `npm run test:unit` and `npm run build` each exit `0`, and both `init` scripts exit `0` ending with `[OK] Environment ready (database checks skipped)`. No module this feature adds opens a connection at import time, and both new pages declare `export const dynamic = "force-dynamic"` — additionally asserted by a derived check that **every** `page.tsx` under `src/app/` outside `src/app/(public)/` declares it, which is true of all 17 today and of the **18** this feature leaves behind — this feature adds **one** page file, `src/app/stock-takes/counts/[id]/page.tsx`, because `src/app/stock-takes/page.tsx` has existed since #3 as a placeholder and is **replaced rather than created**. The criteria provable without Postgres are AC-2, AC-3's scan half, AC-4's scan half, AC-7, AC-10, AC-13's scan half, AC-18's module half and AC-20 itself; every other criterion needs a database or a browser and lives in `*.db.test.ts` or `tests/e2e/`.
 21. **AC-21** — **The gate is green in full, and the e2e suite stays self-cleaning at `retries: 0`.** `npx prisma validate`, `npm run typecheck`, `npm run lint`, `npm run test:unit`, `npm run test:e2e`, `npx prisma migrate status` and `npm run test:db` all pass, and `./init.ps1` ends with `[OK] Environment ready` having **executed** the database checks. Two new specs, `tests/e2e/stock-takes-calendar.spec.ts` and `tests/e2e/stock-takes-count.spec.ts`, run in the **`chromium-stock-entry`** project — they seed counts against the yard sheets, which is the collision `playwright.config.ts` separates the two projects to avoid — so the only change to that file is its two route patterns, which become `/(stock-entry|stock-takes)-.*\.spec\.ts/` in both the `chromium` `testIgnore` and the `chromium-stock-entry` `testMatch`; `git diff -- playwright.config.ts` shows no other changed line, and `retries: 0`, `workers: 3`, `fullyParallel: false`, both timeouts, the `dependencies` array and the `webServer` block are byte-identical. `RESERVED_YEAR` in `tests/e2e/support/stock-entry.ts` gains `takesCalendar: 2101` and `takesCount: 2102`; each file deletes only **its own** year in `beforeAll` and `afterAll`, never the range, and asserts through `realCountIds()` that the set of `StockCount` ids with `periodYear < 2090` is identical before and after (007 AC-30). Those two years are reachable although 007 AC-8 caps a submitted period at 2100, because these specs build their counts with the existing `seedCountWithLines`, `fillQuantities`, `submitAs` and `approveAs` helpers, which go through Prisma and the lifecycle service rather than through the period-validating start flow; the note beside `RESERVED_YEAR` recording "2100 is the last reservable year" is corrected to say that the cap binds only counts created through `startCount`. The shipped assertion in `tests/unit/stock-entry-contract.test.ts` that censuses the stock-entry specs and their years is amended, in exactly one `it()` block, to select **every spec under `tests/e2e/` that imports `RESERVED_YEAR`** — twelve files, twelve distinct years — rather than matching a filename prefix, so it goes red for a new spec of either name that reuses a year. `Item`, `ItemPrice` and `ItemLocation` row counts are unchanged by the run. Two consecutive full `npm run test:e2e` runs report `0 flaky` and `0 failed`; if the suite is not stable at `retries: 0`, the implementer reports that rather than restoring retries or raising a timeout.
 22. **AC-22** — **No migration, no new table, and nothing touched that this feature does not own.** `prisma/schema.prisma`, every directory under `prisma/migrations/` and `prisma/migrations/migration_lock.toml` are **byte-identical** to their state before this feature — every column it reads was shipped by #4 — and `npx prisma migrate status` reports no drift and no pending migration. `TRUNCATED_TABLES` in `src/server/test-db.ts` is unchanged and still equal as a set to exactly `["Item", "ItemLocation", "ItemPrice", "ItemType", "StockCount", "StockCountLine", "Supplier", "User"]`, so **020 AC-4's `information_schema` equality passes untouched**. `src/app/stock-entry/**`, `src/server/counts/count-service.ts`, `src/server/counts/count-entry-service.ts`, `src/server/counts/count-lifecycle-service.ts`, `src/server/counts/count-summary-service.ts`, `src/lib/count-messages.ts`, `src/lib/auth-config.ts` and `src/middleware.ts` are byte-identical; the only shipped source file this feature edits is `src/components/stock-entry/CalendarGrid.tsx` (AC-4), and the only shipped non-source files it edits are `playwright.config.ts`, `tests/e2e/support/stock-entry.ts` and `tests/unit/stock-entry-contract.test.ts`, each amended exactly as AC-2, AC-4 and AC-21 name and no further. `git status --porcelain -- Samples` is empty.
 
@@ -437,6 +437,248 @@ shipped assertion turns red, that is a finding to report in
 - **A migration, an index or a performance change.** The `@@index([periodYear, periodMonth])`
   and the `countDate` reads #4 and #7 shipped are what this queries through.
 - **CI.** `init` remains the gate.
+
+## Post-approval amendments
+
+All three were found by Phase B, reported rather than quietly worked around, and ruled on by
+the coordinator before the review. Each is a defect in the spec, not in the implementation.
+
+### AC-19 — the count badge is excluded from 44 × 44, 2026-09-12
+
+**The conflict.** AC-19 requires every control the flow touches to have a bounding box of at
+least 44 × 44 CSS px, and lists the count badge among them. AC-4 requires that
+`/stock-entry`'s calendar render exactly as it does today — `src/app/stock-entry/page.tsx`
+byte-identical, `CalendarGrid` gaining two optional props whose defaults reproduce today's
+behaviour. **The badge belongs to `CalendarGrid`, which is #7's.** Measured at 390 px on both
+calendars, it is **47.14 × 29**. The two criteria cannot both be satisfied.
+
+**The ruling: AC-4 wins, and AC-19 gives up the badge.** Three reasons, in order of weight.
+
+1. **Meeting AC-19 would change #7's screen from inside #10.** A read-only feature whose
+   headline guarantee is *the two calendars are one calendar* cannot restyle the other
+   calendar to satisfy its own ergonomics criterion. That is the "tweak" the brief forbids,
+   and AC-4's byte-identity is the mechanical guarantee that prevents the drift this whole
+   feature was shaped to prevent.
+2. **The geometry does not fit.** A day cell is 64 px tall and must hold **two** badges — the
+   real case, both yards counted the same day, which AC-6 requires and the fixture builds. Two
+   44 px badges plus the gap is ~92 px. Honouring AC-19 means a calendar roughly half again as
+   tall, which then has to be re-measured against AC-19's own no-sideways-scroll assertion and
+   against #7's shipped criteria at 320 px. That is a redesign of #7's calendar, and it belongs
+   in a session that owns #7.
+3. **The cost is small and bounded.** 47 × 29 is under the 44 px guidance in one dimension
+   only, and the badge sits inside a 55 × 64 cell with nothing adjacent to mis-tap — an empty
+   day renders no anchor at all (AC-5), and the two badges in a shared cell are the only
+   neighbours. Every *other* control AC-19 lists is asserted at 44 × 44, at 390 px and at
+   320 px, in both views and all three scopes.
+
+**What replaces it is a pinned box, and the pin is bounded on both sides.** The badge's width
+and height must be **identical** on `/stock-entry` and `/stock-takes` — which is AC-4 measured
+rather than scanned, and a better assertion than AC-19 ever was — its width at least **40** px,
+its height **below 44**, and its height at least **24** px. The lower bound is not decoration:
+without it the assertion is one-sided, and shrinking is the direction an accidental style change
+most often goes. The fourth amendment below records that this spec first claimed a two-sided
+guarantee it did not have.
+
+**The debt is real and is not being hidden.** If the badge should be a 44 px target, the change
+is taller day cells in `CalendarGrid`, it changes both calendars, and it is a feature of its
+own. Recorded here so the decision has an owner rather than evaporating.
+
+### AC-20 — the census is 18 pages, not 19, 2026-09-12
+
+The criterion said the derived `force-dynamic` check is "true of all 17 today and of the 19
+this feature leaves behind". 17 today is right; **18** is what this feature leaves behind. It
+adds **one** page file, not two: `src/app/stock-takes/page.tsx` has existed since
+`feat(#3): identity, roles, and the first migration` as a placeholder and is **replaced**, not
+created. Verified independently of the implementer by counting `page.tsx` under `src/app/`
+outside `(public)` — 18 — and by `git log` on that path, which names #3.
+
+Phase B followed the tree rather than the spec (`expect(pages).toHaveLength(18)`) and recorded
+the arithmetic instead of rounding to the stated number. That is the right call and worth
+naming: **an equality that agreed with a wrong number would be a test asserting a typo**, and
+it would have gone green for exactly as long as nobody checked.
+
+### AC-2 — the criterion named a request that cannot degrade, 2026-09-12
+
+AC-2 predicted that adding `src/app/stock-takes/loading.tsx` turns AC-1's **unauthenticated**
+`GET` of `/stock-takes/counts/<id>` from a `307` with a `Location` header into a `200` with
+none. Phase B reproduced the experiment properly — byte copy, file added, build, measure,
+remove, rebuild, re-measure — and that request is **`307` in both trees, with the same
+`Location`**. It does not degrade and it cannot: that refusal is the **middleware's**,
+`PROTECTED_PATHS` has held `/stock-takes` since #3, and the middleware answers before any
+Suspense boundary exists.
+
+The refusal that *does* degrade is the one the page issues itself — the query-parameter
+`redirect()` — and it degrades exactly as #3, #6, #7 and #9 each recorded: `307` with a
+`Location` becomes `200` with none. **The rule was right; the example was wrong**, and the
+example is the part a future reader would run. Left uncorrected it would have produced a probe
+that passes with the guard broken, and then the conclusion that the guard had stopped
+mattering — the same species of defect as a stale AC-33, arriving by a different road.
+
+The criterion now names `?yard=banana` as the probe and states why AC-1's request is not one.
+
+### AC-19's replacement assertion was one-sided, and the amendment said it was not, 2026-09-12
+
+Found by the #10 reviewer, by mutation rather than by reading, and it is the **coordinator's
+error, not the implementer's**. The amendment above originally read:
+
+> its height asserted **below 44** … *A later change to the badge in either direction turns
+> that red.* … the number is now recorded in a place that fails when it moves.
+
+Both sentences were false. The reviewer shrank the shared badge from 29 px to 8 px tall in
+`CalendarGrid.tsx`, rebuilt, and the replacement assertion **passed**:
+
+```
+ok 3  AC-4, AC-19: the badge is the SAME box on both calendars, and is not a 44 px target (2.8s)
+```
+
+It could not have done otherwise. `toBeLessThan(44)` cannot be falsified by a reduction; the
+width bound is a width bound; and the cross-page height equality is blind to a change in a
+component **both** pages render, which is every change to the badge. The assertion caught three
+things — the badge growing past 43 px, the badge narrowing below 40 px, and the two calendars
+diverging — and not the fourth, which is the direction an accidental style change most often
+goes.
+
+**Both halves are closed, and the order matters.** The assertion gains
+`expect(takes?.height ?? 0).toBeGreaterThanOrEqual(24)`, making the guarantee two-sided in fact;
+and the amendment's text above is rewritten to state exactly what is pinned. Correcting only the
+text would have been honest and cheap, but it would have left a 47 × 29 badge with no floor
+under it in a feature whose ergonomics criterion was already waived once.
+
+**Why this is recorded at length rather than quietly fixed.** It is the same species of defect
+as a stale `AC-33`, which this spec has a whole section explaining that it will not write: *a
+claim about a guarantee, with nothing that recomputes it, read later as a completed
+reconciliation.* The amendment was written in the same session that argued against exactly this,
+and it still happened — which is the argument for the reviewer role, not against it. It is the
+fourth coordinator overstatement this project has had corrected by a reviewer reading the diff,
+after #4's lint regex, #9's 008 AC-18 scan and #9's AC-33 replacement. The pattern is
+consistent: each was a claim that a change made something *stronger*, asserted without a
+mutation to back it. **A guarantee is worth nothing until it has been watched failing** — and
+that applies to the sentences the coordinator writes about assertions, not only to the
+assertions.
+
+### AC-19 gains the email that actually overflows, 2026-09-12
+
+Found during the repair pass, by an implementer sent to satisfy B1 and asked to **verify the
+reviewer's reasoning rather than trust it**. It did, and the reasoning turned out to be right
+about the mechanism and one step to the side about the lever.
+
+**The chain.** The reviewer required AC-19's viewport measurements be repeated in an `ADMIN`
+session, because the identity header sits *outside* `stock-takes-body` — so AC-13's byte
+equality cannot cover it — and `{user.email}` is rendered with no `break-words`. That header is
+the only part of either page whose content varies per session, and an email is one unbreakable
+token: at 320 px it is exactly what pushes `scrollWidth` past `clientWidth`.
+
+**Every step of that is true except the conclusion that the role is the lever.** The
+implementer proved the overflow is real by giving the fixture a hyphen-free local part, and the
+existing assertion caught it **at 390 px, before 320 px was even reached**. It then proved why
+the suite never sees it: `createTestUser` builds `${label}-${16 hex}@macroads-e2e.invalid`, and
+this feature's labels — `stock-takes-calendar`, `stock-takes-count` — are full of hyphens.
+**Browsers take a line break after a hyphen**, so the longest unbreakable run in any fixture
+email is about 25 characters, which fits at 320 px. Both roles' emails are the same length *and*
+the same shape by construction, so the administrator pass can only ever agree with the staff
+pass.
+
+**The added ADMIN repetition therefore passes, and would pass just as surely with the header
+broken.** It is kept — AC-19 asks for it in plain words, it is cheap, and a measurement that
+names its role is a better failure message — but it is not what closes the defect. What varies
+in production is the email's **content**, and nothing pressured it.
+
+So AC-19 now requires the measurement to be taken with a long unbreakable local part, and
+requires the header to wrap. The one-line source fix and the fixture that pressures it land
+together, which is the only arrangement in which the transcript above becomes a shipped
+guarantee instead of a probe somebody once ran.
+
+**`/stock-entry` has the identical unprotected header** (`src/app/stock-entry/page.tsx`, the
+same `<p data-testid="signed-in-email" className="text-sm text-slate-600">`), and it is **not**
+fixed here. AC-22 pins `src/app/stock-entry/**` byte-identical for this feature, and AC-19's
+scope is this feature's two pages. That is the same ruling as the badge: a read-only history
+feature does not reach into the counting screen, even to improve it. **Recorded as a debt
+against 008 AC-30**, whose no-sideways-scroll measurement has the same blind spot for the same
+reason, with the reproduction above as the evidence and a session of its own as the owner.
+
+**What this is an instance of.** The reviewer's finding was correct and would have been closed
+by a change that did not close the defect — a green test, a satisfied criterion, and the bug
+still shipping. It was caught only because the implementer was asked to verify a claim it had
+been handed, and did, against a prediction that it would pass. *A test added to satisfy a
+finding is not evidence the finding's defect is gone.* That is the same lesson as #9's M7 and
+M12, arriving from the reviewer's side of the handoff rather than the implementer's.
+
+### AC-19's 40-character floor was satisfiable by a run that cannot fail, 2026-09-12
+
+The fifth amendment, written by the coordinator one pass earlier, required a local part of "at
+least **40** characters". **That number was picked by eye and it is wrong.** It is corrected to
+**56** above.
+
+The implementer sent to land the fix was told to watch the test fail first, and to stop and
+report if it went green before the source change. It did go green, and it stopped:
+
+```
+attempt 1 — a 45-character label, against the UNFIXED page.tsx
+  ok 1  AC-19: the calendar never scrolls sideways at 390 px or 320 px, in any scope (14.6s)
+  1 passed
+```
+
+The arithmetic it then wrote down is the part worth keeping. The header is `text-sm` (14 px)
+inside `p-3`; a 56-character run measures `scrollWidth 394` against a 390 px viewport, so the
+token costs roughly **6.6 px per character**. Forty characters is ~264 px, and a 320 px viewport
+leaves 296 px inside the padding — a 40-character run sits *inside* the threshold at both
+viewports. Nothing was breaking the token. **The criterion's floor simply admitted labels that
+cannot overflow**, which would have shipped a test that passes for the wrong reason, against a
+page with the bug still in it. Exactly the outcome the fifth amendment was written to prevent,
+reproduced one level down, in the number rather than in the lever.
+
+At 61 characters the same test, unchanged, against the same unfixed page:
+
+```
+  Error: YARD_STAFF 390 DUBLIN
+  expect(received).toBeLessThanOrEqual(expected)
+  Expected: <= 390
+  Received:    424
+  1 failed
+```
+
+**34 px of sideways scroll at the wider viewport**, in the first measurement the test takes.
+After `break-words`, all 17 tests in the file pass, 320 px included.
+
+The shipped test guards its constant at the **measured** 56 rather than the criterion's number,
+with the arithmetic in a comment beside it — so a future reader who shortens the label to tidy it
+turns the guard red instead of quietly restoring the blind spot.
+
+**This is the second coordinator error inside this feature's own amendments**, after the
+one-sided badge bound, and both have the same shape: *a claim about what an assertion protects,
+written without measuring.* The badge bound was caught by a reviewer's mutation; this one by an
+implementer following an instruction to distrust the brief. Neither was caught by writing the
+amendment more carefully, which is the point — **the number has to be measured, and the
+measurement has to be the thing that lands in the file.**
+
+### The same header overflows on two other routes, 2026-09-12 — debts with numbers
+
+Measured by a temporary read-only probe, run once and restored, with
+`src/app/stock-entry/page.tsx` never opened for writing (its hash is identical at every step of
+the repair pass):
+
+```
+PROBE /stock-entry 390  scrollWidth=424  clientWidth=390     PROBE /stock-takes 390  424 / 390
+PROBE /stock-entry 320  scrollWidth=424  clientWidth=320     PROBE /stock-takes 320  424 / 320
+```
+
+**`/stock-entry` overflows by exactly as much as `/stock-takes` did — 34 px at 390 and 104 px at
+320, identical to the pixel at both widths.** That identity is the evidence it is the same defect
+in the same element: the document's width is set by the unbroken token plus the shared `p-3`, so
+it does not depend on what else the page draws. It is left alone here because AC-22 pins
+`src/app/stock-entry/**` byte-identical and AC-19's scope is this feature's two pages. **The debt
+against 008 AC-30 now carries its numbers**, and the fix is the identical twelve characters at
+`src/app/stock-entry/page.tsx:83`.
+
+**A third instance, previously unrecorded:** `src/app/analysis/page.tsx:21` carries the same
+element at `text-base`, which is *wider* than `text-sm` and therefore overflows sooner, and no
+criterion anywhere measures that route on a phone. It is #11's page and #11 is the next feature,
+so it is carried into #11's spec rather than filed as a debt.
+
+Three instances of one defect, in a project whose brief is *phone-first*. The general lesson,
+recorded here because it will outlive this feature: **a layout guarantee asserted only against
+fixture data is a guarantee about the fixture.** Every one of these routes had a
+no-sideways-scroll assertion. All three passed. The emails were hyphenated.
 
 ## Open questions
 

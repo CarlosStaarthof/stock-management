@@ -197,3 +197,40 @@ export function roundHalfUp(value: string, places: number): string {
 
   return render({ negative: parsed.negative, digits: rounded, scale: places }, false);
 }
+
+/* ===================================================================================
+ * Feature #10 — the comparison, in strings.
+ *
+ * `src/lib/held.ts` asks one question of a stored quantity — is it greater than zero — and
+ * `docs/architecture.md` § Money and quantities forbids answering it by converting the
+ * decimal to a JavaScript `number`. `0.0001` tonnes of something is held, `9.50` and `9.5`
+ * are the same amount, and `Number("0.0000") > 0` is a comparison that happens to be right
+ * today and is the wrong mechanism.
+ *
+ * It lives here rather than in `held.ts` because the digits-and-scale machinery above is
+ * already exact at any size and there is no reason for a second copy of it.
+ * =================================================================================== */
+
+/**
+ * `-1`, `0` or `1` — `left` against `right`, exact at any scale and any size (010 AC-10).
+ *
+ * `compareDecimals("0.0000", "0")` is `0`, `("0.0001", "0")` is `1`, `("9.50", "9.5")` is
+ * `0`, `("-1", "0")` is `-1`.
+ *
+ * A string this function cannot read compares EQUAL rather than throwing. Every value that
+ * reaches it is a `Decimal` column stringified by Prisma, so an unreadable one is a bug;
+ * answering it with `0` makes the one caller that matters — `isHeld` — say *not held*,
+ * which is the reading that hides nothing a person entered and invents nothing they did not.
+ */
+export function compareDecimals(left: string, right: string): -1 | 0 | 1 {
+  const first = scaledDigitsOf(left);
+  const second = scaledDigitsOf(right);
+  if (first === null || second === null) return 0;
+
+  const scale = Math.max(first.scale, second.scale);
+  const signedFirst = first.negative ? -atScale(first, scale) : atScale(first, scale);
+  const signedSecond = second.negative ? -atScale(second, scale) : atScale(second, scale);
+
+  if (signedFirst < signedSecond) return -1;
+  return signedFirst > signedSecond ? 1 : 0;
+}

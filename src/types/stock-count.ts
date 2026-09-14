@@ -294,3 +294,97 @@ export type SummaryRow = {
   lineValue: string;
   noPrice: boolean;
 };
+
+/* ------------------------------------------------- #10, reading a count back */
+
+/**
+ * Both yards, or one of them. `BOTH` is a SCOPE, not a claim that both were counted: on a
+ * day only Clonmel was walked, `BOTH` shows the Clonmel badge and nothing beside it.
+ *
+ * It is declared here rather than in `src/server/counts/stock-takes-input.ts` for the
+ * reason `CountStatus` is: `src/lib/stock-takes-view.ts` needs it, and
+ * `docs/architecture.md` forbids `src/lib/**` from importing anything under `src/server/`
+ * except `@/server/errors`. The parser that produces one still builds on
+ * `locationCodeSchema`, so which yards exist is stated in exactly one place.
+ */
+export type YardScope = "DUBLIN" | "CLONMEL" | "BOTH";
+
+/** Declaration order: `Location.sortOrder`, then the scope that is both of them. */
+export const YARD_SCOPES = [
+  "DUBLIN",
+  "CLONMEL",
+  "BOTH",
+] as const satisfies readonly YardScope[];
+
+/**
+ * Which rows a count view shows. `specs/domain-model.md` Part 5: a count view defaults to
+ * HELD — "see what we have, not what we don't" — and 35 of the 82 rows in the most recent
+ * Dublin count are zero or blank.
+ */
+export type HeldView = "held" | "all";
+
+/**
+ * A count, as a jump target. Money-free, and ONE SHAPE FOR BOTH ROLES (010 AC-12).
+ *
+ * `monthKey` and `periodKey` are both `"YYYY-MM"` and they are different facts: a count
+ * dated `2026-10-01` closing `2026-09` sits in OCTOBER's grid (007 AC-20), so a jump that
+ * moved by period would land the reader on a month the count is not drawn in.
+ */
+export type CountRef = {
+  countId: string;
+  locationCode: string;
+  locationName: string;
+  /** `"YYYY-MM-DD"`. */
+  countDate: string;
+  /** `"2026-10"` — the month it SITS in, which is where the calendar jump goes. */
+  monthKey: string;
+  /** `"2026-09"` — the month it CLOSES. */
+  periodKey: string;
+  status: CountStatus;
+};
+
+/** The nearest count either side of a cursor, in `(countDate, id)` order, or `null`. */
+export type CountNeighbours = { previous: CountRef | null; next: CountRef | null };
+
+/** One line of a historical count. Item, quantity, unit — Part 6's row, and nothing more. */
+export type CountHistoryLine = {
+  itemId: string;
+  description: string;
+  unitLabel: string | null;
+  /**
+   * A decimal STRING or `null`, exactly as stored, NEVER rounded and never a JS number.
+   * `null` is *nobody looked*; `"0"` is *counted, none held*. Keeping those two apart is
+   * the whole of Invariant 5, and it has to survive a read as well as a write.
+   */
+  quantity: string | null;
+  sortOrder: number;
+};
+
+/**
+ * ONE SHAPE FOR BOTH ROLES (010 AC-12, AC-13). There is no `…ForAdmin` variant, because
+ * there is no monetary fact this screen may carry for anybody: every euro in the product
+ * lives on `/stock-entry/counts/[id]/summary`, which is #9's and not this feature's.
+ *
+ * `getCount`'s `itemsWithoutPrice` is dropped by `getCountHistory`'s mapper rather than by
+ * a scan exemption for the screen — #9's rule, applied where the boundary actually is.
+ */
+export type CountHistoryView = {
+  countId: string;
+  locationCode: string;
+  locationName: string;
+  /** `"2026-09"`. */
+  periodKey: string;
+  /** `"September 2026"`. */
+  periodLabel: string;
+  /** `"YYYY-MM-DD"`. */
+  countDate: string;
+  status: CountStatus;
+  countedByName: string;
+  lineCount: number;
+  uncountedLineCount: number;
+  /** EVERY line, in sheet order. The held view is applied by a pure predicate, not here. */
+  lines: CountHistoryLine[];
+};
+
+/** Where `findNeighbourCounts` starts from. `countId` is `null` for a whole-day cursor. */
+export type CountCursor = { date: string; countId: string | null };

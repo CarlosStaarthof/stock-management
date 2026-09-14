@@ -38,13 +38,20 @@ export const RESERVED_YEAR = {
   autosave: 2097,
   // #9's three, one each (009 AC-32). Ten files, ten years.
   //
-  // 2100 IS THE LAST RESERVABLE YEAR, and that is recorded here rather than discovered:
-  // 007 AC-8 caps a submitted period at 2100, and every e2e count is created through that
-  // flow. The next stock-entry spec file needs that cap raised or a file merged - there is
-  // no eleventh year to take.
+  // 2100 IS THE LAST YEAR A COUNT CREATED THROUGH `startCount` CAN RESERVE, and the note
+  // is corrected here rather than left to be discovered (010 AC-21). 007 AC-8 caps the
+  // PERIOD a count may close at 2100, and that cap binds the start flow - it does not bind
+  // a count built through Prisma. #10's two specs need a count to LOOK at rather than one
+  // to make, so they build theirs with `seedCountWithLines`, `fillQuantities`, `submitAs`
+  // and `approveAs`, which go through Prisma and the lifecycle service; 2101 and 2102 are
+  // therefore reachable, and a spec that needs the START flow still has no year past 2100.
   submit: 2098,
   approve: 2099,
   signature: 2100,
+  // #10's two, one each (010 AC-21). Twelve files, twelve years, and every one of them
+  // still deletes only its own.
+  takesCalendar: 2101,
+  takesCount: 2102,
 } as const;
 
 export function assertReserved(year: number): void {

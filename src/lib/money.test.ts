@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import {
+  compareDecimals,
   formatPriceExact,
   multiplyDecimal,
   roundHalfUp,
@@ -201,5 +202,59 @@ describe("AC-24: no JavaScript number touches money in this module", () => {
 
   it("AC-24: the module still names the price column nowhere (006 AC-31)", () => {
     expect(readFileSync("src/lib/money.ts", "utf8")).not.toContain("unitPrice");
+  });
+});
+
+/**
+ * Spec 010 AC-10. `isHeld` is one question asked of a stored quantity, and this is the
+ * comparison it is asked with: exact, at any scale, and never through a JS number.
+ */
+describe("compareDecimals", () => {
+  it("AC-10: answers the five comparisons the criterion names", () => {
+    expect(compareDecimals("0.0000", "0")).toBe(0);
+    expect(compareDecimals("0.0001", "0")).toBe(1);
+    expect(compareDecimals("9.50", "9.5")).toBe(0);
+    expect(compareDecimals("10", "9")).toBe(1);
+    expect(compareDecimals("-1", "0")).toBe(-1);
+  });
+
+  it("AC-10: trailing zeros are noise and leading zeros are not a value", () => {
+    // `Decimal(12, 4)` reads `0` back as `0.0000` and `21.6128` as itself, so a held test
+    // that compared the STRINGS would call a counted zero held.
+    expect(compareDecimals("21.6128", "0.0000")).toBe(1);
+    expect(compareDecimals("0.0000", "0.00000000")).toBe(0);
+    expect(compareDecimals("007", "7")).toBe(0);
+    expect(compareDecimals("-0", "0")).toBe(0);
+  });
+
+  it("AC-10: it is exact past the range a double is, and antisymmetric", () => {
+    // 9007199254740993 is the first integer a `number` cannot hold; as a pair of doubles
+    // these two compare EQUAL, which is the failure mode this module exists to avoid.
+    expect(compareDecimals("9007199254740993", "9007199254740992")).toBe(1);
+    expect(compareDecimals("9007199254740992", "9007199254740993")).toBe(-1);
+
+    expect(compareDecimals("0.10000000000000001", "0.1")).toBe(1);
+    expect(compareDecimals("-3", "-4")).toBe(1);
+    expect(compareDecimals("-4", "-3")).toBe(-1);
+  });
+
+  it("AC-10: a string it cannot read compares equal rather than throwing", () => {
+    // A service must raise only typed domain errors (AC-17), and a `RangeError` escaping
+    // from a comparator would be neither typed nor catchable by a screen.
+    expect(compareDecimals("banana", "0")).toBe(0);
+    expect(compareDecimals("0", "")).toBe(0);
+    expect(compareDecimals("1e4", "0")).toBe(0);
+  });
+
+  it("AC-10: the comparison itself uses no JavaScript number", () => {
+    const code = readFileSync("src/lib/money.ts", "utf8")
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/\/\/.*$/gm, "");
+
+    expect(code).toContain("export function compareDecimals");
+    expect(code).not.toMatch(/\bNumber\s*\(/);
+    expect(code).not.toMatch(/\bparseFloat\b/);
+    expect(code).not.toMatch(/\btoFixed\b/);
+    expect(code).not.toMatch(/\bMath\.round\b/);
   });
 });

@@ -3,7 +3,7 @@ import type { JSX } from "react";
 
 import { buildMonthGrid } from "@/lib/calendar-month";
 import { COUNT_STATUS_LABEL, START_A_COUNT, WEEKDAY_HEADINGS } from "@/lib/count-messages";
-import type { CalendarMonth } from "@/types/stock-count";
+import type { CalendarMonth, CountBadge } from "@/types/stock-count";
 
 /**
  * One month of days, `Mon` first (AC-19, AC-20).
@@ -26,8 +26,35 @@ import type { CalendarMonth } from "@/types/stock-count";
  * `tests/e2e/sign-in.spec.ts`'s 003 AC-11 compares the cookie jar immediately after
  * sign-in, and a prefetch response landing a moment later added a cookie to it. AC-2
  * requires that spec to pass unmodified, so the page changed rather than the test.
+ *
+ * TWO OPTIONAL PROPS, ADDED BY 010 AC-4, AND THEIR DEFAULTS ARE THIS FILE'S OLD BODY.
+ *
+ * `/stock-entry` (#7) and `/stock-takes` (#10) are the SAME calendar rendered at two
+ * addresses with different affordances, and the only honest way to keep them the same is
+ * to render them from one component. So the two things that actually differ — where a
+ * badge leads, and whether an empty day is a *Start a count* affordance at all — become
+ * arguments, and the defaults are exactly what this component did before:
+ *
+ *   * `badgeHref` defaults to `/stock-entry/counts/<id>`;
+ *   * `emptyDayHref` defaults to `/stock-entry/new?countDate=<day>`, and may answer `null`
+ *     for "this calendar reads, it does not start" — a day cell then holds its number and
+ *     NO `<a>` at all (010 AC-5).
+ *
+ * `src/app/stock-entry/page.tsx` therefore needs no edit and is byte-identical after #10,
+ * which is the assertion (010 AC-4, AC-22). Nothing else about a cell, a badge or a
+ * heading is parameterised: a second thing a caller could change is a second way the two
+ * calendars could drift.
  */
-export function CalendarGrid({ month }: { month: CalendarMonth }): JSX.Element {
+export function CalendarGrid({
+  month,
+  badgeHref = (badge) => `/stock-entry/counts/${badge.countId}`,
+  emptyDayHref = (date) => `/stock-entry/new?countDate=${date}`,
+}: {
+  month: CalendarMonth;
+  badgeHref?: (badge: CountBadge) => string;
+  /** `null` means "render no link on an empty day", which is #10's calendar. */
+  emptyDayHref?: (date: string) => string | null;
+}): JSX.Element {
   const countsByDate = new Map(month.days.map((day) => [day.date, day.counts]));
   const rows = buildMonthGrid(month.monthKey);
 
@@ -62,6 +89,9 @@ export function CalendarGrid({ month }: { month: CalendarMonth }): JSX.Element {
               }
 
               const counts = countsByDate.get(cell.date) ?? [];
+              // Asked once per empty cell, so a caller that answers `null` renders no
+              // anchor rather than an anchor to nowhere (010 AC-5).
+              const emptyHref = counts.length === 0 ? emptyDayHref(cell.date) : null;
               const dayNumber = Number(cell.date.slice(8, 10));
               const isToday = cell.date === month.todayKey;
 
@@ -76,16 +106,24 @@ export function CalendarGrid({ month }: { month: CalendarMonth }): JSX.Element {
                   }`}
                 >
                   {counts.length === 0 ? (
-                    <Link
-                      data-testid="start-count-day"
-                      href={`/stock-entry/new?countDate=${cell.date}`}
-                      prefetch={false}
-                      aria-label={START_A_COUNT}
-                      title={START_A_COUNT}
-                      className="flex h-full min-h-11 w-full flex-col items-center justify-start gap-1 px-0.5 py-1 hover:bg-slate-50"
-                    >
-                      <span className="text-xs font-medium text-slate-700">{dayNumber}</span>
-                    </Link>
+                    emptyHref === null ? (
+                      // #10's calendar reads; it does not start a count. A day with
+                      // nothing on it is a number and no `<a>` at all (010 AC-5).
+                      <div className="flex h-full min-h-11 w-full flex-col items-center justify-start gap-1 px-0.5 py-1">
+                        <span className="text-xs font-medium text-slate-700">{dayNumber}</span>
+                      </div>
+                    ) : (
+                      <Link
+                        data-testid="start-count-day"
+                        href={emptyHref}
+                        prefetch={false}
+                        aria-label={START_A_COUNT}
+                        title={START_A_COUNT}
+                        className="flex h-full min-h-11 w-full flex-col items-center justify-start gap-1 px-0.5 py-1 hover:bg-slate-50"
+                      >
+                        <span className="text-xs font-medium text-slate-700">{dayNumber}</span>
+                      </Link>
+                    )
                   ) : (
                     <div className="flex h-full flex-col gap-0.5 px-0.5 py-1">
                       <span className="text-xs font-medium text-slate-700">{dayNumber}</span>
@@ -98,7 +136,7 @@ export function CalendarGrid({ month }: { month: CalendarMonth }): JSX.Element {
                           // AC-20: the period rides along in the badge, because the count
                           // is placed by the day it happened and not by the month it closes.
                           title={badge.periodKey}
-                          href={`/stock-entry/counts/${badge.countId}`}
+                          href={badgeHref(badge)}
                           prefetch={false}
                           className="block rounded bg-slate-900 px-1 py-0.5 text-[0.625rem] leading-tight text-white"
                         >

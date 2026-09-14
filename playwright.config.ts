@@ -77,12 +77,12 @@ export default defineConfig({
   projects: [
     {
       name: "chromium",
-      testIgnore: /stock-entry-.*\.spec\.ts/,
+      testIgnore: /(stock-entry|stock-takes)-.*\.spec\.ts/,
       use: { ...devices["Desktop Chrome"] },
     },
     {
       name: "chromium-stock-entry",
-      testMatch: /stock-entry-.*\.spec\.ts/,
+      testMatch: /(stock-entry|stock-takes)-.*\.spec\.ts/,
       dependencies: ["chromium"],
       use: { ...devices["Desktop Chrome"] },
     },

@@ -79,25 +79,57 @@ const LIFECYCLE_EXEMPT: string[] = [
 ];
 
 describe("AC-3: the refusal is the server's answer and stays one", () => {
-  it("AC-3: no loading.tsx exists at or above src/app/stock-entry/", () => {
+  it("AC-3, 010 AC-2: no loading.tsx sits on the path to any protected page, derived from the tree", () => {
     // A loading.tsx puts a Suspense boundary above every page below it; once the shell has
     // flushed, a `redirect()` thrown later by a Server Component can no longer be a 307 -
     // Next has to finish the 200 and redirect from the browser instead. #3 and #6 both
     // recorded it, and this feature's refusals must stay the server's answer. The
     // implementer reproduced the degradation before closing and recorded both status codes
-    // in progress/impl_entry_start.md.
+    // in progress/impl_entry_start.md, and #10's implementer reproduced it again for
+    // `/stock-takes/counts/<id>` in progress/impl_stock_takes_history.md.
+    //
+    // 010 AC-2 REPLACES THE HAND-LISTED FIVE DIRECTORIES WITH THIS DERIVATION, and the
+    // argument is #9's post-approval ruling: the list was hand-maintained, was found stale
+    // once, and NOTHING CATCHES AN ASSERTION THAT IS MISSING. Every directory on the path
+    // from `src/app` to any `page.tsx` outside `src/app/(public)/` is computed here, so a
+    // route added in a later feature is covered by the session that adds it rather than
+    // three phases later.
+    const guarded = new Set<string>();
+    for (const page of shippingModulesUnder("src/app").filter((file) =>
+      file.endsWith("page.tsx"),
+    )) {
+      // The public segment is the one place a loading.tsx is CORRECT: it sits in a route
+      // group precisely so that it covers `/` and nothing protected.
+      if (page.startsWith("src/app/(public)/")) continue;
+
+      const segments = page.split("/").slice(0, -1);
+      for (let depth = 2; depth <= segments.length; depth += 1) {
+        guarded.add(segments.slice(0, depth).join("/"));
+      }
+    }
+
+    // The derivation is meaningful only if it really walked the tree: 010 AC-2 puts the
+    // floor at 10 and the expectation at 14, and today it yields 23.
+    expect(guarded.size).toBeGreaterThanOrEqual(10);
+    expect(guarded.size).toBeGreaterThanOrEqual(14);
+
+    // Every one of the five it replaces, and the two routes #10 adds. `[id]` is a PARENT:
+    // 009 puts `/submit`, `/summary` and `/reopen` under it and two of those answer a
+    // YARD_STAFF session with a 307 (009 AC-1), which a loading.tsx here would degrade
+    // into 200s carrying a shell.
     for (const directory of [
       "src/app",
       "src/app/stock-entry",
       "src/app/stock-entry/new",
       "src/app/stock-entry/counts",
-      // `[id]` is a PARENT now: 009 puts `/submit`, `/summary` and `/reopen` under it, and
-      // two of those answer a YARD_STAFF session with a 307 (009 AC-1). A loading.tsx here
-      // would degrade both refusals into 200s carrying a shell, and the list is the only
-      // thing that would notice - #3, #6 and #7 each recorded the same failure mode one
-      // directory higher.
       "src/app/stock-entry/counts/[id]",
+      "src/app/stock-takes",
+      "src/app/stock-takes/counts/[id]",
     ]) {
+      expect(guarded, `${directory} is not on the derived path`).toContain(directory);
+    }
+
+    for (const directory of guarded) {
       expect(existsSync(`${directory}/loading.tsx`), `${directory}/loading.tsx`).toBe(false);
       expect(existsSync(`${directory}/loading.ts`), `${directory}/loading.ts`).toBe(false);
     }
@@ -537,6 +569,22 @@ describe("AC-26, AC-29: the layering and the no-database path", () => {
   });
 });
 
+/**
+ * EVERY SPEC THAT RESERVES A YEAR, SELECTED BY WHAT IT DOES rather than by what it is
+ * called (010 AC-21).
+ *
+ * The census below used to match the filename prefix `stock-entry-`, and #10 adds two
+ * specs called `stock-takes-*` that reserve two years — files the prefix could not see, so
+ * a reused year would have gone unnoticed until two of them collided on
+ * `@@unique([locationId, periodYear, periodMonth])` in the middle of a parallel run. A
+ * spec RESERVES A YEAR by importing `RESERVED_YEAR`, so that is what is selected on.
+ */
+function specsReservingAYear(): string[] {
+  return shippingModulesUnder("tests/e2e")
+    .filter((file) => /\.spec\.ts$/.test(file))
+    .filter((file) => read(file).includes("RESERVED_YEAR"));
+}
+
 describe("AC-30: the e2e suite keeps 006 AC-35's shape", () => {
   const config = read("playwright.config.ts");
 
@@ -551,12 +599,26 @@ describe("AC-30: the e2e suite keeps 006 AC-35's shape", () => {
     expect(config).toContain("fullyParallel: false");
   });
 
-  it("AC-30: the stock-entry specs run after the specs that edit the yard sheets", () => {
+  it("AC-30, 010 AC-21: the count specs run after the specs that edit the yard sheets", () => {
     // A count pre-populates from the live sheet, so it must not run while another spec is
     // adding items to one. The separation is the config's, not a fixture's.
+    //
+    // 010 AC-21 WIDENS THE TWO PATTERNS AND NOTHING ELSE. #10's specs seed counts against
+    // the yard sheets exactly as #7's, #8's and #9's do, so they belong in the second
+    // project for the same reason; leaving them in the first would put a `startCount`-shaped
+    // fixture back beside the item-master specs, which is the collision this split exists
+    // to avoid. The assertion is strictly stricter than the one it replaces: it names both
+    // prefixes, so a spec of either name landing in the wrong project turns it red.
     expect(config).toContain('dependencies: ["chromium"]');
-    expect(config).toMatch(/testIgnore: \/stock-entry-\.\*\\.spec\\.ts\//);
-    expect(config).toMatch(/testMatch: \/stock-entry-\.\*\\.spec\\.ts\//);
+    expect(config).toMatch(/testIgnore: \/\(stock-entry\|stock-takes\)-\.\*\\.spec\\.ts\//);
+    expect(config).toMatch(/testMatch: \/\(stock-entry\|stock-takes\)-\.\*\\.spec\\.ts\//);
+
+    // And every spec that reserves a year really is matched by that pattern - the census
+    // below counts twelve of them, and a file the projects do not cover would run in the
+    // wrong phase without anything noticing.
+    for (const spec of specsReservingAYear()) {
+      expect(/(stock-entry|stock-takes)-.*\.spec\.ts$/.test(spec), spec).toBe(true);
+    }
   });
 
   it("AC-30: every stock-entry spec owns one reserved year and deletes only that year", () => {
@@ -568,29 +630,33 @@ describe("AC-30: the e2e suite keeps 006 AC-35's shape", () => {
     expect(support).toContain("where: { periodYear: year }");
     expect(support).not.toMatch(/periodYear:\s*\{\s*gte:/);
 
+    const specs = specsReservingAYear();
     const years = new Set<string>();
-    for (const spec of shippingModulesUnder("tests/e2e").filter((file) =>
-      /stock-entry-.*\.spec\.ts$/.test(file),
-    )) {
+    for (const spec of specs) {
       const match = /RESERVED_YEAR\.(\w+)/.exec(read(spec));
       expect(match, spec).not.toBeNull();
       years.add(match?.[1] ?? "");
     }
 
-    // Seven spec files, seven distinct years: two files can never collide on a yard and a
-    // month, which `@@unique([locationId, periodYear, periodMonth])` would otherwise refuse.
+    // One year per file, and no two files sharing one: two specs on the same year can
+    // collide on a yard and a month, which `@@unique([locationId, periodYear, periodMonth])`
+    // refuses — at `retries: 0`, mid-run, in whichever of the three workers lost.
     //
-    // #7 shipped four. 008 AC-33 adds three — `quantities: 2095`, `filters: 2096` and
-    // `autosave: 2097` — and the number moves with them rather than being loosened into a
-    // `toBeGreaterThan`: the whole value of this assertion is that it is an equality, so a
-    // spec file that quietly reused a sibling's year would turn it red.
-    const specs = shippingModulesUnder("tests/e2e").filter((file) =>
-      /stock-entry-.*\.spec\.ts$/.test(file),
-    );
-    // 009 AC-32 adds three - `submit: 2098`, `approve: 2099`, `signature: 2100` - and the
-    // number moves with them, as it did in #8. TEN files, TEN distinct years.
-    expect(specs).toHaveLength(10);
-    expect(years.size).toBe(10);
+    // #7 shipped four, 008 AC-33 added three, 009 AC-32 three more, and 010 AC-21 adds
+    // `takesCalendar: 2101` and `takesCount: 2102`. TWELVE files, TWELVE distinct years.
+    // The number moves with them rather than being loosened into a `toBeGreaterThan`: the
+    // whole value of this assertion is that it is an equality, so a spec file that quietly
+    // reused a sibling's year turns it red.
+    expect(specs).toHaveLength(12);
+    expect(years.size).toBe(12);
+
+    // Non-vacuity, and the reason the selection changed: the set really does reach past
+    // the prefix it used to match, so #10's two specs are inside this census rather than
+    // invisible to it.
+    expect(specs).toContain("tests/e2e/stock-takes-calendar.spec.ts");
+    expect(specs).toContain("tests/e2e/stock-takes-count.spec.ts");
+    expect(read("tests/e2e/support/stock-entry.ts")).toContain("takesCalendar: 2101");
+    expect(read("tests/e2e/support/stock-entry.ts")).toContain("takesCount: 2102");
   });
 });
 
