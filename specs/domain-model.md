@@ -354,12 +354,22 @@ its shape is documented in Part 1 so the model is ready when M7 starts.
 | Line value | `quantity × unitPriceSnapshot` |
 | Yard total | `Σ` line values for that yard's `APPROVED` count in the period |
 | Total stock | `Σ` yard totals — **only for complete periods** |
-| MoM variance | `total(period) − total(previous complete period)` |
+| MoM variance | `total(y, m) − total(y, m − 1)` — the **immediately preceding** month, never "the last one that happens to be complete"; refuses when either period is incomplete |
 | YoY variance | `total(y, m) − total(y − 1, m)` |
 | Movement | Per-yard difference between consecutive counted periods |
 | Held | `quantity > 0` |
 | Dormant | `quantity = 0` across the last 3 counted periods |
 | One-off | held in exactly one period |
+
+**Why MoM names a fixed offset.** This row read `total(previous complete period)` until
+2026-09-14. Read literally, an uncounted July made August's *month on month* a June-to-August
+movement — two months of change labelled as one — which is the same defect as `Summary!C9`'s
+eleven-month "year on year" that Part 4 condemns in terms (*never "twelve columns to the
+left"… which breaks the moment a month is skipped*). The two sentences could not both stand.
+Found by #11's spec-writer, which followed Part 4; **011 AC-11 refuses rather than reaching**,
+and this row now says so. *Movement* below is the same species and is deliberately left as it
+is, to be settled by the feature that implements it rather than by a passing edit here.
+
 
 ---
 

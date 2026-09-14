@@ -1,141 +1,48 @@
 # Current session
 
-**Feature:** #10 `stock_takes_history`
-**Spec:** `specs/features/010-stock_takes_history.md` (approved 2026-09-12, 22 criteria)
-**Started:** 2026-09-12
-**Status:** in_progress — **Phase A complete**, Phase B not started
+**Feature:** #11 `analysis`
+**Spec:** `specs/features/011-analysis.md` (being written)
+**Started:** 2026-09-14
+**Status:** in_progress — spec-writer dispatched, nothing implemented
 
 ## Plan
 
-Two routes — `/stock-takes` (the calendar, where an ADMIN lands) and
-`/stock-takes/counts/<id>` (read-only detail) — a yard selector, previous/next count jumps,
-and a held-only default. **Read-only: no route handler, no server action, no form, no client
-component.** Every control is an `<a>`, so the whole screen works with the bundle dead and
-emits no JSON.
+The **inverse of #10**. #10 proved a screen carries no money for either role; #11 is the one
+screen that carries all of it, for one role. Everything built to keep euros away from staff has
+to hold while an admin looks at nothing but euros.
 
-Two cold phases, since this is smaller than #8 and #9:
-
-- **Phase A** — the pure modules (`stock-takes-view.ts`, `held.ts`, `stock-takes-input.ts`,
-  `stock-takes-messages.ts`), the read services, and their tests.
-- **Phase B** — the two pages, the `CalendarGrid` optional props, the e2e specs, the mutation
-  proofs and the report.
+ADMIN-only, refusal in the **service layer** so removing the middleware entry does not expose
+it (003 AC-16). Per-yard values, total stock, period completeness, MoM and YoY joined on
+**period** rather than on date arithmetic, a trend chart, and breakdowns by type and supplier.
+Desktop grid, stacks on phone.
 
 ## Approach
 
-**Money-free by design, and asserted rather than promised.** AC-13: the page body is
-**byte-identical** between a `YARD_STAFF` session and an `ADMIN` session on the same URL — no
-role branch anywhere. Stronger than 009 AC-23's "identical except one link", and affordable
-only because this screen has nothing an admin needs that staff may not have.
+**Value is derived, never stored** — `quantity x unitPriceSnapshot`, read from the count's own
+snapshot and never from today's price, or last September's total changes when a price is edited
+next March (Invariant 2). **An unpriced item contributes 0 and the screen must say so**
+(Invariant 4): the workbook's original sin was EUR 486 counted and never valued, invisible. The
+total is the sum of **exact** line values rounded once, not the sum of rounded lines (#9).
 
-An admin still reaches the money: one link, same `href` and label for both roles, to
-`/stock-entry/counts/<id>` — #9's role-shaped screen, two clicks from the euros. **Nothing in
-#10 links to `/summary`, for anybody.** The admin-only shortcut was rejected because it would
-buy one click and cost the byte-identity assertion.
+Four questions the spec must decide rather than defer: which count statuses Analysis counts; how
+a never-counted month is distinguished from a EUR 0 month in every figure, comparison and the
+chart; what the chart is mechanically, given there is no charting library and a dependency fence;
+and whether this screen needs a client component at all (#10 shipped none).
 
-**The two calendars are one calendar.** `/stock-entry` (do something) and `/stock-takes` (read
-something) call the **same** `listCalendarMonth`, `buildMonthGrid` and `CalendarGrid`. Yard
-scope is a **pure filter over the result**, not a second query. Drift is prevented
-mechanically: AC-4 asserts the badge sets rendered by both pages for the same month are
-**equal**, and `src/app/stock-entry/page.tsx` must be **byte-identical** afterwards.
+## Inherited defect, to be fixed here
 
-**No AC-33.** Per #9's ruling, no criterion counts other criteria. Every shipped assertion
-this feature amends is named inside the criterion that forces it, and the two hand-maintained
-lists it touches become **derivations from the tree**, so they fail in the session that causes
-the change.
+`src/app/analysis/page.tsx:21` carries the identity header that overflowed on two other routes
+in #10, at `text-base` -- wider, so it overflows sooner. Neighbours measured `scrollWidth` 424
+against 390 px and 104 px of overflow at 320 px. This page is #11's, so #11 fixes it, with the
+measurement in the criterion and a **56**-character unbreakable label, not 40.
 
 ## Work log
 
 <!-- Update as you go, not at the end. If the session dies, this file is what survives. -->
 
-### Phase A — started 2026-09-12
-
-Scope, from the spec's *Contract*: the four pure modules, `compareDecimals` in `money.ts`,
-the two read services, and their tests. **No page, no component, no `CalendarGrid` prop, no
-e2e spec.**
-
-Files expected:
-
-- `src/types/stock-count.ts` (modified) — `YardScope`, `HeldView`, `CountRef`,
-  `CountNeighbours`, `CountHistoryLine`, `CountHistoryView`. They live here for the reason
-  `CountStatus` does: `src/lib/stock-takes-view.ts` needs `YardScope` and `src/lib/**` may
-  not import from `src/server/**`.
-- `src/lib/money.ts` (modified) — `compareDecimals`, on the `bigint` scaling #9 built.
-- `src/lib/held.ts` — `isHeld`, `partitionHeld`.
-- `src/lib/stock-takes-view.ts` — `filterCalendarByYard`, `scopeTallies`.
-- `src/lib/stock-takes-messages.ts` — every literal a criterion quotes; #7's are re-exported.
-- `src/server/counts/stock-takes-input.ts` — `parseYardScope`, `parseHeldView`.
-- `src/server/counts/count-history-service.ts` — `getCountHistory`, `findNeighbourCounts`.
-- `.test.ts` beside each pure module; `count-history-service.db.test.ts` beside the service.
-
-Approach notes taken from the shipped tree before writing a line:
-
-- `listCalendarMonth` is **not touched**. `filterCalendarByYard` is a pure filter over its
-  result, so there is no second `where` clause to drift from #7's (AC-4, AC-7).
-- `getCountHistory` is a **mapper over `getCount`**, field by field — never a spread — so
-  the `ADMIN`'s `itemsWithoutPrice` is dropped **in the service** (AC-13, the #9 mapper rule).
-- `quantity` crosses as the stored decimal STRING; `null` (nobody looked) and `"0"`
-  (counted, none held) stay distinguishable all the way out (Invariant 5, AC-9).
-- **Shipped scans this work sits inside**, checked before writing:
-  `tests/unit/stock-entry-contract.test.ts` scans `src/server/counts/**` — including the
-  test files — for `SUBMITTED|APPROVED|submittedAt|approvedAt|signatureSvg|unitPrice` and
-  holds the offender list to an exact six files. So the new service **and its db test** name
-  no status past `DRAFT`: the test reaches them through `COUNT_STATUSES` from
-  `src/types/stock-count.ts`. `tests/unit/project-contract.test.ts` keeps `src/lib/**` at
-  zero files naming `unitPrice`, which `money.ts` and `held.ts` both respect.
-
-Progress:
-
-- [x] plan recorded
-- [x] types
-- [x] `compareDecimals` + tests
-- [x] `held.ts` + tests
-- [x] `stock-takes-view.ts` + tests
-- [x] `stock-takes-messages.ts` + tests
-- [x] `stock-takes-input.ts` + tests
-- [x] `count-history-service.ts` + db tests
-- [x] targeted `typecheck` / `lint` / `test:unit` / `test:db`
-- [x] report at `progress/impl_stock_takes_history.md`
-
-**Phase A closed.** Targeted runs, not the gate:
-
-```
-npm run typecheck   ->  exit 0
-npm run lint        ->  exit 0
-npm run test:unit   ->  exit 0   48 files, 679 tests   (614 before)
-npm run test:db     ->  exit 0   21 files, 359 tests, 421 s   (333 before)
-```
-
-Two things Phase B must carry in:
-
-1. **`findNeighbourCounts` takes ONE cursor.** On the calendar the page calls it twice — the
-   month's first day for `previous`, its last day for `next` — because the two ends of a
-   month are two cursors. On the detail it is one call with `{ date, countId }`.
-2. **008 AC-3 bans the substring `listSheet` from every shipping module under
-   `src/server/counts/`** — a doc comment naming it turned that shipped assertion red during
-   Phase A, and the comment was reworded rather than the test. It does **not** cover
-   `src/app/stock-takes/**`, so 010 AC-8's scan of that tree is still Phase B's to write.
-
-And one finding worth repeating at the gate: `return { ...count, … }` in `getCountHistory`'s
-mapper leaves **`npm run typecheck` at exit 0** while `itemsWithoutPrice` travels to an
-administrator's screen. The assertion catches it; the compiler does not. Third time.
-
-**Status:** `#10` stays `in_progress`. Phase B is the two pages, the two `CalendarGrid`
-props, the e2e specs, the AC-2 degradation proof and the mutation proofs.
-
 ## Verification
 
-Gate at the moment of approval — full run, database checks executed:
-
-```
-bash ./init.sh                        ->  init exit=0, 913 s
-    [ok]   19 features, 1 in progress
-    [ok]   typecheck / lint / test:unit (614) / test:e2e (133)
-==> Database
-    [ok]   database reachable / prisma migrate status / npm run test:db
-[OK] Environment ready
-```
-
-<!-- Paste the closing run here. It must not say "(database checks skipped)" — C2.1. -->
+<!-- Paste the closing run here. It must not say "(database checks skipped)" -- C2.1. -->
 
 ## Blockers
 
@@ -143,7 +50,7 @@ None.
 
 ## Next
 
-Phase A, gate, Phase B, gate, reviewer, sign-off. Then **#11 analysis**, then **#16 deploy** —
+Spec, user approval, cold-phase implementation, gate, review, sign-off. Then **#16 deploy** --
 the order the user chose on 2026-09-12, so the first real users see a complete picture rather
 than counting into something they cannot review.
 
@@ -166,6 +73,17 @@ than counting into something they cannot review.
   smaller number and does not reconcile with those sums — do not present them as the same.
 
 ### Carried in
+
+- **A layout guarantee asserted only against fixture data is a guarantee about the fixture.**
+  #10's sharpest finding. Three routes each had a no-sideways-scroll assertion; all three
+  passed; all three overflowed, because every fixture email is hyphenated and browsers break
+  after a hyphen. `/analysis` still carries the bug and #11 owns the fix.
+- **A claim about what an assertion protects, written without measuring, is wrong twice as
+  often as it feels.** Both coordinator errors in #10 had that shape -- the one-sided badge
+  bound and the 40-character floor. Measure, and let the measurement be what lands in the file.
+- **A test added to satisfy a review finding is not evidence the finding's defect is gone.**
+  #10's ADMIN repetition was correct, required, and would have passed with the bug still in.
+  Verify the reasoning, not just the instruction.
 
 - **The mapper rule** (#9): when a shape's key is a forbidden string, the boundary is crossed
   by a mapper in the service, not by a scan exemption for the screen.
