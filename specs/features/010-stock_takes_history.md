@@ -680,6 +680,170 @@ recorded here because it will outlive this feature: **a layout guarantee asserte
 fixture data is a guarantee about the fixture.** Every one of these routes had a
 no-sideways-scroll assertion. All three passed. The emails were hyphenated.
 
+### Two of AC-22's assertions expired at the commit, 2026-09-14 — after #10 closed
+
+Found by #11's Phase A implementer on a clean tree, reported rather than edited, and it is a
+**class defect worth more than the instance**.
+
+Both assertions in `tests/unit/stock-takes-contract.test.ts` -> *"AC-22: the one shipped source
+file this feature edits"* read the **working tree** and require #10's changes to be
+**uncommitted**:
+
+- *"CalendarGrid.tsx is the only changed file in #7's trees"* — `git status --porcelain`,
+  `expect(files).toEqual([GRID])`
+- *"playwright.config.ts changed by exactly its two route patterns"* — `git diff --unified=0`,
+  `expect(changedLines).toHaveLength(4)`
+
+They passed for the whole of #10 and went red the moment `b468f60 feat(#10)` was committed:
+`expected [] to deeply equal [ "src/components/stock-entry/CalendarGrid.tsx" ]`.
+
+**The general rule: an assertion whose subject is the working tree is an assertion that expires
+at the commit.** It passes exactly once — during the session that writes it — and then fails
+forever, in a feature nobody is working on, for a reason unrelated to anything the next author
+did. That is worse than a test that never ran: it teaches the next person that a red suite is
+normal.
+
+**The distinction is precise, and most of this project's tree assertions are on the right side
+of it.** An audit found fourteen `git status --porcelain` call sites across five files, of which
+**thirteen** assert **absence** — `expect(porcelain).toBe("")`, "this file was never touched"
+— which stays true after a commit, forever, and one asserts **presence**. The second expiring
+assertion is not a porcelain call at all but the `git diff --unified=0` line count beside it;
+an earlier draft of this amendment folded it into the porcelain tally and said "twelve … only
+these two", which is off by one. Corrected by the repairing implementer. **Exactly two
+expiring assertions existed and both are repaired here** — that conclusion never moved. Presence is the expiring direction. #11's own AC-25 assertion, written the same
+week, is the durable kind.
+
+**The durable spelling is a fixed commit range**, not the working tree: `git diff --name-only
+ee448cb..HEAD -- <paths>`, where `ee448cb` is `spec(#10): approve stock_takes_history`, the
+commit #10 was built on. That claim — *"between the spec's approval and now, exactly one file in
+#7's trees changed"* — is the claim AC-22 was always making, it is true before the commit and
+after it, and it keeps working when #11, #12 and #16 land on top.
+
+Both assertions are rewritten to that form. Nothing about what they require is loosened: the
+first still names exactly one permitted file and still requires every other file in both trees
+to be identical; the second still requires exactly four changed lines, each matching the route
+pattern, and still pins `retries: 0`, `workers: 3`, `fullyParallel: false`, both timeouts, the
+`dependencies` array and the `webServer` command.
+
+**Why this is recorded against #10 rather than fixed silently in #11.** The defect is #10's, it
+was found on a tree #11 had not yet touched, and #11's implementer was explicitly forbidden to
+edit it — *"that is a blocker to report, not a licence to edit it"*. Reporting it was the
+correct move and cost #11 a gate. The repair is dispatched as its own pass, against this
+amendment.
+
+### Two byte-identity comparisons embed globally-derived values, 2026-09-14 — found during #11
+
+Neither is a hydration race, and the `<!-- -->` guard cannot see either. Both were diagnosed by
+extracting the two strings and diffing them character by character rather than by reading the
+truncated reporter output.
+
+**AC-9 — `?show=held` renders identically to no `?show`** (`stock-takes-count.spec.ts:278`).
+The two bodies were **exactly the same length**, 33,811 characters, and differed at char 859:
+
+```
+expected  .../stock-takes/counts/cmu1kbxop009jjz24s7umws9d">Previous count</a>
+received  .../stock-takes/counts/cmu1kc1xe00bwjz244fczep5p">Previous count</a>
+```
+
+**The *Previous count* neighbour resolved to a different count between the two navigations.**
+`findNeighbourCounts` orders by `(countDate, id)` across **the whole yard's history**, so while
+any other spec is concurrently creating or deleting Dublin counts — `workers: 3`, and the
+stock-entry specs do exactly that — the neighbour changes underneath the comparison. Cuids are
+fixed width, which is why the **lengths matched**: the equality failed while
+`expect(adminBody.length).toBe(staffBody.length)` passed, and that is the signature to
+recognise.
+
+This is why it was *"unreproducible in isolation"*: alone, nothing mutates the neighbour.
+
+**AC-13's role comparison has the identical exposure** — two bodies fetched at different
+moments, both embedding neighbour hrefs — and it failed on the same run for the same reason.
+010's Phase B fixed two assertions that *named* another spec's reserved year, and correctly
+rewrote them to depend on "nothing exists after". **It did not reach the ones that depend on a
+neighbour id transitively, through the rendered href.** 007 AC-30's per-spec reserved years do
+not help here: a neighbour is chosen across every year, so another spec's 2090-series count is
+a perfectly good "previous count" for a 2102 one.
+
+**The claim these tests make is role- and mode-invariance, not neighbour identity.** The repair
+must keep the claim and drop the accidental dependency: normalise the two count-jump `href`s
+before comparing (asserting separately, in a test that owns its own data, that the jumps point
+where they should), or assert the equality on a count whose neighbours cannot move. The
+byte-identity guarantee is worth keeping — it is the whole point of the feature — but it must
+not be a hostage to what another spec happens to be doing in another worker.
+
+### AC-17's price check compares a bare number against the whole HTML, 2026-09-14
+
+Not #10's, but found in the same run and it is the same species, so it is recorded here and
+repaired with it. `stock-entry-quantities.spec.ts:560` asserts the staff body does not contain
+`aRealPrice`, a price taken from the database as a plain string. After the e2e debris was
+cleared from the development database the chosen price became **`"890"`**, and the assertion
+failed on:
+
+```
+<input type="hidden" name="$ACTION_KEY" value="k934edebf36a890835fd557e0f4833e0b"/>
+```
+
+A three-digit price inside a random 32-character hex action key. **No money leaked** — the same
+test's `unitPrice` and `No price` assertions passed, and the money-key walk over the JSON
+passed — but a guarantee that fails on a coincidence is a guarantee that will one day be
+*silenced* on a coincidence, which is the real cost.
+
+The repair is to make the comparison specific: search the rendered **text**, or exclude
+framework-generated attributes, or require the price to appear in a money-shaped context. A
+bare `toContain` of a short numeric string against raw HTML cannot distinguish a price from a
+hash, an id, a class name or a timestamp.
+
+**What both share.** An assertion is only as strong as the *specificity* of what it compares.
+Each of these compares something broad — a whole rendered body, a whole HTML document — against
+something that is not fully under the test's control. They passed for many features by luck,
+and the luck ran out when a neighbouring spec's timing changed and when four rows were deleted
+from a database.
+
+### "2102 is the highest reserved year" stopped being true when #11 reserved three more, 2026-09-14
+
+Found by the implementer repairing the eighth and ninth amendments, on a run in which it could
+not itself reproduce the failure, and reported with the prediction *"expect it to fail on the
+full gate run"* — which is the most useful form a finding can take.
+
+`tests/e2e/stock-takes-count.spec.ts:386` justifies asserting that an approved count's *Next
+count* control is **disabled** with a comment: *"'Nothing after' is a fact this file can rely
+on: 2102 is the highest reserved year."* It was true when written — twelve spec files, twelve
+years, 2102 the top.
+
+**#11 reserved `analysisAccess: 2103`, `analysisPrior: 2104` and `analysisFigures: 2105`, and
+both analysis specs seed DUBLIN counts in them.** Fourteen files, fifteen years, three of them
+above 2102. Every one of these files runs in the `chromium-stock-entry` project with three
+workers, so whenever an analysis spec's rows exist, that Dublin count **does** have a next
+count and the control is an anchor. The assertion is simply false now, and it passed in five
+consecutive repair runs only because the analysis specs were not in those invocations.
+
+**#11 is not at fault.** Reserving its own year per spec is exactly what 007 AC-30 requires,
+and #11 followed it. The defect is in the assertion, which took a fact about *the suite at one
+moment* and wrote it down as a fact about *the yard*. That is the ninth amendment's lesson
+arriving a third time: **an assertion is only as strong as the specificity of what it compares,
+and "nothing exists after" is a claim about every other spec in the repository.**
+
+It is also, exactly, what 010's Phase B thought it had fixed. Its report records rewriting two
+assertions that named another spec's reserved year "to depend on 'nothing exists after'"
+instead. **That substitution traded a dependency on one named spec for a dependency on all of
+them** — narrower-looking, in fact broader, and invisible until a feature added a higher year.
+The repair must not reach for a third version of the same idea: the assertion needs a scenario
+whose neighbours this file *controls*, not a fact about what else happens to exist.
+
+**AC-14 carries the same exposure, one line from being covered.**
+`stock-takes-count.spec.ts:481` compares two bodies of the approved count fetched at different
+moments, and the approved count's *next* is now a globally-derived neighbour of the eighth
+amendment's species. AC-9 and AC-13 are masked; AC-14 is not, purely because the repair brief
+scoped that pass to three assertions. It is repaired here.
+
+**One narrower race is left in place deliberately, and recorded rather than hidden.** The
+draft's *Previous count* renders as a disabled `span` when this file runs alone and as an
+anchor when another spec's counts exist beside it. If that flips **between** the staff fetch
+and the admin fetch, the raw lengths differ and `expect(adminBody.length).toBe(staffBody.length)`
+fails. It is not masked, because masking the control's *state* would hide a genuine role
+difference — *"the jump is a link for the administrator and dead for the yard staff"* is a
+fault this comparison exists to catch. The window is one `beforeAll` or `afterAll` landing
+between two navigations. Accepted, with its cost stated.
+
 ## Open questions
 
 None blocking. Three decisions this spec settles with a stated answer rather than leaving them

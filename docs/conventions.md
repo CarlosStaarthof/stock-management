@@ -55,6 +55,11 @@ throw new Error("duplicate");
 - Explain **why**, never **what**. The code says what.
 - One place comments are required: any constant taken from the source workbook must
   cite its origin.
+- **If a criterion bans a string, the comment explaining the ban cannot spell it either.**
+  The scans read raw source, comments included (006 AC-31: *"in code and in a comment
+  alike"*). Five times now a module comment saying "there is no path from here to
+  `<the banned name>`" has turned its own criterion red. Name the thing indirectly, or
+  describe the rule without quoting it.
 
 ```ts
 // Clonmel Trucks & Yard!D8:D22 — a full hand-truck boiler holds 250 kg.
@@ -88,6 +93,13 @@ it("AC-3: rejects a second count for the same location and period", async () => 
 
 - Arrange / Act / Assert, separated by blank lines.
 - No shared mutable state between tests. Each test seeds what it needs.
+- **An assertion whose subject is the working tree expires at the commit.** Asserting a file
+  is *unchanged* (`expect(porcelain).toBe("")`) stays true forever and is fine. Asserting a
+  file *was changed* — an equality on `git status --porcelain`, a line count from
+  `git diff` — passes only during the session that writes it, then fails forever in a feature
+  nobody is working on. Spell it as a **fixed commit range** instead:
+  `git diff --name-only <the feature's base commit>..HEAD -- <paths>`. Same claim, and it
+  survives the commit. See 010's seventh post-approval amendment.
 
 ## Commits
 

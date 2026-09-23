@@ -951,3 +951,948 @@ no probe file, no `.bak` and no `test-results/`; `find src/app -name "loading.ts
   shipped test guards at 56 and carries the arithmetic in a comment, so the criterion is
   over-satisfied rather than contradicted — but the number in the spec is not the number with teeth.
 - `init` not run, full `npm run test:e2e` not run.
+
+---
+
+# Repair pass 3 — AC-22's expiring assertions
+
+**Ruling:** `specs/features/010-stock_takes_history.md`, seventh post-approval amendment,
+*"Two of AC-22's assertions expired at the commit, 2026-09-14"*.
+**General rule now in:** `docs/conventions.md` -> Tests.
+**Status:** complete. **Files changed: one** — `tests/unit/stock-takes-contract.test.ts`.
+Nothing under `src/`, no spec edit, no `feature_list.json` edit, nothing belonging to #11.
+Nothing committed.
+
+## The defect, restated in one line
+
+Both assertions read the **working tree** and required #10's changes to be uncommitted, so
+they passed only while #10 was being written and went red at `b468f60 feat(#10)` —
+`expected [] to deeply equal [ "src/components/stock-entry/CalendarGrid.tsx" ]`.
+
+## The rewrite
+
+A named constant now carries the base SHA, with the reasoning attached so the next reader does
+not tidy it back. It sits immediately above `describe("AC-22: the one shipped source file this
+feature edits")`:
+
+```ts
+/**
+ * `ee448cb` is `spec(#10): approve stock_takes_history` - the commit this feature was built
+ * on, and the base of the two assertions below.
+ *
+ * THE RANGE IS FIXED ON PURPOSE. Both assertions make a PRESENCE claim: "exactly one file in
+ * #7's trees changed", "playwright.config.ts changed by exactly four lines". Read against the
+ * WORKING TREE (`git status --porcelain`, a bare `git diff`) a presence claim passes only
+ * during the session that writes it and then fails forever - these two went red the moment
+ * `b468f60 feat(#10)` was committed, in a feature nobody was working on. Read against
+ * `ee448cb..HEAD` the same claim is true before that commit and after it, and it survives
+ * #11, #12 and #16 landing on top.
+ *
+ * Do not "tidy" this back to the working tree, and do not move the base forward: a later base
+ * would stop the range from containing #10's own edit, and the claim would silently empty out
+ * into a comparison of nothing against nothing. See 010's seventh post-approval amendment and
+ * `docs/conventions.md` -> Tests.
+ */
+const SPEC_APPROVAL_COMMIT = "ee448cb";
+```
+
+### 1. *"AC-22: CalendarGrid.tsx is the only changed file in #7's trees"*
+
+| | before | after |
+|---|---|---|
+| subject | `git status --porcelain -- <10 paths>` | `git diff --name-only ${SPEC_APPROVAL_COMMIT}..HEAD -- <the same 10 paths>` |
+| parse | `line.slice(3).trim()` (strips the porcelain status column) | `line.trim()` (`--name-only` prints bare paths) |
+| assertion | `expect(files).toEqual([GRID])` | **unchanged** |
+
+The ten watched paths are unchanged and in the same order: `src/app/stock-entry`,
+`src/components/stock-entry`, `src/lib/count-messages.ts`, `count-service.ts`,
+`count-entry-service.ts`, `count-lifecycle-service.ts`, `count-summary-service.ts`,
+`src/lib/auth-config.ts`, `src/middleware.ts`. The equality is still an equality against a
+one-element list, so every other file in both trees is still required to be identical. Nothing
+was loosened; the `.slice(3)` removal is forced by the output format, not a relaxation (a
+`--name-only` path passed through `.slice(3)` would have silently truncated `src/app/…` to
+`/app/…` and the equality would have been red for the wrong reason).
+
+### 2. *"AC-21, AC-22: playwright.config.ts changed by exactly its two route patterns"*
+
+| | before | after |
+|---|---|---|
+| subject | `git diff --unified=0 -- playwright.config.ts` | `git diff --unified=0 ${SPEC_APPROVAL_COMMIT}..HEAD -- playwright.config.ts` |
+| everything else | — | **unchanged** |
+
+Still `expect(changedLines).toHaveLength(4)`, still every line matched against
+`/test(Ignore|Match): ...stock-entry/` (the literal regex in the file is untouched), and still
+all seven `toContain` pins: `retries: 0`, `workers: 3`, `fullyParallel: false`,
+`timeout: 45_000`, `expect: { timeout: 10_000 }`, `dependencies: ["chromium"]`,
+`command: "npm run start"`. The four lines the range yields are the same four: two
+`testIgnore` / `testMatch` deletions and their two replacements.
+
+## Mutation transcripts
+
+Both probes had to be **commits**, not working-tree edits: a commit-range assertion does not
+watch the working tree, which is the entire point of the repair. Each probe was committed on a
+**detached HEAD** so `main` never moved; both probe commits were then abandoned (reachable only
+from the reflog). `main` is `c9b980c` before and after, no branch or tag was created, and
+nothing is staged.
+
+### Probe 0 — the control, and it is worth recording
+
+Appended `// MUTATION PROBE - working tree only, to be removed` to
+`src/components/stock-entry/CountSheet.tsx`, left it **uncommitted**, re-ran:
+
+```
+git status --porcelain -- src/components/stock-entry
+ M src/components/stock-entry/CountSheet.tsx
+
+ ✓ tests/unit/stock-takes-contract.test.ts (29 tests) 1487ms
+ Test Files  1 passed (1)
+      Tests  29 passed (29)
+```
+
+Green, correctly: the assertion's subject is now the commit range, not the tree. This is the
+coverage the amendment knowingly traded away — see *Notes for the reviewer*.
+
+### Probe 1 — a second file in #7's trees, committed (proves assertion 1 can still fail)
+
+Same one-line comment, `git add` + commit on detached HEAD `8053490`:
+
+```
+HEAD now: 8053490 (detached; main still c9b980c)
+
+ × AC-22: the one shipped source file this feature edits > AC-22: CalendarGrid.tsx is the only changed file in #7's trees 80ms
+   → expected [ …(2) ] to deeply equal [ Array(1) ]
+
+ FAIL tests/unit/stock-takes-contract.test.ts > AC-22: the one shipped source file this feature edits > AC-22: CalendarGrid.tsx is the only changed file in #7's trees
+AssertionError: expected [ …(2) ] to deeply equal [ Array(1) ]
+
+- Expected
++ Received
+
+  [
+    "src/components/stock-entry/CalendarGrid.tsx",
++   "src/components/stock-entry/CountSheet.tsx",
+  ]
+
+ ❯ tests/unit/stock-takes-contract.test.ts:555:19
+
+ Test Files  1 failed (1)
+```
+
+Red, naming the offending file, exactly as before the repair. The other 28 tests stayed green.
+
+**Restore.** `git checkout main` re-materialised the file with **CRLF** (`core.autocrlf=true`,
+`.gitattributes` `* text=auto`), which is *not* the byte state it was found in:
+
+```
+sha256  9b7362a6e086949ecb87876fb93e8787f936daa67c0547e38aadab09a8182ad1  (after checkout - WRONG)
+sha256  374479542df0d883c40c1cc6ae1b7ca8c1e06730aac51f8842b2f236b4624999  (scratchpad byte copy)
+```
+
+The byte copy was therefore copied back and re-verified:
+
+```
+374479542df0d883c40c1cc6ae1b7ca8c1e06730aac51f8842b2f236b4624999 *src/components/stock-entry/CountSheet.tsx
+374479542df0d883c40c1cc6ae1b7ca8c1e06730aac51f8842b2f236b4624999 */…/scratchpad/CountSheet.tsx.copy
+```
+
+Identical to the pre-probe file. One extra step was needed: after the CRLF round trip the
+index's stat cache stayed dirty, so `git status --porcelain` reported ` M CountSheet.tsx` while
+`git diff` reported no change at all — and twelve assertions in this repository depend on that
+porcelain being empty. `git update-index --really-refresh` did not clear it; `git add -- <file>`
+did, and it staged nothing, because the blob the file converts to *is* HEAD's blob:
+
+```
+git diff --cached --name-only   ->  (empty: index identical to HEAD)
+git status --porcelain -- src/components/stock-entry playwright.config.ts   ->  (empty)
+```
+
+Re-ran: `Test Files 1 passed (1) / Tests 29 passed (29)`.
+
+### Probe 2 — one more changed line in playwright.config.ts (proves assertion 2 can still fail)
+
+Rewrote one **comment** line (line 5, unpinned and not a route pattern) so the range carries one
+deletion and one addition more than the two route patterns. Committed on detached HEAD
+`fc75db1`:
+
+```
+HEAD=fc75db1 main=c9b980c
+git diff --unified=0 ee448cb..HEAD -- playwright.config.ts | grep -cE '^[+-][^+-]'  ->  6
+
+ FAIL tests/unit/stock-takes-contract.test.ts > AC-22: the one shipped source file this feature edits > AC-21, AC-22: playwright.config.ts changed by exactly its two route patterns
+AssertionError: expected [ …(6) ] to have a length of 4 but got 6
+
+- Expected
++ Received
+
+- 4
++ 6
+
+ ❯ tests/unit/stock-takes-contract.test.ts:570:26
+```
+
+Red on the line count, as required.
+
+**Restore.** `git checkout main` returned this file byte-identical on its own (no CRLF drift),
+confirmed against the copy before anything else was done:
+
+```
+3ad1305525e533aabb7798b4431d910c94d8589e8dfd1d511b143ef6de57a4fc *playwright.config.ts
+3ad1305525e533aabb7798b4431d910c94d8589e8dfd1d511b143ef6de57a4fc */…/scratchpad/playwright.config.ts.copy
+```
+
+`git diff --cached --name-only` empty, `git status --porcelain -- playwright.config.ts` empty.
+
+## The audit — verified independently, and the amendment's split is off by one
+
+Counted across the whole of `tests/`:
+
+**Fourteen `git status --porcelain` call sites in five files** — the amendment's count is
+right:
+
+| file | lines | direction |
+|---|---|---|
+| `tests/unit/analysis-contract.test.ts` | 279 | absence — `.toBe("")` |
+| `tests/unit/count-entry-contract.test.ts` | 173, 264, 272, 284 | absence — `.toBe("")` ×4 |
+| `tests/unit/schema-and-migration.test.ts` | 353 | absence — `.toBe("")` |
+| `tests/unit/stock-entry-contract.test.ts` | 143, 154, 665, 674 | absence — `.toBe("")` ×4 |
+| `tests/unit/stock-takes-contract.test.ts` | 103, 227, 343 | absence — `.toBe("")` ×3 |
+| `tests/unit/stock-takes-contract.test.ts` | 513 (was) | **presence** — repaired here |
+
+That is **thirteen absence and one presence**, not twelve and two. The amendment's
+"twelve … only these two" folds the `git diff --unified=0` line-count site — `stock-takes`
+line 537, which is not a `--porcelain` call at all — into the porcelain tally. The conclusion
+is unaffected: **exactly two expiring assertions existed, and both are the ones repaired
+here.** Only the arithmetic inside the sentence is wrong. Flagged rather than corrected,
+because the spec is not mine to edit.
+
+**Every other assertion in `tests/` whose subject is git:**
+
+- `git diff`: **one** call site in the whole of `tests/` (the one repaired here). No other test
+  counts diff lines.
+- `git ls-files --cached --others --exclude-standard`: seven call sites —
+  `stock-takes-contract.test.ts:22`, `entry-submit-contract.test.ts:27`,
+  `hashing-boundary.test.ts:31`, `no-default-password.test.ts:26`,
+  `project-contract.test.ts:145`, `repo-hygiene.test.ts:64`, plus `analysis-contract.test.ts`'s
+  `shippingModulesUnder`. These enumerate *which files exist and what is in them*. They do not
+  read change state at all, they are unaffected by any commit, and they are durable.
+- `git check-ignore .env` / `git ls-files .env` (`repo-hygiene.test.ts:95-96`): durable.
+- `tests/e2e/` and `tests/support/`: **no** git invocation of any kind.
+
+**So: beyond these two, there is no assertion anywhere in `tests/` whose subject is the working
+tree in the expiring direction.** Stated explicitly, as asked. None of the above was changed.
+
+## Verification output
+
+Targeted, per the brief — `init`, `test:e2e` and `test:db` deliberately not run; the
+coordinator runs the gate.
+
+```
+$ npx vitest run tests/unit/stock-takes-contract.test.ts
+ ✓ tests/unit/stock-takes-contract.test.ts (29 tests) 1411ms
+ Test Files  1 passed (1)
+      Tests  29 passed (29)
+
+$ npm run typecheck        # tsc --noEmit
+(no output, exit 0)
+
+$ npm run lint             # eslint src tests --max-warnings 0
+(no output, exit 0)
+
+$ npm run test:unit        # vitest run - the suite that was red
+ Test Files  54 passed (54)
+      Tests  808 passed (808)
+   Duration  14.83s
+```
+
+`npm run test:unit` was red with 2 failures at the start of this pass and is now **808 passed,
+0 failed**. Both previously failing tests are the two repaired here.
+
+## Deviations from the spec
+
+None. The spelling is the amendment's, verbatim: `git diff --name-only ee448cb..HEAD -- <paths>`
+and `git diff --unified=0 ee448cb..HEAD -- playwright.config.ts`.
+
+## Notes for the reviewer
+
+1. **The trade the amendment made, stated plainly.** A commit-range assertion cannot see an
+   uncommitted edit. Probe 0 above is the demonstration: a second file modified in #7's trees
+   but not committed leaves the assertion green. AC-22 is therefore now a claim about the
+   repository's **history**, not about the reviewer's checkout. That is what the ruling chose
+   and it is the right choice — a presence claim about the working tree is false the day after
+   it is written — but it is a real reduction and should be visible rather than discovered.
+2. **The range is open at the top, and that has a maturity date.** `ee448cb..HEAD` grows with
+   every future commit, so the first legitimate edit any later feature makes to
+   `count-service.ts`, `src/middleware.ts`, `auth-config.ts` or anything else on the ten-path
+   list will turn *#10's* assertion red — the same "red in a feature nobody is working on"
+   failure mode, one step further out. Closing both ends (`ee448cb..b468f60`) would pin it
+   permanently. I did **not** do that: the amendment specifies `..HEAD`, and "the spec is the
+   contract". It is worth an eighth amendment before #12 touches those files.
+3. **A CRLF trap that cost me a restore, and that will catch the next agent.** With
+   `core.autocrlf=true` and `.gitattributes` `* text=auto`, `git checkout` materialises these
+   `.tsx` files with CRLF, while the working copies in this tree are LF. A file restored by
+   `git checkout` is therefore **not** byte-equal to the one you copied, and `git status` will
+   then disagree with `git diff` about whether it changed — status says ` M`, diff says nothing,
+   and `git update-index --really-refresh` does not settle it. Restoring the byte copy and then
+   running `git add -- <file>` (which stages nothing, since the converted blob equals HEAD's)
+   is what clears it. Any future mutation probe in this repository should restore from a byte
+   copy, not from `git checkout`, and should re-check `git status --porcelain` afterwards —
+   twelve assertions here depend on it being empty.
+4. **Test file line numbers moved.** The two assertions now start at lines 528 and 559 (from 503
+   and 536); the 19-line constant block above the `describe` is the shift. Any external
+   reference to the old line numbers is stale.
+5. `docs/conventions.md` -> Tests and the seventh amendment already carry the general rule, so
+   nothing further was written there. Both were read before editing and neither was modified.
+
+---
+
+# Repair pass 4 — three flaky assertions
+
+**Brief:** repair the three assertions blocking #11's gate. Diagnosis given, not re-derived:
+010's **eighth** post-approval amendment (the two byte-identity comparisons) and **ninth**
+(AC-17's bare number). No `src/` change of any kind; specs, `feature_list.json` and
+`Samples/` untouched. `init` and the full suites left to the coordinator.
+
+## What changed
+
+| File | Change |
+|---|---|
+| `tests/e2e/support/stock-takes.ts` | **new** `FOREIGN_NEIGHBOUR`, `maskForeignNeighbours()`, `jumpTargets()` (lines 168-236). `bodyOf` is unchanged. |
+| `tests/e2e/stock-takes-count.spec.ts` | `ownCounts()` / `ownNeighboursOf()` (136-163); AC-9 (307-329); AC-12/AC-13 (421-459). |
+| `tests/e2e/stock-entry-quantities.spec.ts` | `applicationMarkup()` / `priceSightings()` (546-599); AC-17 (602-659). |
+
+Working-tree diff: `tests/e2e` +263 / -7 over four files — the fourth,
+`tests/e2e/support/stock-entry.ts`, was already modified when this session opened and is
+**not mine**.
+
+## Repair 1 and 2 — AC-9 and AC-13 keep byte identity
+
+### The approach, and why this one
+
+The amendment offered two shapes. **"A count whose neighbours cannot move" is not available
+here**, and that is worth recording rather than asserting: pinning the draft's *Previous
+count* means seeding a Dublin count inside year 2102 dated before 31 January, and
+`@@unique([locationId, periodYear, periodMonth])` (`prisma/schema.prisma:210`) refuses a
+second Dublin row for period 2102-01. The only way past it is a count whose **period month
+and count date name different months** — a fixture that lies about the domain in order to
+make a test pass, in a file whose whole subject is what a count date means. So:
+**normalisation**, cut as narrow as it will go.
+
+`maskForeignNeighbours(body, ownCountIds)` replaces `/stock-takes/counts/<id>` **only when
+`<id>` is not one of the four counts this file created**. Consequences:
+
+- the two globally-derived values — the draft's *previous* (the whole yard's previous count,
+  chosen across every year) and the approved count's *next* — stop being compared;
+- **every other count id in the body is still compared byte for byte**, including
+  `show-all-items`, `open-in-stock-entry` and the three neighbour links this file owns;
+- the query each jump carries, the element, its attributes and every other byte are
+  untouched.
+
+What the mask stops comparing, the test now **asserts directly**, which is the amendment's
+stated condition: `jumpTargets()` reads both jumps from the page, AC-9 asserts the draft's
+*Next count* is February's count in **both** readings, and AC-13 asserts, **for both roles**,
+draft to next = submitted, submitted to previous = draft, submitted to next = approved,
+approved to previous = submitted. Those four are pinned by this file's own fixture: no other
+spec writes into 2102, so nothing can be dated between two of them. The draft's *previous*
+and the approved count's *next* are asserted nowhere, because there is nothing true to
+assert about them.
+
+**Kept, unchanged, as instructed:** `expect(adminBody.length, url).toBe(staffBody.length)` on
+the **raw** bodies, so a role difference that changes length is caught before any masking —
+and both hydration-separator guards.
+
+### Proof the mask is load-bearing — the flake caught live, and absorbed
+
+An instrumented paired run (probe added, run, removed, restore hash verified below) printed
+the two *Previous count* neighbours of the **same** URL as fetched by the two sessions:
+
+```
+PROBE AC-9  previous=cmu1l0xka009jjzyom7ktykrv masked=true
+PROBE AC-13 /stock-takes/counts/cmu1l0gyl0003jzok6n8fqdr9
+  staffPrev=cmu1l15nx00ecjzyosau9gjxh adminPrev=cmu1l1a3e00gpjzyomr9909za
+  staffNext=cmu1l0hln002hjzok2ocs32ks adminNext=cmu1l0hln002hjzok2ocs32ks masked=true
+PROBE AC-13 /stock-takes/counts/cmu1l0hln002hjzok2ocs32ks
+  staffPrev=cmu1l0gyl0003jzok6n8fqdr9 adminPrev=cmu1l0gyl0003jzok6n8fqdr9
+  staffNext=cmu1l0jbr004tjzoksjgfilxh adminNext=cmu1l0jbr004tjzoksjgfilxh masked=false
+  29 passed (1.5m)
+```
+
+The second line **is the reported failure, reproducing**: two different neighbours, seconds
+apart, in a run that now passes. The third shows the owned neighbours identical and **not**
+masked — the mask fires exactly where the value is another spec's, and nowhere else.
+
+### Red direction — still fails when the guarantee is broken
+
+Two mutation sets, each applied to a byte copy of the repaired file and each reverted from it
+with a hash check.
+
+**Set A — a real mode difference (AC-9) and a real role difference (AC-13).** AC-9's second
+read changed to `?show=all`; AC-13's admin body given one element the staff body has not.
+
+```
+x 1 stock-takes-count.spec.ts:307 > AC-9: ?show=held renders identically to no ?show at all
+    Error: expect(received).toBe(expected)
+      > 330 |   expect(maskForeignNeighbours(withHeld, ownCounts())).toBe(
+x 2 stock-takes-count.spec.ts:404 > AC-12, AC-13: ... one body and no euro
+    Error: /stock-takes/counts/cmu1kpt1l0003jzygzew8rmh1
+      Expected: 32470   Received: 32516
+      > 437 |       expect(adminBody.length, url).toBe(staffBody.length);
+  2 failed
+```
+
+**Set B — a role/mode difference that is exactly cuid-shaped**, so the length assertion
+cannot see it: one **owned** count id swapped for another owned one in one of the two bodies.
+This is the mutation that proves the mask is not over-broad.
+
+```
+x 1 stock-takes-count.spec.ts:307 > AC-9: ?show=held renders identically to no ?show at all
+    Error: expect(received).toBe(expected) // Object.is equality
+      > 330 |   expect(maskForeignNeighbours(withHeld, ownCounts())).toBe(
+x 2 stock-takes-count.spec.ts:407 > AC-12, AC-13: ... one body and no euro
+    Error: expect(received).toBe(expected) // Object.is equality
+      > 463 |       expect(maskForeignNeighbours(adminBody, ownCounts()), url).toBe(
+  2 failed
+```
+
+Both reached the **equality** — the length assertion passed, as it must when a cuid is
+swapped for a cuid — and both failed on it. A jump pointing at a different one of this file's
+own counts for one role is still a failure.
+
+## Repair 3 — AC-17 still asserts that no price reaches a staff session
+
+The old assertion compared a bare number against the whole HTML. It is replaced by **two**
+checks, both narrower and both stronger than "does this string appear anywhere":
+
+1. `priceSightings(applicationMarkup(staffBody), aRealPrice)` — the price as **a number of
+   its own** (nothing alphanumeric and no decimal point either side of it) in the markup the
+   application itself produced. `applicationMarkup` removes `script`, `style`, the server
+   action fields, `/_next/` URLs and `class`/`id` values — every one of them a place where
+   the framework writes a hash, an id or a chunk number, which is exactly the list the ninth
+   amendment says a bare containment test cannot tell from a price. `data-*` attributes and
+   form values are **not** removed: "not hidden — not sent".
+2. `priceSightings(readable, aRealPrice)` on the **rendered text** of the hydrated page
+   (`textContent`, scripts and styles removed) — what a yard hand can actually read.
+
+The serialised payload keeps being checked by **name** rather than by value — the euro sign,
+the column name, the *no price* sentence and the money-key walk all still read the whole,
+unfiltered response — because that payload legitimately contains bare numbers (`[890,` and
+`"890"` are both shapes the bundler emits there), and a bare-number test inside it can only
+ever be luck.
+
+Three **permanent** non-vacuity assertions now sit in the test: the search finds a price in a
+cell (`toHaveLength(1)`); it does **not** fire on the exact bytes that made this flaky, the
+32-character action-key hash from the amendment; and it does not fire on that same hash
+sitting in plain text either, so the **boundary** and not only the removal is doing work. Two
+further guards say the filter has not quietly emptied the document: the response really does
+contain a server action field, and the filtered markup really does still contain
+`count-line`.
+
+### Red direction
+
+**C1 — a real price in the staff response**, injected as a cell before the check:
+
+```
+x 1 stock-entry-quantities.spec.ts:602 > AC-17: a YARD_STAFF session can obtain no price ...
+    Error: staff response
+    + Array [
+    +   "/main><!--$--><!--/$-->        <td data-testid=\"line-value\">890</td></body></html>",
+    + ]
+      > 621 |     expect(priceSightings(applicationMarkup(staffBody), aRealPrice), "staff response")
+```
+
+**C2 — a real price a person can read**, injected into the live DOM before the text check:
+
+```
+x 1 stock-entry-quantities.spec.ts:602 > AC-17: a YARD_STAFF session can obtain no price ...
+    Error: rendered text
+    + Array [
+    +   "e heldSave nowBack to the calendarReview and signUnit price 890 per tonne",
+    + ]
+      > 661 |     expect(priceSightings(readable, aRealPrice), "rendered text").toEqual([]);
+```
+
+Both name the leak and print its sixty characters of context. C1 also confirms the price the
+fixture currently picks really is the three-digit one from the ninth amendment.
+
+## Green direction — the pair, three consecutive times
+
+`stock-takes-count.spec.ts` **with** `stock-entry-quantities.spec.ts` in one invocation is
+how the flake reproduces, so that is what was run, against the existing build, three times in
+a row with nothing changed in between:
+
+```
+node node_modules/@playwright/test/cli.js test tests/e2e/stock-takes-count.spec.ts \
+  tests/e2e/stock-entry-quantities.spec.ts --project=chromium-stock-entry --no-deps
+
+run 1 exit=0   29 passed (1.6m)
+run 2 exit=0   29 passed (2.0m)
+run 3 exit=0   29 passed (1.8m)
+```
+
+Plus a fourth immediately after the repair (`29 passed (1.6m)`, exit 0) and the instrumented
+fifth quoted above (`29 passed (1.5m)`, exit 0). Five green paired runs, no flake, no retry —
+`retries: 0` throughout, no timeout touched. `npx tsc --noEmit` and
+`npx eslint tests/e2e/... --max-warnings 0` are both clean. `--no-deps` is used because the
+`chromium` project is still blocked by the orphaned item-master rows recorded in Phase B of
+`progress/impl_analysis.md`; it is the same instrument the previous session used.
+
+## Restore hashes
+
+Every mutation was made on a byte copy and reverted from it, never by `git checkout` (note 3
+of the previous pass). `sha256`:
+
+| File | before the repair | after (final, and after every revert) |
+|---|---|---|
+| `tests/e2e/support/stock-takes.ts` | `5225d469...7342a0` | `0924c38d...cf2ae6` |
+| `tests/e2e/stock-takes-count.spec.ts` | `ba518aaf...a22a35` | `1872f8f5...2b128b` |
+| `tests/e2e/stock-entry-quantities.spec.ts` | `fca98330...0124e` | `1f7f1e03...4d1632` |
+
+Each of the five reverts (set A, set B, C1, C2, probe) was verified by `diff` against the
+recorded hash file and printed `RESTORE VERIFIED`. `test-results/` removed;
+`git status --porcelain` carries only the three files above beyond what this session found.
+
+## Findings — not repaired, because they are not mine
+
+1. **#11 has put Dublin counts ABOVE year 2102, and AC-11 in this file says there are none.**
+   `tests/unit/stock-entry-contract.test.ts` pins `analysisAccess: 2103`,
+   `analysisPrior: 2104` and `analysisFigures: 2105`, and both analysis specs seed **DUBLIN**
+   counts in them (`analysis-access.spec.ts:101-112`, `analysis-figures.spec.ts:149-200`).
+   `stock-takes-count.spec.ts:360` asserts the approved count's *Next count* is **disabled**,
+   justified in its own comment by "2102 is the highest reserved year ... twelve files,
+   twelve years". There are now fourteen files and fifteen years, three of them higher, and
+   all of these files sit in one project with three workers — so that assertion is false
+   whenever an analysis spec's rows exist at that moment. It passed in all five of my runs
+   only because the analysis specs were not in the invocation. **Expect it to fail on the
+   full gate run.** It is #11's to reconcile; it is not a flake and not mine to edit.
+2. The same fact makes the approved count's *next* a globally-derived neighbour of exactly
+   the eighth amendment's species. AC-9 and AC-13 are covered — that is what the mask is for
+   — but **AC-14** (`stock-takes-count.spec.ts:481`), which compares two bodies of the
+   approved count fetched at different moments, is **not**. One line of the same helper would
+   cover it. I did not write that line: the brief scopes me to three assertions.
+3. **A second, narrower race survives in AC-13, deliberately.** The draft's *Previous count*
+   renders as a disabled `span` when this file runs **alone** (visible in the set A
+   transcript) and as an anchor when `stock-entry-quantities.spec.ts` runs beside it (the
+   probe run) — the yard holds no count before 2102 except another spec's. If that presence
+   flips **between** the staff fetch and the admin fetch, the raw lengths differ and
+   `expect(adminBody.length).toBe(staffBody.length)` fails. The window is one `beforeAll` or
+   one `afterAll` of another file landing between two navigations. I did not absorb it: the
+   brief requires that assertion to stay, and masking the control's *state* would hide a real
+   role difference — "the jump is a link for the administrator and dead for the yard" is a
+   fault this comparison should catch. It is not the diagnosed cause, which was two anchors
+   with different ids and identical lengths.
+4. **AC-17's residual false positive**, named so nobody rediscovers it: an `Item.description`
+   containing the price as a standalone number would be reported. It is loud and printed with
+   its context, not silent, and narrowing further would mean requiring a euro sign — which is
+   the thing this assertion exists in order not to depend on.
+
+## Notes for the reviewer
+
+- `bodyOf` is **unchanged**, and its comment still says "no normalisation" — which remains
+  true of `bodyOf`. The masking is applied by the two callers, at the assertion, where it can
+  be read beside the claim it qualifies.
+- `jumpTargets` returns the href **whole** when it is not a count URL, rather than `null`, so
+  a malformed jump fails an equality with something readable in it instead of passing as
+  "disabled".
+- `FOREIGN_NEIGHBOUR` is deliberately not cuid-shaped: if the mask ever lands somewhere it
+  should not, the diff says so in words rather than in one hex string that looks like
+  another.
+- The two AC-17 helpers are local to `stock-entry-quantities.spec.ts`. They are #8's, not
+  #10's, and `tests/e2e/support/stock-entry.ts` is a shipped file that 010 AC-22 permits this
+  feature to amend only as AC-21 names — so nothing was added to it.
+- No `src/` file, no spec, no `feature_list.json` and nothing under `Samples/` was touched.
+  The red-direction proofs are therefore test-side, which is also why no rebuild was needed
+  and why every run served the same build the coordinator's would.
+
+# Repair pass 5 — the two assertions repair pass 4 reported
+
+**Brief:** implement the ruling in 010's **tenth** post-approval amendment — *"2102 is the
+highest reserved year" stopped being true when #11 reserved three more*. Two assertions in
+`tests/e2e/stock-takes-count.spec.ts`. No `src/` change, no spec edit, no
+`feature_list.json` edit, nothing under `Samples/`. No `init`, no full `npm run test:e2e`,
+no `npm run test:db` — the coordinator gates.
+
+## What changed
+
+| File | Change |
+|---|---|
+| `tests/e2e/stock-takes-count.spec.ts` | AC-11 (376-434) and AC-14 (516-552). **+71 / -19** against the state repair pass 4 left. |
+| `tests/e2e/support/stock-takes.ts` | **nothing.** `jumpTargets` and `maskForeignNeighbours` were already what repair 2 needed; the helper's hash is unchanged. |
+
+Nothing else in the repository was opened for writing.
+
+---
+
+## Repair 1 — AC-11: "nothing exists after" is gone, and no third spelling replaced it
+
+### The failure, reproduced first
+
+The trio the brief names, against the **unrepaired** file:
+
+```
+node node_modules/@playwright/test/cli.js test tests/e2e/stock-takes-count.spec.ts \
+  tests/e2e/analysis-access.spec.ts tests/e2e/analysis-figures.spec.ts \
+  --project=chromium-stock-entry --no-deps
+
+  x  30 [chromium-stock-entry] > stock-takes-count.spec.ts:360:5 > AC-11: the jumps are same-yard, and carry the reading mode (12.9s)
+
+  1) AC-11: the jumps are same-yard, and carry the reading mode
+
+    Error: expect(locator).toHaveAttribute(expected) failed
+    Locator:  getByTestId('next-count')
+    Expected: "true"
+    Received: ""
+    Call log:
+      - waiting for getByTestId('next-count')
+        13 x locator resolved to <a data-testid="next-count"
+             href="/stock-takes/counts/cmu1lisve000kjztwcwfsjqnc" ...>Next count</a>
+
+      393 |   await expect(next).toHaveAttribute("aria-disabled", "true");
+  1 failed
+  41 passed (2.2m)
+```
+
+`cmu1lisve000kjztwcwfsjqnc` is an analysis spec's Dublin count. The prediction repair pass 4
+filed — *"expect it to fail on the full gate run"* — is exactly right, and this is the only
+failure in that invocation.
+
+### Why the obvious repairs are all the same repair, and none of them is available
+
+`findNeighbourCounts` (`src/server/counts/count-history-service.ts:174-214`) chooses the
+neighbour by `(countDate, id)` over `{ location: { code: { in: yardCodesIn(scope) } } }` —
+**every row at that yard, in every year**. So for any count at either of the two yards,
+*"there is no neighbour in this direction"* is a claim about **every StockCount row in the
+database**. That is not a property of the assertion's wording; it is a property of the query.
+
+Three consequences, each checked rather than assumed:
+
+1. **There is no yard this file owns.** `locationCodeSchema` is `z.enum(["DUBLIN",
+   "CLONMEL"])` and there are two `Location` rows. DUBLIN is seeded by #11 at 2103, 2104 and
+   2105; CLONMEL by `stock-entry-calendar` (2092), `stock-entry-quantities` (2095),
+   `stock-takes-calendar` (2101) and `analysis-figures` (2104, 2105). Both yards have rows
+   above **and** below this file's 2102 window.
+2. **Moving the year does not fix it, it moves the boundary.** Reserving a year above 2105 —
+   or dating a 2102 count into 9999 — is literally the same sentence with a different number,
+   which is what the amendment forbids, and it fails again the next time a feature reserves a
+   year. A fixture whose `countDate` and period differ by thousands of years would also be a
+   fixture that lies about the domain, in the one file whose whole subject is what a count
+   date means. Repair pass 4 rejected that species of fixture for the same reason.
+3. **Seeding more counts cannot create an absence.** The file can pin a *presence* absolutely
+   — two owned counts adjacent in `(countDate, id)` with nothing datable between them — but
+   every extra count simply becomes the new last one, whose own `next` is global again.
+
+So the "nothing exists after" claim is not repairable in this file. It is **removed**, and
+what replaces it is a scenario in which every value the assertion names is a row this file
+created.
+
+### What is asserted instead, and why this is a fact rather than a hope
+
+February's count (`submittedId`, DUBLIN, period 2102-02, dated `2102-02-28`) is a count at a
+yard/period **both of whose neighbours are this file's own**: January's draft (`2102-01-31`)
+before it and March's approved count (`2102-03-31`) after it. No other spec writes into 2102
+— 007 AC-30's per-spec reservation, asserted in `tests/unit/stock-entry-contract.test.ts` —
+so no row that is not this file's can be dated between two of them. Both jumps out of that
+count are therefore determined by this file's own fixture and by nothing else in the
+database, whatever else is running in the other two workers.
+
+The assertion pins, for each direction:
+
+- the control exists **exactly once** under its `data-testid`;
+- it carries its label, `Previous count` / `Next count`;
+- its `href` is the owned neighbour's URL;
+- it is an `A`;
+- and it carries **no** `aria-disabled`.
+
+The last of those is not decoration. It is the other half of `CountJump`'s two states: a
+component that regressed to rendering the disabled `span` unconditionally fails here. What
+is no longer covered by this file is the opposite direction — the span branch rendering when
+there genuinely is no neighbour.
+
+A second, smaller block then reads the top of **this file's own** sequence, saying nothing
+about what is above it: the approved count's *Previous count* is February's count, an anchor
+with the owned `href` and the label.
+
+### The absence branch keeps the one owner that can actually claim it
+
+`src/server/counts/count-history-service.db.test.ts` calls `resetTestDb()` and therefore owns
+the whole of `StockCount`. It already asserts the null neighbour six times over —
+`expect(earliest.previous).toBeNull()`, `expect(latest.next).toBeNull()`,
+`expect(clonmel.previous).toBeNull()`, `expect(clonmel.next).toBeNull()`,
+`expect(fromEarlier.previous).toBeNull()`, `expect(fromLater.next).toBeNull()` (lines
+490-531). **Those are true by construction**, because that test truncates the table it then
+makes a claim about. The e2e assertion removed here was a *duplicate* of a claim that already
+has a durable owner — made from the one place in the repository that cannot support it.
+
+That is the whole shape of this defect and it is worth naming: the claim was not wrong, and
+it was not unowned. It was owned twice, and the second owner could not hold it.
+
+### Red direction — three mutations, each on a byte copy, each reverted with a hash check
+
+Run as `-g "AC-11"` against `tests/e2e/stock-takes-count.spec.ts` alone.
+
+**R1-A — the page resolved a different neighbourhood.** The navigation changed from
+February's count to January's, so the two controls are read on a count whose neighbours are
+not the owned pair:
+
+```
+  1) AC-11: the jumps are same-yard, and carry the reading mode
+    Error: previous-count
+    expect(locator).toHaveAttribute(expected) failed
+    Locator:  getByTestId('previous-count')
+    Expected: "/stock-takes/counts/cmu1lq69e0003jzg4qec99if6"
+    Received: ""
+    Call log:
+        13 x locator resolved to <span aria-disabled="true" data-testid="previous-count"
+             ...>Previous count</span>
+      > 420 |     await expect(control, testId).toHaveAttribute("href", ...);
+  1 failed
+```
+
+Note what that transcript also shows: running **alone**, the draft's *Previous count* is a
+disabled `span`; in the probe run beside the analysis specs it is an anchor. That is the
+"one narrower race" the tenth amendment records as accepted, observed live, and it is the
+direct evidence that the disabled state is not a fact any spec can assert.
+
+**R1-B — `CountJump` regressed to always-disabled.** The expected tag and `aria-disabled`
+were flipped to the disabled rendering; the live DOM says otherwise:
+
+```
+    Error: previous-count
+    expect(received).toBe(expected) // Object.is equality
+    Expected: "SPAN"
+    Received: "A"
+      > 421 |     expect(await control.evaluate((node) => node.tagName), testId).toBe("SPAN");
+  1 failed
+```
+
+**R1-C — the same-yard rule broken: the jump points at the Clonmel count.** This is the fault
+AC-11 exists to catch, and the fourth count in this fixture exists to be *not* jumped to:
+
+```
+    Error: next-count
+    Expected: "/stock-takes/counts/cmu1lra39002fjzfkdg9urtki"   (the Clonmel count)
+    Received: "/stock-takes/counts/cmu1lrc3i004tjzfk3fkcuc8t"   (March's Dublin count)
+    Call log:
+        13 x locator resolved to <a data-testid="next-count"
+             href="/stock-takes/counts/cmu1lrc3i004tjzfk3fkcuc8t" ...>Next count</a>
+  1 failed
+```
+
+---
+
+## Repair 2 — AC-14: the same mask, at the assertion
+
+`stock-takes-count.spec.ts:516` compares two bodies of the **approved** count fetched at
+different moments, and that count's *next* is now a globally-derived neighbour of the eighth
+amendment's species. The repair is the one repair pass 4 applied to AC-9 and AC-13, in the
+same place and the same way:
+
+- `jumpTargets(page)` is read after each of the two navigations;
+- the jump this file **owns** — the approved count's *Previous count*, which is February's —
+  is asserted **directly**, for both readings, so the mask absorbs nothing that is assertable;
+- the byte comparison is then taken through `maskForeignNeighbours(..., ownCounts())`, **at
+  the assertion**, not inside `bodyOf`, so the masking is read beside the claim it qualifies
+  and `bodyOf`'s "no normalisation" comment stays true of `bodyOf`.
+
+What is still compared byte for byte: everything except the *id* of a count this file does
+not own — the element, its attributes, the carried query, every owned count id, and every
+other character of the body.
+
+### Red direction — five mutations
+
+Run as `-g "AC-14"`. The first two are one pair: **the same input**, once through the old
+assertion and once through the repaired one.
+
+**R2-incidental — the neighbour moved between the two navigations.** Both bodies were given
+a *Next count* anchor with a different, cuid-shaped, foreign id (`cmu1aaaa…` / `cmu1bbbb…`),
+and the assertion put back to the unmasked `expect(spoofed).toBe(plain)`:
+
+```
+  1) AC-14: role cannot be influenced by a query, a header or a cookie
+    Error: YARD_STAFF
+    expect(received).toBe(expected) // Object.is equality
+      > 548 |     expect(spoofedX, role).toBe(plainX);
+  1 failed
+
+    Expected: len=39175  tail=...Stock Entry</a></div><a href="/stock-takes/counts/cmu1aaaaaaaaaaaaaaaaaaaaa">Next count</a>"
+    Received: len=39175  tail=...Stock Entry</a></div><a href="/stock-takes/counts/cmu1bbbbbbbbbbbbbbbbbbbbb">Next count</a>"
+```
+
+**Identical lengths, one differing id** — the signature the eighth amendment says to
+recognise, reproduced deterministically rather than waited for.
+
+**R2-absorbed — the same input through the repaired assertion:**
+
+```
+  ok 1 AC-14: role cannot be influenced by a query, a header or a cookie (9.2s)
+  1 passed (23.7s)
+```
+
+That pair is the whole claim of the repair: the incidental difference stops failing, and it
+stops failing **because of the mask** and not because the run got lucky.
+
+**R2-owned — the mask is not over-broad.** The same injection with two ids this file *does*
+own (`draftId` / `submittedId`), again cuid-shaped and length-identical:
+
+```
+    Error: YARD_STAFF
+    expect(received).toBe(expected) // Object.is equality
+      > 548 |     expect(maskForeignNeighbours(spoofedX, ownCounts()), role).toBe(
+    Expected: len=39175  tail=...<a href="/stock-takes/counts/cmu1lt9fg0003jzpoizn7povd">Next count</a>"
+    Received: len=39175  tail=...<a href="/stock-takes/counts/cmu1lta3c002hjzpoz8irlz27">Next count</a>"
+  1 failed
+```
+
+A spoofed request that led to a different one of **this file's own** counts is still a
+failure.
+
+**R2-real — a genuine difference between the two responses.** `<b>x</b>` appended to the
+spoofed body only:
+
+```
+    Error: YARD_STAFF
+    expect(received).toBe(expected) // Object.is equality
+      > 548 |     expect(maskForeignNeighbours(spoofedX, ownCounts()), role).toBe(
+  1 failed
+```
+
+**R2-jump — the new direct assertion is live.** The unspoofed navigation pointed at the draft
+instead of the approved count, so the page really does lead somewhere else:
+
+```
+    Error: YARD_STAFF
+    expect(received).toBe(expected) // Object.is equality
+    Expected: "cmu1lu83v002hjz6gqb5zgtk1"
+    Received: null
+      > 536 |     expect(plainJumps.previous, role).toBe(submittedId);
+  1 failed
+```
+
+### Evidence the exposure is real rather than theoretical
+
+An instrumented probe (added, run, removed, restore hash verified below) printed the approved
+count's *next* in both AC-14 readings while the analysis specs ran beside it:
+
+```
+PROBE AC-14 YARD_STAFF plainNext=null spoofedNext=null plainOwned=false maskChangedBody=false rawEqual=true
+PROBE AC-14 ADMIN      plainNext=null spoofedNext=null plainOwned=false maskChangedBody=false rawEqual=true
+  42 passed (1.7m)
+```
+
+**In that run the mask did not fire, and that is the honest result**: AC-14 is the 37th of 42
+tests, and by the time it ran both analysis specs had already deleted their reserved years.
+AC-11 runs earlier and caught the anchor every time. So the exposure is a **timing** window,
+not a constant — which is exactly why it must be closed by construction rather than by
+observation, and why the deterministic R2-incidental / R2-absorbed pair above is the proof
+that matters. `plainNext=null` in that transcript is also the residual the tenth amendment
+accepts: the control's *state* flips between a `span` and an anchor as another spec's rows
+come and go, and masking a state would hide a real role difference.
+
+---
+
+## The trio, run seven times
+
+```
+node node_modules/@playwright/test/cli.js test tests/e2e/stock-takes-count.spec.ts \
+  tests/e2e/analysis-access.spec.ts tests/e2e/analysis-figures.spec.ts \
+  --project=chromium-stock-entry --no-deps
+```
+
+| # | exit | summary | AC-11 | AC-14 |
+|---|---|---|---|---|
+| baseline (unrepaired) | 1 | `1 failed / 41 passed (2.2m)` | **failed — the defect** | ok |
+| probe (repaired + probe) | 0 | `42 passed (1.7m)` | ok | ok |
+| 1 | 1 | `1 failed / 41 passed (2.1m)` — `analysis-figures.spec.ts:358`, `page.waitForURL` timeout inside `signIn` | ok (3.7s) | ok (6.6s) |
+| **2** | **0** | **`42 passed (2.5m)`** | ok (3.4s) | ok (6.8s) |
+| 3 | 1 | `1 failed / 16 did not run / 25 passed` — `beforeAll` hook timeout, **`Can't reach database server`** | did not run | did not run |
+| 4 | 1 | `2 failed / 27 did not run / 13 passed` — **`PrismaClientInitializationError: Can't reach database server`** | did not run | did not run |
+| **5** | **0** | **`42 passed (2.9m)`** | ok (4.0s) | ok (43.3s) |
+| **6** | **0** | **`42 passed (1.7m)`** | ok (4.1s) | ok (6.6s) |
+| 7 | 1 | `5 failed / 6 did not run / 31 passed` — all five in the two analysis specs, **`Can't reach database server`** | ok (3.3s) | ok (6.6s) |
+
+**Three green trio runs — 2, 5 and 6 — each `42 passed`, exit 0, `retries: 0`, no timeout
+touched.** They are not literally consecutive and this report will not pretend they are: runs
+3 and 4 fell to the Neon branch dropping connections, which the brief names as the branch and
+not the code, and I stopped rather than looping. Runs 5 and 6 **are** consecutive. Across the
+six invocations in which this file's tests executed at all, **AC-11 and AC-14 passed in every
+one** — including run 7, where five analysis tests failed on `Can't reach database server`
+around them.
+
+Run 1's failure is worth one sentence because it is not an assertion either: it is
+`page.waitForURL` timing out inside `signIn` at `tests/e2e/support/users.ts:74`, on a
+navigation that authenticates against the same branch. Same cause, different symptom.
+
+`npx tsc --noEmit` exit 0 and
+`npx eslint tests/e2e/stock-takes-count.spec.ts tests/e2e/support/stock-takes.ts
+--max-warnings 0` exit 0, after the repair and with the tree in its final state.
+
+## Restore hashes
+
+Every mutation and the probe were applied to the working file and reverted from a **byte
+copy** taken before any of them, never by `git checkout`. Each revert was verified by `diff`
+against the copy and by `sha256sum`.
+
+| File | before this pass | after this pass (final) |
+|---|---|---|
+| `tests/e2e/stock-takes-count.spec.ts` | `1872f8f52d9e6926b09513aafc3b71dea4c661e92b0b494e8b16b310952b128b` | `4df5a1ec4064792fa41bbeec33425821fb52413341d6c48ebda5ce6aa2a3aa2e` |
+| `tests/e2e/support/stock-takes.ts` | `0924c38d7681d2ed3dbe87f14e2fefcbb2a274d26f5de94de4c077a361cf2ae6` | `0924c38d7681d2ed3dbe87f14e2fefcbb2a274d26f5de94de4c077a361cf2ae6` (**unchanged**) |
+
+Both "before" hashes are identical to the finals repair pass 4 recorded, so this pass started
+from exactly the tree that pass left.
+
+Nine reverts in all — R1-A, R1-B, R1-C, R2-incidental, R2-absorbed, R2-owned, R2-real,
+R2-jump and the probe — each printing `RESTORE VERIFIED
+4df5a1ec4064792fa41bbeec33425821fb52413341d6c48ebda5ce6aa2a3aa2e`. `test-results/` removed;
+`git status --porcelain` carries nothing this session created beyond the one changed file.
+
+## Findings — not repaired, because they are not in this brief's scope
+
+1. **`tests/e2e/stock-takes-calendar.spec.ts:330` carries the identical defect, and it is the
+   last place the disabled branch is asserted at the browser.** Its test *"AC-11: with no
+   neighbour the control still renders, disabled and not an anchor"* navigates to
+   `/stock-takes?month=2103-01` with the default `BOTH` scope and asserts `next-count` has
+   `aria-disabled="true"`, justified by the same sentence — *"Nothing after 2103-01 is a
+   fact: 2102 is the highest reserved year"* (lines 336-342). `analysis-access.spec.ts` seeds
+   **approved DUBLIN counts dated `2103-10-31`, `2103-11-30` and `2103-12-31`**, and both
+   files run in `chromium-stock-entry`. **Expect that test to fail on the full gate run for
+   exactly the reason AC-11 in this file just did.** It was not in my invocations, and the
+   brief scopes me to `stock-takes-count.spec.ts`.
+   The consequence matters more than the instance: once that one is repaired the same way,
+   **`CountJump`'s disabled rendering has no browser-level owner at all.** The service half
+   is safe in `count-history-service.db.test.ts`; the `span`-with-`aria-disabled` markup would
+   not be. The durable home for it is a component-level render test of `CountJump` with
+   `href: null` — no database, no neighbour, nothing to race — and that is the shape I would
+   propose rather than a third attempt to find an empty direction in a shared database.
+2. **`analysis-figures.spec.ts:579` is the same species and is not yet wrong.** It asserts
+   `/analysis`'s *Next period* is disabled at the latest approved period, 2105-10, which is
+   true only while nothing in the repository approves a count in a later period. No spec
+   reserves above 2105 today, so it passes; the item-master fixture's 2999 count is the one
+   row whose lifecycle status I did not chase down. Flagged for #11's reviewer as an
+   observation, **not** as a defect I verified.
+3. **AC-14's residual state flip is not closed and cannot be by masking.** The approved
+   count's *Next count* is a `span` when this file runs alone and an anchor when the analysis
+   specs' rows exist; if that flips between the two navigations, the masked bodies differ by
+   the whole element. Masking the *state* would hide "the jump is a link for one role and
+   dead for the other", which is a fault this comparison exists to catch. A narrower
+   alternative exists and I did not take it: moving AC-14's subject from the approved count
+   to **February's** count would remove the flip entirely, because both of that count's
+   neighbours are owned and both are therefore always anchors — the same principle repair 1
+   is built on. It changes the criterion's subject, the brief named the change to make, and I
+   made that one. Recorded so the option has an owner.
+
+## Notes for the reviewer
+
+- **`bodyOf` is still unchanged**, and its "no normalisation" comment is still true of it.
+  Both maskings live at their assertions.
+- **`ownNeighboursOf` is untouched** and still describes three owned neighbours; repair 1 does
+  not use it (it is AC-9's and AC-13's helper), and repair 1's new block names its two targets
+  literally so the assertion reads without a second lookup.
+- **The first block of the AC-11 test is unchanged** — February's jumps under
+  `?yard=CLONMEL&show=all`, and the `not.toContain(clonmelId)` check. The new block asserts
+  the same two jumps **without** a carried query, plus the label, the count, the tag and the
+  absence of `aria-disabled`; the overlap is deliberate, because the two blocks pin different
+  things about the same pair of links.
+- **Nothing in this pass depends on what any other spec does**, which is the point. The two
+  repaired assertions name only ids this file created, and the one comparison that cannot
+  avoid touching a foreign id masks exactly that id and nothing else.
+- No `src/` file, no spec, no `feature_list.json`, nothing under `Samples/`. Every red proof
+  is therefore test-side, which is also why no rebuild was needed and why every run served the
+  same build the coordinator's would.

@@ -14,7 +14,13 @@ import {
   seedCountWithLines,
   submitAs,
 } from "./support/stock-entry";
-import { bodyOf, longestDescription, shapeCountQuantities } from "./support/stock-takes";
+import {
+  bodyOf,
+  jumpTargets,
+  longestDescription,
+  maskForeignNeighbours,
+  shapeCountQuantities,
+} from "./support/stock-takes";
 import { createTestUser, removeUser, signIn } from "./support/users";
 import type { TestUser } from "./support/users";
 
@@ -125,6 +131,35 @@ async function newUser(role: "YARD_STAFF" | "ADMIN" = "YARD_STAFF"): Promise<Tes
   const user = await createTestUser(role, "stock-takes-count");
   created.push(user.email);
   return user;
+}
+
+/**
+ * The four counts this file created, and therefore the only ids in the database whose
+ * presence in a rendered body this file can predict (010's eighth amendment).
+ *
+ * Every other count belongs to another spec's reserved year, to the item-master fixture or
+ * to the user's own data, and any of those may be created or deleted while this file runs.
+ */
+function ownCounts(): string[] {
+  return [draftId, submittedId, approvedId, clonmelId];
+}
+
+/**
+ * What the two jumps out of this file's own counts must lead to, whoever is reading.
+ *
+ * Only the neighbours THIS FILE OWNS are named. The draft's *previous* is the whole yard's
+ * previous count and the approved one's *next* is the whole yard's next, so both are
+ * facts about other specs' rows rather than about this feature — those two are what
+ * `maskForeignNeighbours` drops from the byte comparisons, and they are asserted nowhere
+ * because there is nothing true to assert. The three that remain are pinned by this
+ * file's own fixture: no other spec writes into year 2102, so nothing can be dated between
+ * two of these counts.
+ */
+function ownNeighboursOf(countId: string): { previous?: string; next?: string } {
+  if (countId === draftId) return { next: submittedId };
+  if (countId === submittedId) return { previous: draftId, next: approvedId };
+  if (countId === approvedId) return { previous: submittedId };
+  return {};
 }
 
 /* ---------------------------------------------------------- AC-8, what it renders */
@@ -273,9 +308,25 @@ test("AC-9: ?show=held renders identically to no ?show at all", async ({ page })
   await signIn(page, await newUser());
 
   const withNothing = await bodyOf(page, `/stock-takes/counts/${draftId}`);
+  const jumpsWithNothing = await jumpTargets(page);
   const withHeld = await bodyOf(page, `/stock-takes/counts/${draftId}?show=held`);
+  const jumpsWithHeld = await jumpTargets(page);
 
-  expect(withHeld).toBe(withNothing);
+  // THE JUMP THIS FILE OWNS IS ASSERTED, NOT MASKED: both readings lead to February's
+  // count, and `?show=held` carries no differently from no `?show` at all.
+  expect(jumpsWithNothing.next).toBe(submittedId);
+  expect(jumpsWithHeld.next).toBe(submittedId);
+
+  // THE MASK DROPS ONE VALUE AND KEEPS THE CLAIM. The *Previous count* of the earliest
+  // count in this file's year is the whole yard's previous count, chosen across every
+  // year, so another spec creating or deleting a Dublin count between these two
+  // navigations changes it — identical lengths, one differing id, which is precisely how
+  // this assertion failed on 2026-09-14. What this criterion claims is that the two ways
+  // of asking for the held view render the same screen, and that claim is still compared
+  // byte for byte. See 010's eighth post-approval amendment.
+  expect(maskForeignNeighbours(withHeld, ownCounts())).toBe(
+    maskForeignNeighbours(withNothing, ownCounts()),
+  );
 });
 
 test("AC-9: an unreadable ?show is a 307 that keeps the yard", async ({ page }) => {
@@ -324,28 +375,63 @@ test("AC-11: the jumps are same-yard, and carry the reading mode", async ({ page
     await page.getByTestId("previous-count").getAttribute("href"),
   ).not.toContain(clonmelId);
 
-  // THE END OF THE SEQUENCE STILL RENDERS THE CONTROL, DISABLED - and the end used here is
-  // the LATEST count in the database rather than the earliest.
+  // BOTH DIRECTIONS ARE READ WHERE THIS FILE OWNS THE ANSWER, NOT WHERE THE DATABASE
+  // HAPPENS TO END.
   //
-  // That choice is forced, and it was found by running the two #10 specs together: the
-  // earliest Dublin count in THIS file is not the earliest in the DATABASE, because
-  // `stock-takes-calendar.spec.ts` owns 2101 and seeds Dublin counts in it, and the two
-  // files run in parallel. Asserting "no previous neighbour" therefore depended on another
-  // file's rows and failed at `retries: 0` the first time both ran in one session.
-  // "Nothing after" is a fact this file can rely on: 2102 is the highest reserved year
-  // (twelve files, twelve years, asserted in tests/unit/stock-entry-contract.test.ts),
-  // this file owns it, the item-master fixture's 2999 count belongs to the `chromium`
-  // project which has completed, and no real count is at or above RESERVED_FLOOR.
-  await page.goto(`/stock-takes/counts/${approvedId}`);
-  const next = page.getByTestId("next-count");
-  await expect(next).toHaveText("Next count");
-  await expect(next).toHaveAttribute("aria-disabled", "true");
-  expect(await next.evaluate((node) => node.tagName)).not.toBe("A");
+  // What stood here asserted that the approved count's *Next count* is DISABLED, and
+  // justified it with "2102 is the highest reserved year". That was already the SECOND
+  // spelling of one idea. The first named `stock-takes-calendar.spec.ts`'s year and failed
+  // the first time the two #10 specs ran in one session; Phase B traded it for "nothing
+  // exists after", which looks narrower and is in fact BROADER - a claim about every spec
+  // in the repository. #11 falsified it in one commit: `analysisAccess: 2103`,
+  // `analysisPrior: 2104` and `analysisFigures: 2105` each seed DUBLIN counts, all three
+  // of those files run in THIS project at `workers: 3`, and a Dublin count dated
+  // 2103-10-31 is a perfectly good *Next count* for a 2102-03-31 one.
+  //
+  // THERE IS NO THIRD SPELLING OF THAT IDEA TO REACH FOR, and that is why the assertion
+  // changes shape rather than changing its number. `findNeighbourCounts` chooses the
+  // neighbour by `(countDate, id)` across the WHOLE yard's history, so "there is nothing
+  // after this count" is - for every count at either of the two yards - a claim about
+  // every row in the database. Owning the top of the order does not fix it; it moves the
+  // boundary onto whichever count is last.
+  //
+  // WHAT IS ASSERTED INSTEAD IS A NEIGHBOURHOOD THIS FILE CONTROLS. February's count sits
+  // at a yard/period BOTH of whose neighbours are this file's own - January's draft before
+  // it and March's approved count after it - because no other spec writes into 2102, so no
+  // row that is not this file's can be dated between two of them. Both jumps out of it are
+  // therefore facts about rows this file created and about nothing else, and the control
+  // is pinned in the state it is in: an anchor, under the same test id, carrying the
+  // label, carrying the owned href, and NOT announcing itself disabled.
+  //
+  // THE ABSENCE BRANCH KEEPS THE ONE OWNER THAT CAN ACTUALLY CLAIM IT.
+  // `src/server/counts/count-history-service.db.test.ts` calls `resetTestDb()` and so owns
+  // the whole of `StockCount`: `expect(latest.next).toBeNull()` is true there by
+  // construction rather than by hope. What was here was a duplicate of that claim, made
+  // from the one place that cannot support it. See "Repair pass 5" in
+  // `progress/impl_stock_takes_history.md`.
+  await page.goto(`/stock-takes/counts/${submittedId}`);
+  for (const [testId, label, target] of [
+    ["previous-count", "Previous count", draftId],
+    ["next-count", "Next count", approvedId],
+  ] as const) {
+    const control = page.getByTestId(testId);
+    await expect(control, testId).toHaveCount(1);
+    await expect(control, testId).toHaveText(label);
+    await expect(control, testId).toHaveAttribute("href", `/stock-takes/counts/${target}`);
+    expect(await control.evaluate((node) => node.tagName), testId).toBe("A");
+    // A jump that HAS somewhere to go never announces itself disabled. That is the other
+    // half of `CountJump`'s two states, and it is the half this file can prove: a
+    // component that regressed to rendering the disabled `span` always would fail here.
+    expect(await control.getAttribute("aria-disabled"), testId).toBeNull();
+  }
 
-  // And the one that does have a neighbour is an anchor under the same test id.
+  // The top of THIS FILE'S OWN sequence, with still nothing said about what is above it:
+  // the approved count's *Previous count* is February's, which this file created.
+  await page.goto(`/stock-takes/counts/${approvedId}`);
   const previous = page.getByTestId("previous-count");
-  expect(await previous.evaluate((node) => node.tagName)).toBe("A");
   await expect(previous).toHaveText("Previous count");
+  await expect(previous).toHaveAttribute("href", `/stock-takes/counts/${submittedId}`);
+  expect(await previous.evaluate((node) => node.tagName)).toBe("A");
 });
 
 /* ------------------------------------------- AC-12, AC-13, AC-14, AC-15, the boundary */
@@ -369,7 +455,9 @@ test("AC-12, AC-13: for a draft, a submitted and an approved count, one body and
       `/stock-takes/counts/${countId}?show=all`,
     ]) {
       const staffBody = await bodyOf(staffPage, url);
+      const staffJumps = await jumpTargets(staffPage);
       const adminBody = await bodyOf(adminPage, url);
+      const adminJumps = await jumpTargets(adminPage);
 
       // NO HYDRATION SEPARATOR IN EITHER BODY. A `<!-- -->` between two adjacent React
       // children is emitted by the server and REMOVED when the page hydrates, so a body
@@ -379,7 +467,31 @@ test("AC-12, AC-13: for a draft, a submitted and an approved count, one body and
       expect(staffBody, url).not.toContain("<!-- -->");
       expect(adminBody, url).not.toContain("<!-- -->");
       expect(adminBody.length, url).toBe(staffBody.length);
-      expect(adminBody, url).toBe(staffBody);
+
+      // EVERY JUMP THIS FILE OWNS LEADS TO THE SAME COUNT FOR BOTH ROLES, asserted rather
+      // than masked: the draft's *Next count* is February's, the submitted count sits
+      // between the other two, and the approved one's *Previous count* is February's.
+      const owned = ownNeighboursOf(countId);
+      for (const [role, jumps] of [
+        ["staff", staffJumps],
+        ["admin", adminJumps],
+      ] as const) {
+        if (owned.previous !== undefined) {
+          expect(jumps.previous, `${url} ${role}`).toBe(owned.previous);
+        }
+        if (owned.next !== undefined) expect(jumps.next, `${url} ${role}`).toBe(owned.next);
+      }
+
+      // THE BYTE COMPARISON KEEPS ITS CLAIM AND LOSES ONE DEPENDENCY. The two neighbours
+      // this file does NOT own - the yard's count before the draft and its count after the
+      // approved one - are chosen across the whole of the yard's history, so another
+      // spec's rows move them between the staff reading and the administrator's. Cuids are
+      // fixed width, so the length assertion above passed while this one failed: the
+      // signature 010's eighth post-approval amendment records. Role-invariance is what is
+      // claimed, and role-invariance is still compared byte for byte.
+      expect(maskForeignNeighbours(adminBody, ownCounts()), url).toBe(
+        maskForeignNeighbours(staffBody, ownCounts()),
+      );
 
       for (const body of [staffBody, adminBody]) {
         expect(body, url).not.toContain("€");
@@ -409,14 +521,31 @@ test("AC-14: role cannot be influenced by a query, a header or a cookie", async 
     await signIn(page, await newUser(role));
 
     const plain = await bodyOf(page, `/stock-takes/counts/${approvedId}`);
+    const plainJumps = await jumpTargets(page);
 
     await context.addCookies([
       { name: "role", value: other, url: page.url().split("/stock-takes")[0] },
     ]);
     await page.setExtraHTTPHeaders({ "x-user-role": other });
     const spoofed = await bodyOf(page, `/stock-takes/counts/${approvedId}?role=${other}`);
+    const spoofedJumps = await jumpTargets(page);
 
-    expect(spoofed, role).toBe(plain);
+    // THE JUMP THIS FILE OWNS IS ASSERTED, NOT MASKED: the approved count's *Previous
+    // count* is February's count, spoofed or not, and a vector that changed where this
+    // page leads would be caught here rather than absorbed below.
+    expect(plainJumps.previous, role).toBe(submittedId);
+    expect(spoofedJumps.previous, role).toBe(submittedId);
+
+    // THE MASK DROPS ONE VALUE AND KEEPS THE CLAIM, exactly as in AC-9 and AC-13 above.
+    // The approved count's *Next count* is the whole yard's next count, chosen across
+    // every year, so #11's 2103-2105 Dublin rows appearing or disappearing between these
+    // two navigations changes it - identical lengths, one differing id, which is the
+    // signature 010's eighth post-approval amendment records. What THIS criterion claims
+    // is that a query parameter, a header and a cookie cannot move the role, and that
+    // claim is still compared byte for byte. See 010's tenth amendment.
+    expect(maskForeignNeighbours(spoofed, ownCounts()), role).toBe(
+      maskForeignNeighbours(plain, ownCounts()),
+    );
 
     await context.close();
   }

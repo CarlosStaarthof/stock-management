@@ -164,3 +164,73 @@ export async function badgeTuples(page: Page): Promise<string[]> {
     ),
   );
 }
+
+/**
+ * The token a neighbour this spec does not own is replaced by before a byte comparison.
+ *
+ * It is not cuid-shaped on purpose: if the masking ever lands on a value it should not
+ * have, the difference is legible in the reporter rather than being one hex string that
+ * looks like another.
+ */
+export const FOREIGN_NEIGHBOUR = "a-count-this-spec-does-not-own";
+
+/**
+ * A rendered body with every `/stock-takes/counts/<id>` whose `<id>` belongs to ANOTHER
+ * spec replaced by `FOREIGN_NEIGHBOUR` — and every id the caller owns left alone.
+ *
+ * WHY A BYTE COMPARISON NEEDS THIS AT ALL (010's eighth post-approval amendment). AC-9 and
+ * AC-13 claim MODE- AND ROLE-INVARIANCE: the same count, read twice, renders the same
+ * bytes. They do not claim anything about WHICH count the two jumps lead to. But
+ * `findNeighbourCounts` picks the neighbour by `(countDate, id)` across the WHOLE yard's
+ * history, so the href of *Previous count* holds a value derived from every other spec's
+ * rows — and at `workers: 3` those rows appear and disappear between the two navigations a
+ * comparison needs. Both failures diagnosed on 2026-09-14 were exactly that: identical
+ * lengths (a cuid is fixed width, which is the signature) and one differing id.
+ *
+ * THE MASK IS THE NARROWEST ONE THAT DROPS THE DEPENDENCY. Only the id is replaced, and
+ * only when the caller does not own it: the query the jump carries (`?yard=…&show=…`), the
+ * element, its attributes and the neighbour ids the caller DOES own are still compared
+ * byte for byte, and a jump that pointed at a different one of the caller's own counts in
+ * one of the two readings still fails. The per-spec reserved years (007 AC-30) cannot do
+ * this job on their own: a neighbour is chosen across every year, so another file's
+ * 2090-series count is a perfectly good "previous count" for a 2102 one.
+ *
+ * "A count whose neighbours cannot move" was the other repair the amendment offered, and
+ * it is not available here: pinning the earliest count's predecessor would mean seeding a
+ * second Dublin count inside this spec's own year dated before it, and
+ * `@@unique([locationId, periodYear, periodMonth])` refuses a second Dublin row for the
+ * same period — the only way through would be a count whose period and count date name
+ * different months, which is a fixture that lies about the domain.
+ */
+export function maskForeignNeighbours(body: string, ownCountIds: readonly string[]): string {
+  const own = new Set(ownCountIds);
+
+  return body.replace(/\/stock-takes\/counts\/([A-Za-z0-9_-]+)/g, (whole: string, id: string) =>
+    own.has(id) ? whole : `/stock-takes/counts/${FOREIGN_NEIGHBOUR}`,
+  );
+}
+
+/**
+ * Where *Previous count* and *Next count* lead on the page as it stands, by count id.
+ *
+ * `null` is the disabled state — `CountJump` renders a `span` with no `href` there, and
+ * "there is nowhere to go" is a fact a caller may want to assert. A jump whose href is not
+ * a count URL is returned WHOLE rather than as `null`, so a malformed one fails an
+ * equality with something readable in it instead of passing as "disabled".
+ *
+ * This is the other half of the mask above: what the mask stops comparing, the caller
+ * asserts directly, on the neighbours its own fixture owns and can predict.
+ */
+export async function jumpTargets(
+  page: Page,
+): Promise<{ previous: string | null; next: string | null }> {
+  const targetOf = async (testId: string): Promise<string | null> => {
+    const href = await page.getByTestId(testId).getAttribute("href");
+    if (href === null) return null;
+
+    const match = /^\/stock-takes\/counts\/([^?#]+)/.exec(href);
+    return match === null ? href : decodeURIComponent(match[1]);
+  };
+
+  return { previous: await targetOf("previous-count"), next: await targetOf("next-count") };
+}

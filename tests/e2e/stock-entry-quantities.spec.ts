@@ -543,6 +543,62 @@ test("AC-34: two devices, one count — the last write wins and says so", async 
   await contextB.close();
 });
 
+/**
+ * The response with the bytes NEXT.JS generated taken out of it, leaving the markup the
+ * application itself produced.
+ *
+ * WHY THIS EXISTS (010's ninth post-approval amendment, which records the failure). AC-17
+ * used to compare the price, a plain numeric string from the database, against the whole
+ * HTML with `toContain`. After the e2e debris was cleared from the development database
+ * the price the fixture happened to pick became three digits, and it matched inside the
+ * random 32-character hex of a `$ACTION_KEY` field. Nothing leaked - the euro sign, the
+ * column name and the *no price* sentence all passed - but a guarantee that fails on a
+ * coincidence is a guarantee that will one day be SILENCED on a coincidence, and that is
+ * the cost this pays back.
+ *
+ * WHAT IS REMOVED AND WHY EACH IS SAFE TO REMOVE:
+ *
+ * - `script` and `style`. The flight payload holds webpack chunk and module ids, which are
+ *   bare numbers - `[890,` and `"890"` are both shapes it emits. Prices in that payload
+ *   are still caught, by name rather than by value: the euro sign, the column name and the
+ *   money-key walk over the serialised props all read the WHOLE response, unfiltered.
+ * - The server-action fields. Their value is a hash of the function's module, not data.
+ * - `/_next/…` URLs. A chunk file is named after its id, so the same digits ride in there.
+ * - `class` and `id`. A styling token and a React `useId` are, in the amendment's own
+ *   words, exactly what a bare number must not be confused with.
+ *
+ * `data-*` attributes and form values are deliberately NOT removed: "not hidden - not
+ * sent" means a price in an attribute nobody renders is still a leak.
+ */
+function applicationMarkup(html: string): string {
+  return html
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ")
+    .replace(/<input\b[^>]*\$ACTION[^>]*>/gi, " ")
+    .replace(/\/_next\/[^"'\s>]*/gi, " ")
+    .replace(/\s(?:class|id)="[^"]*"/gi, " ");
+}
+
+/**
+ * Every place `price` appears as a NUMBER OF ITS OWN, with the sixty characters either
+ * side of it so a failure says where.
+ *
+ * A price is a token: something that is not a digit, a letter or a decimal point stands on
+ * each side of it. `890` inside `…f36a890835f…` is part of a longer run and is not a
+ * sighting; `>890<`, `="890"` and ` 890 ` are. The boundary is what tells a price from a
+ * hash - and it is not the whole answer on its own, which is why the caller searches the
+ * application's own markup rather than the raw response.
+ */
+function priceSightings(text: string, price: string): string[] {
+  const escaped = price.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const standalone = new RegExp(`(?<![0-9A-Za-z.])${escaped}(?![0-9A-Za-z.])`, "g");
+
+  return [...text.matchAll(standalone)].map((match) => {
+    const at = match.index ?? 0;
+    return text.slice(Math.max(0, at - 60), at + price.length + 60);
+  });
+}
+
 test("AC-17: a YARD_STAFF session can obtain no price from this screen, and an ADMIN no total", async ({
   page,
   browser,
@@ -557,9 +613,50 @@ test("AC-17: a YARD_STAFF session can obtain no price from this screen, and an A
   expect(staffBody).not.toContain("€");
   expect(staffBody).not.toContain("unitPrice");
   expect(staffBody).not.toContain("No price");
-  if (aRealPrice !== null) expect(staffBody).not.toContain(aRealPrice);
+
+  if (aRealPrice !== null) {
+    // A REAL PRICE, AS A NUMBER OF ITS OWN, IN THE MARKUP THIS APPLICATION WROTE.
+    expect(priceSightings(applicationMarkup(staffBody), aRealPrice), "staff response").toEqual(
+      [],
+    );
+
+    // THE SEARCH IS NOT VACUOUS, IN BOTH DIRECTIONS, ON THE BYTES THAT MADE IT FLAKY.
+    // A price in a cell is found; the same three digits inside a server action's hash are
+    // not - and neither is a hash sitting in ordinary text, so it is the BOUNDARY and not
+    // only the removal that distinguishes them.
+    expect(
+      priceSightings(applicationMarkup(`<td data-testid="x">${aRealPrice}</td>`), aRealPrice),
+    ).toHaveLength(1);
+    expect(
+      priceSightings(
+        applicationMarkup(
+          '<input type="hidden" name="$ACTION_KEY" value="k934edebf36a890835fd557e0f4833e0b"/>',
+        ),
+        "890",
+      ),
+    ).toEqual([]);
+    expect(priceSightings("<p>k934edebf36a890835fd557e0f4833e0b</p>", "890")).toEqual([]);
+
+    // AND THE FILTER DID NOT QUIETLY EMPTY THE DOCUMENT: the rows are still in what was
+    // searched, and the field whose hash collided is really there to be excluded.
+    expect(staffBody).toContain("$ACTION");
+    expect(applicationMarkup(staffBody)).toContain("count-line");
+  }
+
   await page.goto(`/stock-entry/counts/${countId}`);
   await expect(page.getByTestId("items-without-price")).toHaveCount(0);
+
+  if (aRealPrice !== null) {
+    // AND NOTHING A PERSON CAN READ. The text of the hydrated page, scripts and styles
+    // removed, is what a yard hand actually has in front of them.
+    const readable = await page.evaluate(() => {
+      const copy = document.body.cloneNode(true);
+      if (!(copy instanceof HTMLElement)) return "";
+      for (const node of copy.querySelectorAll("script, style")) node.remove();
+      return copy.textContent ?? "";
+    });
+    expect(priceSightings(readable, aRealPrice), "rendered text").toEqual([]);
+  }
 
   // The ADMIN gets #7's sentence and otherwise the same markup — and still no euro.
   const adminContext = await browser.newContext();

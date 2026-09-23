@@ -499,6 +499,25 @@ describe("AC-20: the checks that survive with no database", () => {
   });
 });
 
+/**
+ * `ee448cb` is `spec(#10): approve stock_takes_history` - the commit this feature was built
+ * on, and the base of the two assertions below.
+ *
+ * THE RANGE IS FIXED ON PURPOSE. Both assertions make a PRESENCE claim: "exactly one file in
+ * #7's trees changed", "playwright.config.ts changed by exactly four lines". Read against the
+ * WORKING TREE (`git status --porcelain`, a bare `git diff`) a presence claim passes only
+ * during the session that writes it and then fails forever - these two went red the moment
+ * `b468f60 feat(#10)` was committed, in a feature nobody was working on. Read against
+ * `ee448cb..HEAD` the same claim is true before that commit and after it, and it survives
+ * #11, #12 and #16 landing on top.
+ *
+ * Do not "tidy" this back to the working tree, and do not move the base forward: a later base
+ * would stop the range from containing #10's own edit, and the claim would silently empty out
+ * into a comparison of nothing against nothing. See 010's seventh post-approval amendment and
+ * `docs/conventions.md` -> Tests.
+ */
+const SPEC_APPROVAL_COMMIT = "ee448cb";
+
 describe("AC-22: the one shipped source file this feature edits", () => {
   it("AC-22: CalendarGrid.tsx is the only changed file in #7's trees", () => {
     // AMENDED FROM PHASE A, and forced by AC-4: that assertion required the whole of
@@ -509,8 +528,9 @@ describe("AC-22: the one shipped source file this feature edits", () => {
     const changed = spawnSync(
       "git",
       [
-        "status",
-        "--porcelain",
+        "diff",
+        "--name-only",
+        `${SPEC_APPROVAL_COMMIT}..HEAD`,
         "--",
         "src/app/stock-entry",
         "src/components/stock-entry",
@@ -525,18 +545,22 @@ describe("AC-22: the one shipped source file this feature edits", () => {
       { encoding: "utf8" },
     );
 
+    // `--name-only` prints bare paths, where `--porcelain` printed a two-character status
+    // column ahead of each one - hence no `.slice(3)` below.
     const files = (changed.stdout ?? "")
       .split("\n")
-      .map((line) => line.slice(3).trim())
+      .map((line) => line.trim())
       .filter((line) => line.length > 0);
 
     expect(files).toEqual([GRID]);
   });
 
   it("AC-21, AC-22: playwright.config.ts changed by exactly its two route patterns", () => {
-    const diff = spawnSync("git", ["diff", "--unified=0", "--", "playwright.config.ts"], {
-      encoding: "utf8",
-    });
+    const diff = spawnSync(
+      "git",
+      ["diff", "--unified=0", `${SPEC_APPROVAL_COMMIT}..HEAD`, "--", "playwright.config.ts"],
+      { encoding: "utf8" },
+    );
 
     const changedLines = (diff.stdout ?? "")
       .split("\n")
