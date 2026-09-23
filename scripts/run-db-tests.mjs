@@ -57,10 +57,57 @@ const testDirectUrl = (process.env.TEST_DIRECT_URL ?? "").trim() || testUrl;
 // `DIRECT_URL` carries the same string, so `prisma migrate deploy` is unaffected. When
 // TEST_DIRECT_URL is unset both fall back to the pooled string above, so a plain Postgres
 // still works.
+
+// The connection parameters the suite runs under, composed HERE rather than written into
+// `.env`: the string in `.env` is the developer's, this is a property of how the test run
+// uses it, and composing it here keeps every environment that runs these tests identical.
+//
+//   connection_limit  Prisma otherwise opens `cpus × 2 + 1` — 17 on an 8-core machine.
+//                     `vitest.db.config.ts` runs the whole suite sequentially in ONE
+//                     process, so one connection is ever in use; 5 leaves margin for an
+//                     interactive transaction, which holds a second.
+//   pool_timeout      how long a query waits for a slot in that pool of 5.
+//   connect_timeout   turns a silent 30-second hang against a sleeping compute — which
+//                     used to surface as `Hook timed out in 30000ms` inside whichever
+//                     `beforeEach` happened to be running — into a fast, legible error
+//                     that names the connection. It does NOT change what passes.
+const CHILD_URL_PARAMETERS = {
+  connection_limit: "5",
+  pool_timeout: "20",
+  connect_timeout: "15",
+};
+
+/**
+ * The URL with those parameters added, PRESERVING everything already on it — Neon's
+ * strings carry `sslmode` and `channel_binding`, and dropping either turns a working
+ * connection into an authentication failure.
+ *
+ * A parameter already spelled on the URL wins: this adds defaults, it does not override a
+ * deliberate choice. A string that is not a parseable URL is returned untouched — the
+ * script cannot compose onto what it cannot parse, and a plain `postgres` DSN or a test
+ * sentinel must still arrive at the child exactly as it was given.
+ */
+function withConnectionParameters(url) {
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return url;
+  }
+
+  for (const [name, value] of Object.entries(CHILD_URL_PARAMETERS)) {
+    if (!parsed.searchParams.has(name)) parsed.searchParams.set(name, value);
+  }
+
+  return parsed.toString();
+}
+
+const childUrl = withConnectionParameters(testDirectUrl);
+
 const childEnv = {
   ...process.env,
-  DATABASE_URL: testDirectUrl,
-  DIRECT_URL: testDirectUrl,
+  DATABASE_URL: childUrl,
+  DIRECT_URL: childUrl,
   // Read by resetTestDb(): a truncation that cannot prove it is on the test database
   // refuses to run.
   MACROADS_TEST_DB: "1",

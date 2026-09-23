@@ -211,11 +211,18 @@ if (-not (Test-Path (Join-Path $Root 'package.json'))) {
 } else {
     # One probe, shared with init.sh, so the two scripts cannot disagree about whether a
     # database is there. It names the host and never the credentials.
+    #
+    # THREE endpoints, not two, and the third is the point: `npm run test:db` runs against
+    # TEST_DIRECT_URL (020 AC-15), a DIFFERENT Neon compute from the pooled
+    # TEST_DATABASE_URL. Probing only the pooled one said "reachable" and then handed the
+    # run to a compute nobody had asked anything. The pair is passed as two arguments so
+    # the probe applies the same fallback the test runner does — TEST_DIRECT_URL when it
+    # is set, TEST_DATABASE_URL when it is not, which is the plain-Postgres case.
     $probeOk = $true
     $probeLine = ''
-    foreach ($variable in @('DATABASE_URL', 'TEST_DATABASE_URL')) {
+    foreach ($variables in @(@('DATABASE_URL'), @('TEST_DIRECT_URL', 'TEST_DATABASE_URL'))) {
         if ($probeOk) {
-            $probeOut = & node (Join-Path $Root 'scripts/db-probe.mjs') $variable
+            $probeOut = & node (Join-Path $Root 'scripts/db-probe.mjs') @variables
             if ($LASTEXITCODE -ne 0) {
                 $probeOk = $false
                 $probeLine = ($probeOut | Select-Object -Last 1)

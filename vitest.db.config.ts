@@ -20,11 +20,21 @@ export default defineConfig({
   },
   test: {
     environment: "node",
+    // Hands the connection back when a file ends; see the file for why it is per-file.
+    setupFiles: ["./vitest.db.setup.ts"],
     include: ["src/**/*.db.test.ts"],
     exclude: ["node_modules/**", ".next/**", "tests/e2e/**"],
     // One database, one `User` table, and every test truncates it: files run one at a
     // time. Order between them does not matter — each seeds what it needs (AC-27).
     fileParallelism: false,
+    // ...and in ONE PROCESS. Vitest's default is a fresh fork per file, so `src/server/db.ts`
+    // built a PrismaClient per file — 22 of them, each with Prisma's default pool of
+    // `cpus × 2 + 1` — against a test compute that cannot supply that many backends. The
+    // suite was asking for hundreds of connection slots per run and failing with zero
+    // assertion failures, a different file each time. One fork means one client, stashed
+    // on `globalThis` and shared by every file. `isolate` stays at its default, so module
+    // registries still reset per file: only the process is shared.
+    poolOptions: { forks: { singleFork: true } },
     // Neon is a network hop away and bcrypt at cost 10 is deliberately slow.
     testTimeout: 30_000,
     hookTimeout: 30_000,

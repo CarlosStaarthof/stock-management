@@ -27,9 +27,17 @@ Must end with `[OK] Environment ready`. Nothing is `done` until it does.
 4. **Application** — skipped entirely until `package.json` exists. Then: Node ≥ 20,
    `npm ci`, `npx prisma validate` if `prisma/schema.prisma` exists, and each of
    `typecheck`, `lint`, `test:unit`, `test:e2e` that `package.json` actually defines.
-5. **Database** — added by feature #3. `node scripts/db-probe.mjs` opens a TCP connection
-   to the host in `DATABASE_URL` and then to the host in `TEST_DATABASE_URL`, with a ten
-   second timeout. It never queries and never prints a credential.
+5. **Database** — added by feature #3. `node scripts/db-probe.mjs` opens a **session** and
+   runs `SELECT 1` — first against `DATABASE_URL`, then against the endpoint
+   `npm run test:db` will actually use (`TEST_DIRECT_URL`, falling back to
+   `TEST_DATABASE_URL`), with a ten second timeout. It never reads an application table
+   and never prints a credential.
+
+   It used to open a bare TCP socket instead. A socket proves a port is open, which a
+   suspended Neon compute and a stale password both are: the probe printed
+   `[probe] reachable` immediately before `test:db` failed to connect, four gate runs
+   running. The session also **wakes** a suspended compute, so the next step does not pay
+   the cold start as a timeout.
    - **Both reachable:** `npx prisma migrate status` must pass — a pending migration or
      drift fails the gate — and then `npm run test:db` runs the Level 2 service tests.
    - **Either not reachable, or `TEST_DATABASE_URL` unset:** the step SKIPS. `init`

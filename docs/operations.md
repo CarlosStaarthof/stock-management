@@ -53,9 +53,11 @@ needs migrating by hand.
 
 ## What `init` does about the database
 
-`init` probes `DATABASE_URL` and `TEST_DATABASE_URL` with `node scripts/db-probe.mjs`,
-which opens a TCP connection to the host — no query, no credentials in its output, ten
-second timeout.
+`init` probes `DATABASE_URL` and then the endpoint `npm run test:db` will use —
+`TEST_DIRECT_URL`, falling back to `TEST_DATABASE_URL` — with
+`node scripts/db-probe.mjs`, which opens a session and runs `SELECT 1`: no application
+table, no credentials in its output, ten second timeout. A socket that merely opens
+proves nothing; a suspended compute and a stale password both accept one.
 
 - **Reachable:** `prisma migrate status` and `npm run test:db` run for real, and the run
   ends with `[OK] Environment ready`.

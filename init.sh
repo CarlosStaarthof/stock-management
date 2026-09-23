@@ -187,11 +187,20 @@ elif ! node -e "process.exit(require('./package.json').scripts?.['test:db'] ? 0 
 else
   # One probe, shared with init.ps1, so the two scripts cannot disagree about whether a
   # database is there. It names the host and never the credentials.
+  #
+  # THREE endpoints, not two, and the third is the point: `npm run test:db` runs against
+  # TEST_DIRECT_URL (020 AC-15), a DIFFERENT Neon compute from the pooled
+  # TEST_DATABASE_URL. Probing only the pooled one said "reachable" and then handed the
+  # run to a compute nobody had asked anything. The pair is passed as two arguments so the
+  # probe applies the same fallback the test runner does — TEST_DIRECT_URL when it is set,
+  # TEST_DATABASE_URL when it is not, which is the plain-Postgres case.
   probe_ok=1
   probe_line=""
-  for variable in DATABASE_URL TEST_DATABASE_URL; do
+  for variable in "DATABASE_URL" "TEST_DIRECT_URL TEST_DATABASE_URL"; do
     if [ "$probe_ok" -eq 1 ]; then
-      if probe_out="$(node scripts/db-probe.mjs "$variable")"; then
+      # Unquoted on purpose: the second entry is two variable names, not one.
+      # shellcheck disable=SC2086
+      if probe_out="$(node scripts/db-probe.mjs $variable)"; then
         :
       else
         probe_ok=0
