@@ -55,7 +55,7 @@ never imports `PrismaClient`", and no evidence behind any later feature.
 - As **an implementer**, I can find the four layers `docs/architecture.md` mandates
   already present, so I add a service to `src/server/` instead of inventing a location.
 - As **the user**, I can hand the repository to a second machine and get it running with
-  `npm ci` plus a `.env` copied from `.env.example`, without a Docker daemon and without
+  `npm ci` plus a `.env` copied from `.env.example` *(`.env.example` was retired on 2026-09-25; `.env` is the only settings file. See the note under 002 AC-7.)*, without a Docker daemon and without
   anyone reading my secrets out of the repository.
 
 ## Data touched
@@ -151,6 +151,7 @@ The only screen is a static home page, so the states are the framework-level one
    is the unpooled one, and that Prisma migrations use `DIRECT_URL` because they fail
    through a pooler. Its `DATABASE_URL` and `DIRECT_URL` lines are placeholders, not a
    real host.
+   *Amended by the owner's decision of 2026-09-25 (021 → *Post-approval amendments* → *`.env` is the only settings file*):* `.env.example` no longer exists. `docs/operations.md` → *Environment* documents the four variables with the same statements, using placeholder values only. `tests/unit/env-file.test.ts` asserts that `.env` defines them, with `DATABASE_URL` pooled and `DIRECT_URL` unpooled. It prints no value.
 8. **AC-8** — `git check-ignore .env` exits `0` and `git ls-files .env` prints nothing.
    No tracked file other than `.env.example`, `feature_list.json` and anything under
    `specs/` matches `postgres(ql)?://[^\s]*:[^\s]*@` — that is, no credential or
@@ -161,6 +162,7 @@ The only screen is a static home page, so the states are the framework-level one
    `neon.tech` host. Without that second half the exemption is a hole — a real connection
    string pasted into `.env.example` would satisfy the first half, which is exactly the
    mistake this criterion exists to catch.
+   *Amended by the owner's decision of 2026-09-25 (021 → *Post-approval amendments* → *`.env` is the only settings file*):* the `.env.example` exemption and its placeholder half are retired with the file. No tracked file other than `feature_list.json` and anything under `specs/` may match. No tracked file's name begins with `.env`.
 9. **AC-9** — `src/lib/env.ts` exports `parseEnv`. Given
    `{ DATABASE_URL: "postgresql://u:p@h/db", DIRECT_URL: "postgresql://u:p@h2/db" }` it
    returns `{ databaseUrl: "postgresql://u:p@h/db", directUrl: "postgresql://u:p@h2/db" }`.
@@ -206,7 +208,7 @@ The only screen is a static home page, so the states are the framework-level one
   `StockCount` or any other model, no enum, no migration, no `migrate dev` run, no seed.
   That is #4 `domain_schema`. This feature ships a datasource and a generator, nothing
   more.
-- **Authentication.** `AUTH_SECRET` and `AUTH_URL` appear in `.env.example` so the shape
+- **Authentication.** `AUTH_SECRET` and `AUTH_URL` appear in `.env.example` *(`.env.example` was retired on 2026-09-25; `.env` is the only settings file. See the note under 002 AC-7.)* so the shape
   of the environment is settled once, but no login page, no session, no Auth.js provider,
   no route protection and no `Role` handling. That is #3 `auth_and_roles`.
 - **Any domain screen.** No stock entry, no stock takes, no item master, no analysis,

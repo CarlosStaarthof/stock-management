@@ -81,7 +81,7 @@ required zero models; that requirement is superseded here for `User` and `Role` 
 **Read:** the `User` row on every authenticated server-side request, so that
 deactivation and role changes take effect immediately rather than when a token expires.
 
-**Environment:** `AUTH_SECRET` and `AUTH_URL` already exist in `.env.example` (002 AC-7).
+**Environment:** `AUTH_SECRET` and `AUTH_URL` already exist in `.env.example` (002 AC-7). *(`.env.example` was retired on 2026-09-25; `.env` is the only settings file. See the note under 002 AC-7.)*
 This feature adds `TEST_DATABASE_URL` and `TEST_DIRECT_URL` — a **separate** Neon branch
 or database used only by `npm run test:db`, because Level 2 tests truncate tables between
 tests and must never be pointed at the developer's data. `.env` itself is gitignored and
@@ -204,6 +204,7 @@ collection and fetch no data beyond the session; **error** is the shared boundar
 28. **AC-28** — `npm run test:e2e` exits `0` whether or not a database is reachable. With none, every spec that needs one reports as **skipped** with an annotation containing `database unreachable`, and the unauthenticated-redirect spec still runs and passes, because route protection needs no database. With one reachable, no spec is skipped and the sign-in, landing-by-role and role-refusal specs all run.
 29. **AC-29** — `docs/verification.md` Level 0 lists the database step and `npm run test:db` in its enumeration of what `init` runs, and states the skip behaviour — the file's own rule is that a step added to the scripts is added there in the same change.
 30. **AC-30** — Repository hygiene stays green. `.env.example` documents `TEST_DATABASE_URL` and `TEST_DIRECT_URL` alongside the existing four variables, with placeholder values whose user info is `USER:PASSWORD` and whose host ends in `.invalid`; every connection-string fixture in a test or script is assembled from concatenated halves rather than written whole, as `tests/unit/repo-hygiene.test.ts` already does for itself; test passwords are generated at runtime rather than committed as literals; and `npm run test:unit` — which contains the credential scan — passes.
+    *Amended by the owner's decision of 2026-09-25 (021 → *Post-approval amendments* → *`.env` is the only settings file*):* `.env.example` no longer exists. `docs/operations.md` → *Environment* documents `TEST_DATABASE_URL` and `TEST_DIRECT_URL`: what the test database is for, and that `npm run test:db` empties it. `tests/unit/env-file.test.ts` asserts that `.env` defines both, with `TEST_DIRECT_URL` unpooled and on a different host from `DIRECT_URL`. The rest of AC-30 is unchanged.
 31. **AC-31** — The dependency rule holds. `npm run lint` exits `0`; no file under `src/app/` or `src/components/` imports `PrismaClient`; every database access added by this feature lives under `src/server/auth/`; and `src/middleware.ts` imports nothing from `@prisma/client`, so the edge runtime never needs it.
 32. **AC-32** — `/sign-in` is usable on a phone. At a 390 px viewport the page's `document.documentElement.scrollWidth` does not exceed its `clientWidth`, and the email input, the password input and the submit control are all visible and clickable without horizontal scrolling.
 
