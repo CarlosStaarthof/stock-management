@@ -1,8 +1,9 @@
 import { expect, test } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 
 import { db } from "@/server/db";
 
-import { noItemsAssigned } from "@/lib/item-master-messages";
+import { MOVED, noItemsAssigned } from "@/lib/item-master-messages";
 
 import { databaseIsReachable, skipWithoutDatabase } from "./support/database";
 import {
@@ -23,6 +24,12 @@ import type { TestUser } from "./support/users";
  * The sheet fixtures sit at `sortOrder` 800+, well past the 3-84 the importer wrote, so a
  * move here can never disturb a real row's position — and the multiset assertion is made
  * over this run's own rows for the same reason.
+ *
+ * The other half of that promise - that a move of this run's rows can only swap them WITH
+ * EACH OTHER - is a fact about the whole table, because both move services swap with the
+ * neighbouring row among every row there. So it is checked before and after every move
+ * (`expectSheetRowsAlone`, `expectTypePairAlone`), and a stranger in the band fails there,
+ * by name, instead of as a number that came out wrong.
  */
 const ledger = newLedger();
 const created: string[] = [];
@@ -37,13 +44,20 @@ let lowerType = { id: "", code: "", sortOrder: 0 };
 let upperType = { id: "", code: "", sortOrder: 0 };
 
 /**
- * A band of `sortOrder` values this worker owns, far above the 19 the importer wrote.
+ * Where this worker's pair of item types starts, far above the 19 the importer wrote.
  * `parallelIndex` is stable for the life of a worker and two workers never share one, so
  * two files running at once cannot reorder each other's rows (AC-34).
+ *
+ * Only the pair's own two numbers are reserved, not all ten. A type seeded at "the
+ * greatest plus one" while the pair exists lands ABOVE it - this file's own *Fresh Type*
+ * lands at `band + 2` - and a move of the pair never reaches that far.
  */
 function typeBand(parallelIndex: number): number {
   return 9000 + parallelIndex * 10;
 }
+
+/** The Clonmel positions this file's three rows are seeded at: a gap on purpose (AC-23). */
+const SHEET_POSITIONS = [801, 802, 805];
 
 test.beforeEach(async ({}, testInfo) => {
   await skipWithoutDatabase(testInfo);
@@ -60,17 +74,24 @@ test.beforeAll(async () => {
   const itemType = await seedItemType(ledger, "Yard Type");
   itemTypeId = itemType.id;
 
-  // Two types this run owns, at two CONSECUTIVE positions, so "move the lower one up"
-  // can only ever swap it with the upper one.
+  // Two types this run owns, at two CONSECUTIVE positions, so "move the upper one up"
+  // swaps it with the lower one - as long as nothing else holds either number, which
+  // `expectTypePairAlone` checks at every move rather than assuming.
+  //
+  // The UPPER one is created first, and deliberately. The other item-master files seed
+  // their types at "the greatest plus one" in their own `beforeAll`, at the same moment
+  // this one runs. Created lower-first, a seed that read the greatest while only the
+  // lower one existed would land on the upper one's number. Created upper-first, the
+  // greatest is already `band + 1` before `band` is taken, so such a seed lands above.
   const band = typeBand(test.info().parallelIndex);
-  const lower = await seedItemType(ledger, "Lower Type", band);
   const upper = await seedItemType(ledger, "Upper Type", band + 1);
+  const lower = await seedItemType(ledger, "Lower Type", band);
   lowerType = { id: lower.id, code: lower.code, sortOrder: lower.sortOrder };
   upperType = { id: upper.id, code: upper.code, sortOrder: upper.sortOrder };
 
   // Three rows at 801, 802 and 805 - a gap on purpose, and it must survive (AC-23).
   sheetItems = [];
-  for (const [index, sortOrder] of [801, 802, 805].entries()) {
+  for (const [index, sortOrder] of SHEET_POSITIONS.entries()) {
     sheetItems.push(
       await seedItem(ledger, {
         base: `Clonmel Row ${index}`,
@@ -109,19 +130,118 @@ async function admin(): Promise<TestUser> {
 }
 
 /**
- * Wait for the MOVE, not for the URL.
+ * One move, and the wait for THAT move to finish before anything is asserted or clicked.
  *
- * Two moves in a row both land on `?done=moved`, so `waitForURL` matches the first
- * navigation's URL and returns instantly the second time - and the assertion then reads
- * the database before the second action has finished. Waiting on the number the page
- * renders waits for the thing that actually changed.
+ * Every move redirects to the same `?done=moved`, so on a page that already says *Moved.*
+ * neither the URL nor the notice can tell a second move from the first. The wait used to
+ * be the rendered number under the 10-second `expect` clock, and a trace shows what that
+ * clock had to cover: the action's POST, and then - before the number changes on screen -
+ * the redirect's own client navigation, usually a second request to the server. On a slow
+ * branch the two did not fit: reproduced once in ten runs of the project on 2026-09-23, at
+ * the third move of the sheet test, where the swap had reached the database and the
+ * screen still showed the old number.
+ *
+ * So a move starts from a page with no outcome on it, and has finished when the URL
+ * carries its outcome - the action has run and committed and the router has taken its
+ * answer. That is a signal, not a clock: no timeout is raised, and like every `waitForURL`
+ * in this suite it is bounded by the test's own limit. A refusal fails here in the
+ * service's own words, rather than as a number that never changed.
  */
-async function expectRenderedOrder(
-  row: import("@playwright/test").Locator,
-  testId: string,
-  sortOrder: number,
-): Promise<void> {
+async function move(page: Page, control: Locator): Promise<void> {
+  const current = new URL(page.url());
+  if (current.search !== "") await page.goto(current.pathname);
+
+  await control.click();
+  await page.waitForURL(/[?&](done|error)=/);
+  expect(new URL(page.url()).searchParams.get("error"), "the move was refused").toBeNull();
+  await expect(page.getByTestId("item-master-done")).toHaveText(MOVED);
+}
+
+/** The number a row shows, asserted once its move has finished. */
+async function expectRenderedOrder(row: Locator, testId: string, sortOrder: number): Promise<void> {
   await expect(row.getByTestId(testId)).toHaveText(String(sortOrder));
+}
+
+function describeType(type: { code: string; name: string; sortOrder: number }): string {
+  return `${type.code} "${type.name}" at sortOrder ${type.sortOrder}`;
+}
+
+/**
+ * The type pair can only swap with each other - checked, not assumed.
+ *
+ * `moveItemType` swaps a type with its neighbour among EVERY item type in the database,
+ * ordered by `sortOrder` and then `code`, not with "the other one of the pair". So the
+ * pair must be adjacent in that order, and no other type may hold either of their two
+ * numbers: a stranger sharing a number can come between them on the next move even when
+ * it does not now. On 2026-09-14 leftover rows at 9001 did exactly that, and the failure
+ * read as a `sortOrder` that came out wrong. It now reads as the stranger's code and name.
+ */
+async function expectTypePairAlone(): Promise<void> {
+  const low = Math.min(lowerType.sortOrder, upperType.sortOrder);
+  const high = Math.max(lowerType.sortOrder, upperType.sortOrder);
+  const ours = new Set([lowerType.id, upperType.id]);
+  const ordered = await db.itemType.findMany({
+    select: { id: true, code: true, name: true, sortOrder: true },
+    orderBy: [{ sortOrder: "asc" }, { code: "asc" }],
+  });
+
+  const strangers = ordered.filter(
+    (type) => !ours.has(type.id) && type.sortOrder >= low && type.sortOrder <= high,
+  );
+  expect(
+    strangers.map(describeType),
+    `another item type holds this run's reorder band ${low}-${high}, so a move could swap with it`,
+  ).toEqual([]);
+
+  const positions = ordered.flatMap((type, index) => (ours.has(type.id) ? [index] : []));
+  expect(positions, "both reserved item types still exist").toHaveLength(2);
+  expect(
+    ordered.slice(positions[0] + 1, positions[1]).map(describeType),
+    "the two reserved item types are not adjacent in moveItemType's order; between them",
+  ).toEqual([]);
+}
+
+/**
+ * The same promise for the three Clonmel rows.
+ *
+ * `moveItemInSheet` swaps with the neighbour among every ACTIVE link of an ACTIVE item on
+ * the sheet, ordered by `sortOrder` and then description - so this reads the sheet through
+ * exactly that filter and that order. An unassigned link or an archived item is not a
+ * neighbour, and is not reported.
+ */
+async function expectSheetRowsAlone(): Promise<void> {
+  const low = Math.min(...SHEET_POSITIONS);
+  const high = Math.max(...SHEET_POSITIONS);
+  const ours = new Set(sheetItems.map((item) => item.id));
+  const links = await db.itemLocation.findMany({
+    where: { location: { code: "CLONMEL" }, active: true, item: { active: true } },
+    select: { itemId: true, sortOrder: true, item: { select: { description: true } } },
+  });
+  const ordered = links.sort(
+    (left, right) =>
+      left.sortOrder - right.sortOrder ||
+      left.item.description.localeCompare(right.item.description),
+  );
+  const describeLink = (link: (typeof ordered)[number]): string =>
+    `"${link.item.description}" (item ${link.itemId}) at sortOrder ${link.sortOrder}`;
+
+  const strangers = ordered.filter(
+    (link) => !ours.has(link.itemId) && link.sortOrder >= low && link.sortOrder <= high,
+  );
+  expect(
+    strangers.map(describeLink),
+    `another Clonmel row sits in this run's sheet band ${low}-${high}, so a move could swap with it`,
+  ).toEqual([]);
+
+  const positions = ordered.flatMap((link, index) => (ours.has(link.itemId) ? [index] : []));
+  expect(positions, "all three seeded rows are still on the Clonmel sheet").toHaveLength(3);
+  expect(
+    ordered
+      .slice(positions[0], positions[positions.length - 1] + 1)
+      .filter((link) => !ours.has(link.itemId))
+      .map(describeLink),
+    "the three seeded rows are not contiguous in moveItemInSheet's order; among them",
+  ).toEqual([]);
 }
 
 /** The multiset of this run's `sortOrder` values at Clonmel. */
@@ -188,7 +308,8 @@ test("AC-23, AC-24: the sheet shows sortOrder, and a move is a swap that keeps t
 }) => {
   await signIn(page, await admin());
   const beforeMoves = await ourSortOrders();
-  expect(beforeMoves).toEqual([801, 802, 805]);
+  expect(beforeMoves).toEqual(SHEET_POSITIONS);
+  await expectSheetRowsAlone();
 
   await page.goto("/item-master/yards/CLONMEL");
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Clonmel sheet");
@@ -198,7 +319,8 @@ test("AC-23, AC-24: the sheet shows sortOrder, and a move is a swap that keeps t
   // The price is rendered exactly, with every digit the workbook formula produced.
   await expect(lastRow).toContainText("€6.11764706");
 
-  await lastRow.getByTestId(`move-up-${sheetItems[2].id}`).click();
+  await move(page, lastRow.getByTestId(`move-up-${sheetItems[2].id}`));
+  await expectSheetRowsAlone();
   await expectRenderedOrder(lastRow, "sheet-sort-order", 802);
 
   // The two rows exchanged their numbers; nothing was renumbered.
@@ -212,11 +334,13 @@ test("AC-23, AC-24: the sheet shows sortOrder, and a move is a swap that keeps t
 
   // A sequence of moves leaves the multiset identical, which is the whole assertion.
   const secondRow = page.locator(`[data-item-id="${sheetItems[2].id}"]`);
-  await secondRow.getByRole("button", { name: "Move down" }).click();
+  await move(page, secondRow.getByRole("button", { name: "Move down" }));
+  await expectSheetRowsAlone();
   await expectRenderedOrder(secondRow, "sheet-sort-order", 805);
 
   const firstRow = page.locator(`[data-item-id="${sheetItems[0].id}"]`);
-  await firstRow.getByRole("button", { name: "Move down" }).click();
+  await move(page, firstRow.getByRole("button", { name: "Move down" }));
+  await expectSheetRowsAlone();
   await expectRenderedOrder(firstRow, "sheet-sort-order", 802);
 
   expect(await ourSortOrders()).toEqual(beforeMoves);
@@ -383,7 +507,9 @@ test("AC-26, AC-27: item types are created, reordered and refused readably, and 
   const upperRow = page.locator(`[data-type-code="${upperType.code}"]`);
   const lowerRow = page.locator(`[data-type-code="${lowerType.code}"]`);
 
-  await page.getByTestId(`move-type-up-${upperType.id}`).click();
+  await expectTypePairAlone();
+  await move(page, page.getByTestId(`move-type-up-${upperType.id}`));
+  await expectTypePairAlone();
   await expectRenderedOrder(upperRow, "type-sort-order", lowerType.sortOrder);
 
   const movedUpper = await db.itemType.findUniqueOrThrow({ where: { id: upperType.id } });
@@ -393,7 +519,8 @@ test("AC-26, AC-27: item types are created, reordered and refused readably, and 
   expect(movedLower.sortOrder).toBe(upperType.sortOrder);
 
   // And back, under the same rule: the multiset never moves.
-  await page.getByTestId(`move-type-down-${upperType.id}`).click();
+  await move(page, page.getByTestId(`move-type-down-${upperType.id}`));
+  await expectTypePairAlone();
   await expectRenderedOrder(upperRow, "type-sort-order", upperType.sortOrder);
   await expectRenderedOrder(lowerRow, "type-sort-order", lowerType.sortOrder);
 
