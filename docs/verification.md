@@ -33,6 +33,18 @@ Must end with `[OK] Environment ready`. Nothing is `done` until it does.
    `TEST_DATABASE_URL`), with a ten second timeout. It never reads an application table
    and never prints a credential.
 
+   **It asks twice before it says no.** If the first attempt gets no answer, the probe
+   waits two seconds and tries once more; only a second failure prints
+   `[probe] unreachable <host>`. A host that never answers is therefore reported after at
+   most about **22 seconds**: 10 + 2 + 10, with 22.4 s measured against a non-routable
+   address. Starting the Prisma CLI falls inside each attempt's 10 s bound; only the probe's
+   own start-up falls outside it. A healthy host still answers on the first attempt. The retry
+   exists because on 2026-09-24 the probe called the development database unreachable
+   seconds after the e2e suite had used it, and the whole gate ran with its database
+   checks skipped. `tests/unit/db-connection-guard.test.ts` pins it both ways: an
+   unreachable host is asked exactly twice, and a first miss followed by an answer is
+   `reachable`.
+
    It used to open a bare TCP socket instead. A socket proves a port is open, which a
    suspended Neon compute and a stale password both are: the probe printed
    `[probe] reachable` immediately before `test:db` failed to connect, four gate runs

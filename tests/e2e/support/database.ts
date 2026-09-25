@@ -8,8 +8,10 @@ import { test } from "@playwright/test";
  * A spec that needs one skips itself, with an annotation saying why — silence would let
  * a missing database look like a passing suite.
  *
- * The reachability check is the same idea as `scripts/db-probe.mjs`: a TCP connection,
- * no query, and nothing about the URL is ever printed.
+ * The reachability check here is a TCP connection to the URL's host and port: no session, no
+ * query, and nothing about the URL is ever printed. It is NOT what `scripts/db-probe.mjs`
+ * does. That probe was rewritten on 2026-09-17 (spec 003, post-approval amendments) to open a
+ * real session and run `SELECT 1`, because an open port is not a database that answers.
  */
 const PROBE_TIMEOUT_MS = 10_000;
 const DEFAULT_PORT = 5432;

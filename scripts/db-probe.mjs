@@ -41,8 +41,18 @@
 //   of them is set the message names the LAST, which is the variable a developer is
 //   expected to have set.
 //
-// Exits:  0 = the database answered, 1 = not set, unparseable, or no answer within 10
-//         seconds (AC-24).
+// Exits:  0 = the database answered, 1 = not set, unparseable, or no answer on either of
+//         TWO attempts (AC-24). Each attempt is bounded at 10 seconds and the second starts
+//         2 seconds after the first gives up, so an unreachable host is reported within
+//         about 22 seconds: 10 + 2 + 10. Starting the Prisma CLI happens INSIDE each
+//         attempt's 10 seconds; only this script's own start-up falls outside them.
+//
+// ONE RETRY, AND WHY. On 2026-09-24 this script reported the development database
+// unreachable seconds after the e2e suite had finished using it, and `init` then skipped
+// every database check: one slow moment of a Neon compute threw away the whole gate. A
+// second attempt after a short pause absorbs that; a database that is really gone still
+// fails both, and is still reported, only later. Nothing else changed: the same session,
+// the same `SELECT 1`, the same endpoint, and still one line of output.
 
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
@@ -53,6 +63,8 @@ import { fileURLToPath } from "node:url";
 const require = createRequire(import.meta.url);
 
 const TIMEOUT_MS = 10_000;
+const ATTEMPTS = 2;
+const PAUSE_MS = 2_000;
 
 // .env is gitignored and denied to agents; loading it programmatically is how every tool
 // here reads it. Variables already in the environment win, which is what lets the
@@ -119,33 +131,48 @@ try {
 
 // `connect_timeout` bounds the driver's own attempt; `spawnSync`'s timeout bounds
 // everything else, including a TLS handshake that stalls without ever failing. AC-24's
-// ten seconds is the outer number and it is the one this script promises.
+// ten seconds is the outer number of EACH attempt; the header states the total.
 const url = (() => {
   const parsed = new URL(value);
   if (!parsed.searchParams.has("connect_timeout")) parsed.searchParams.set("connect_timeout", "8");
   return parsed.toString();
 })();
 
-const result = spawnSync(process.execPath, [cli, "db", "execute", "--schema", schema, "--stdin"], {
-  // Captured, not inherited: the CLI prints the datasource and its own errors, and this
-  // script promises one line naming the host.
-  stdio: ["pipe", "pipe", "pipe"],
-  input: "SELECT 1",
-  encoding: "utf8",
-  timeout: TIMEOUT_MS,
-  env: {
-    ...process.env,
-    // Both, because `db execute` prefers `directUrl` when the schema declares one — and
-    // this one does. Setting the pair means the endpoint probed is the endpoint named.
-    DATABASE_URL: url,
-    DIRECT_URL: url,
-  },
-});
+/** One session, one `SELECT 1`, bounded at `TIMEOUT_MS`. True when the database answered. */
+function answers() {
+  const result = spawnSync(process.execPath, [cli, "db", "execute", "--schema", schema, "--stdin"], {
+    // Captured, not inherited: the CLI prints the datasource and its own errors, and this
+    // script promises one line naming the host.
+    stdio: ["pipe", "pipe", "pipe"],
+    input: "SELECT 1",
+    encoding: "utf8",
+    timeout: TIMEOUT_MS,
+    env: {
+      ...process.env,
+      // Both, because `db execute` prefers `directUrl` when the schema declares one — and
+      // this one does. Setting the pair means the endpoint probed is the endpoint named.
+      DATABASE_URL: url,
+      DIRECT_URL: url,
+    },
+  });
+  return result.status === 0;
+}
+
+/** Blocks for `ms` without spinning: this script has nothing else to do while it waits. */
+function pause(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+let reachable = answers();
+for (let attempt = 2; !reachable && attempt <= ATTEMPTS; attempt += 1) {
+  pause(PAUSE_MS);
+  reachable = answers();
+}
 
 // One vocabulary, unchanged: `init.sh` and `init.ps1` turn "[probe] unreachable <host>"
 // into their "[skip] database unreachable at <host>" line (AC-24), and neither of them
 // cares WHY a database did not answer. The distinction between a suspended compute, a
 // rejected password and a missing host belongs in the failure a developer then reproduces
 // by hand — `npm run test:db` prints the Prisma error in full.
-if (result.status === 0) finish(0, `[probe] reachable ${host}`);
+if (reachable) finish(0, `[probe] reachable ${host}`);
 finish(1, `[probe] unreachable ${host}`);

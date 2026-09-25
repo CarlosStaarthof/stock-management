@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -117,16 +117,63 @@ function capturedChildUrl(variables: Record<string, string>): CapturedEnv[] {
 function runProbe(
   argv: string[],
   variables: Record<string, string>,
-): { status: number | null; output: string } {
-  return inTemporaryDirectory((directory) => {
-    const result = spawnSync(process.execPath, [PROBE, ...argv], {
+): Promise<{ status: number | null; output: string }> {
+  return inTemporaryDirectoryAsync(async (directory) => {
+    const result = await runNode([PROBE, ...argv], {
       cwd: directory,
-      encoding: "utf8",
       env: { ...cleanEnv(), ...variables },
     });
 
-    return { status: result.status, output: `${result.stdout ?? ""}${result.stderr ?? ""}` };
+    return { status: result.status, output: `${result.stdout}${result.stderr}` };
   });
+}
+
+/**
+ * HOW LONG A TEST OF THE PROBE MAY TAKE: the probe's own bound, with room. Since the probe
+ * gained its one retry, a host that never answers costs two attempts of up to 10 s each
+ * and a 2 s pause, and under a loaded `test:unit` an attempt against `db.invalid` was
+ * measured taking the full 10 s — two such tests ran 22 s against the suite's 15 s default
+ * and failed on the clock, not on an assertion. The number follows the script's documented
+ * worst case; it does not paper over a slow assertion.
+ */
+const PROBE_TEST_TIMEOUT_MS = 40_000;
+
+/**
+ * `spawn`, not `spawnSync`, for the probe: a synchronous child that runs for twenty seconds
+ * blocks the Vitest worker's event loop for all of it, and the worker then misses its own
+ * RPC deadline ("Timeout calling onTaskUpdate") even when every assertion passes.
+ */
+function runNode(
+  args: string[],
+  options: { cwd: string; env: NodeJS.ProcessEnv },
+): Promise<{ status: number | null; stdout: string; stderr: string }> {
+  return new Promise((resolvePromise, reject) => {
+    const child = spawn(process.execPath, args, { cwd: options.cwd, env: options.env });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk: Buffer) => {
+      stdout += chunk.toString("utf8");
+    });
+    child.stderr.on("data", (chunk: Buffer) => {
+      stderr += chunk.toString("utf8");
+    });
+    child.on("error", reject);
+    child.on("close", (status) => resolvePromise({ status, stdout, stderr }));
+  });
+}
+
+/** `inTemporaryDirectory`, for a body that awaits. */
+async function inTemporaryDirectoryAsync<T>(body: (directory: string) => Promise<T>): Promise<T> {
+  const directory = mkdtempSync(join(tmpdir(), "macroads-db-conn-"));
+  try {
+    return await body(directory);
+  } finally {
+    try {
+      rmSync(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+    } catch {
+      // Deliberately swallowed, for the reason `inTemporaryDirectory` gives.
+    }
+  }
 }
 
 describe("the suite runs under a capped connection pool", () => {
@@ -192,8 +239,8 @@ describe("the suite runs under a capped connection pool", () => {
 });
 
 describe("the health check reports failure when the database will not answer", () => {
-  it("exits 1 and says unreachable for a host that cannot resolve", () => {
-    const run = runProbe(["TEST_DATABASE_URL"], { TEST_DATABASE_URL: UNREACHABLE_URL });
+  it("exits 1 and says unreachable for a host that cannot resolve", async () => {
+    const run = await runProbe(["TEST_DATABASE_URL"], { TEST_DATABASE_URL: UNREACHABLE_URL });
 
     // The whole point of the change: the TCP version of this script reported `reachable`
     // for anything that accepted a socket, and a green light wired to nothing is worse
@@ -201,18 +248,18 @@ describe("the health check reports failure when the database will not answer", (
     expect(run.status).toBe(1);
     expect(run.output).toContain("[probe] unreachable db.invalid");
     expect(run.output).not.toContain("[probe] reachable");
-  });
+  }, PROBE_TEST_TIMEOUT_MS);
 
-  it("names the host and never the connection string", () => {
-    const run = runProbe(["TEST_DATABASE_URL"], { TEST_DATABASE_URL: UNREACHABLE_URL });
+  it("names the host and never the connection string", async () => {
+    const run = await runProbe(["TEST_DATABASE_URL"], { TEST_DATABASE_URL: UNREACHABLE_URL });
 
     // 003 AC-24: the URL carries a user and a password even when this one does not.
     expect(run.output).not.toContain("nothing");
     expect(run.output).not.toContain("5432");
-  });
+  }, PROBE_TEST_TIMEOUT_MS);
 
-  it("exits 1 when the variable is not set, naming the last one it was given", () => {
-    const run = runProbe(["TEST_DIRECT_URL", "TEST_DATABASE_URL"], {});
+  it("exits 1 when the variable is not set, naming the last one it was given", async () => {
+    const run = await runProbe(["TEST_DIRECT_URL", "TEST_DATABASE_URL"], {});
 
     // 003 AC-24 asks for `[skip] TEST_DATABASE_URL is not set`, so the fallback pair must
     // still name TEST_DATABASE_URL when neither is set.
@@ -220,8 +267,8 @@ describe("the health check reports failure when the database will not answer", (
     expect(run.output).toContain("[probe] TEST_DATABASE_URL is not set");
   });
 
-  it("probes the FIRST name that is set, which is the endpoint test:db uses", () => {
-    const run = runProbe(["TEST_DIRECT_URL", "TEST_DATABASE_URL"], {
+  it("probes the FIRST name that is set, which is the endpoint test:db uses", async () => {
+    const run = await runProbe(["TEST_DIRECT_URL", "TEST_DATABASE_URL"], {
       TEST_DIRECT_URL: "postgresql://direct.invalid:5432/neondb",
       TEST_DATABASE_URL: "postgresql://pooled.invalid:5432/neondb",
     });
@@ -231,5 +278,96 @@ describe("the health check reports failure when the database will not answer", (
     // never asked anything.
     expect(run.output).toContain("direct.invalid");
     expect(run.output).not.toContain("pooled.invalid");
+  }, PROBE_TEST_TIMEOUT_MS);
+});
+
+/**
+ * Preloaded into every process the probe starts, it counts the CLI's `db execute` runs — the
+ * attempts — and, when told to, answers for the database: `fail` exits 1 as a database that
+ * did not answer would, `answer` exits 0 as one that did. A step it is not told about runs
+ * the real CLI. The probe itself also loads it (NODE_OPTIONS is inherited) and is ignored.
+ */
+const ATTEMPTS = [
+  'const { appendFileSync, readFileSync } = require("node:fs");',
+  "",
+  'if (process.argv.includes("execute") && process.env.MACROADS_ATTEMPT_FILE) {',
+  '  appendFileSync(process.env.MACROADS_ATTEMPT_FILE, "attempt\\n");',
+  "  const made = readFileSync(process.env.MACROADS_ATTEMPT_FILE, \"utf8\")",
+  '    .split("\\n")',
+  "    .filter(Boolean).length;",
+  '  const step = (process.env.MACROADS_ATTEMPT_PLAN ?? "").split(",")[made - 1];',
+  '  if (step === "fail") process.exit(1);',
+  '  if (step === "answer") process.exit(0);',
+  "}",
+].join("\n");
+
+function probeAttempts(
+  variables: Record<string, string>,
+  plan: string,
+): Promise<{ status: number | null; stdout: string; attempts: number; seconds: number }> {
+  return inTemporaryDirectoryAsync(async (directory) => {
+    const preload = join(directory, "attempts.cjs");
+    const attemptFile = join(directory, "attempts.txt");
+    writeFileSync(preload, ATTEMPTS, "utf8");
+    writeFileSync(attemptFile, "", "utf8");
+
+    const started = Date.now();
+    const result = await runNode([PROBE, "TEST_DATABASE_URL"], {
+      cwd: directory,
+      env: {
+        ...cleanEnv(),
+        ...variables,
+        NODE_OPTIONS: `--require "${preload.replaceAll("\\", "/")}"`,
+        MACROADS_ATTEMPT_FILE: attemptFile,
+        MACROADS_ATTEMPT_PLAN: plan,
+      },
+    });
+
+    return {
+      status: result.status,
+      stdout: result.stdout,
+      attempts: readFileSync(attemptFile, "utf8").split("\n").filter(Boolean).length,
+      seconds: (Date.now() - started) / 1000,
+    };
   });
+}
+
+describe("the health check asks twice before it gives up, and only twice", () => {
+  // On 2026-09-24 one slow moment of the development compute made the probe report it
+  // unreachable, and `init` skipped every database check. One retry absorbs that.
+
+  it("a host that never answers is asked twice, then reported unreachable", async () => {
+    const run = await probeAttempts({ TEST_DATABASE_URL: UNREACHABLE_URL }, "");
+
+    expect(run.attempts).toBe(2);
+    expect(run.status).toBe(1);
+    expect(run.stdout).toContain("[probe] unreachable db.invalid");
+    // The pause between the two is real, and the total stays inside the stated bound.
+    expect(run.seconds).toBeGreaterThanOrEqual(2);
+    expect(run.seconds).toBeLessThan(30);
+  }, PROBE_TEST_TIMEOUT_MS);
+
+  it("a database that misses the first attempt and answers the second is reachable", async () => {
+    const run = await probeAttempts({ TEST_DATABASE_URL: UNREACHABLE_URL }, "fail,answer");
+
+    expect(run.attempts).toBe(2);
+    expect(run.status).toBe(0);
+    expect(run.stdout).toContain("[probe] reachable db.invalid");
+  }, PROBE_TEST_TIMEOUT_MS);
+
+  it("a database that answers the first attempt is asked once", async () => {
+    const run = await probeAttempts({ TEST_DATABASE_URL: UNREACHABLE_URL }, "answer");
+
+    expect(run.attempts).toBe(1);
+    expect(run.status).toBe(0);
+    expect(run.stdout).toContain("[probe] reachable db.invalid");
+  }, PROBE_TEST_TIMEOUT_MS);
+
+  it("the output is still one line naming the host, whatever happened in between", async () => {
+    const run = await probeAttempts({ TEST_DATABASE_URL: UNREACHABLE_URL }, "fail,fail");
+
+    expect(run.attempts).toBe(2);
+    expect(run.status).toBe(1);
+    expect(run.stdout.trim().split("\n")).toEqual(["[probe] unreachable db.invalid"]);
+  }, PROBE_TEST_TIMEOUT_MS);
 });

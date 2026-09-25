@@ -56,8 +56,10 @@ needs migrating by hand.
 `init` probes `DATABASE_URL` and then the endpoint `npm run test:db` will use —
 `TEST_DIRECT_URL`, falling back to `TEST_DATABASE_URL` — with
 `node scripts/db-probe.mjs`, which opens a session and runs `SELECT 1`: no application
-table, no credentials in its output, ten second timeout. A socket that merely opens
-proves nothing; a suspended compute and a stale password both accept one.
+table, no credentials in its output, a ten second timeout per attempt, and one retry two
+seconds after a failed first attempt (about 22 s at most for a host that never answers;
+`docs/verification.md` says why). A socket that merely opens proves nothing; a suspended
+compute and a stale password both accept one.
 
 - **Reachable:** `prisma migrate status` and `npm run test:db` run for real, and the run
   ends with `[OK] Environment ready`.

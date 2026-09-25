@@ -19,6 +19,33 @@
 // that never reached the application. The build happens HERE, once, before Playwright
 // starts: `playwright.config.ts`'s webServer then only has to `next start`, which is why
 // its timeout could come down with the rest of them.
+//
+// A FULL run runs the config's two projects itself, one after the other. Spec 007 AC-30
+// put the counting specs in a second project that DEPENDS on the first, and the
+// dependency is there for ORDER: #6's specs edit the yard sheets, and a count started
+// while they are editing references their items. But a Playwright dependency does a
+// second thing nobody chose: one failure in the first project and the second is skipped
+// WHOLE. On 2026-09-23 one #6 test failed and all 136 tests of the second project went
+// unreported - every #11 test among them. The gate did not say "#11 failed"; it said
+// nothing about #11 at all.
+//
+// So with no arguments this script runs `--project=chromium`, and when that has FINISHED,
+// `--project=chromium-stock-entry --no-deps`. Order is kept, because the second phase
+// cannot start before the first has ended; and nothing is hidden, because the second
+// phase runs whatever the first did. That is the opposite of loosening the gate: a red
+// first phase still makes this command red, and now the second phase's results are on
+// the page beside it. The cost is a second `next start`, a few seconds.
+//
+// READ PHASE 2 WITH THAT IN MIND AFTER A RED PHASE 1: phase 2 runs on whatever phase 1 left
+// behind. A phase-1 test that failed mid-way may not have cleaned up, and its item-master
+// debris can sit on the yard sheets phase 2's fixtures pick items from, so phase-2 failures
+// after a red phase 1 are ADVISORY until phase 1 is green again. Phase-2 results after a
+// green phase 1 are the real thing.
+//
+// `playwright.config.ts` is deliberately untouched. Its `dependencies: ["chromium"]` is
+// pinned by two unit tests, and it is what still orders a bare `npx playwright test`.
+// With arguments - a spec, a `--project`, a `-g` - this script runs once with exactly
+// those, as it always has: a caller who names what to run gets exactly that.
 
 import { spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
@@ -110,4 +137,25 @@ if (!chromiumIsInstalled()) {
   }
 }
 
-process.exit(runPlaywright(["test", ...process.argv.slice(2)]));
+const callerArgs = process.argv.slice(2);
+if (callerArgs.length > 0) {
+  process.exit(runPlaywright(["test", ...callerArgs]));
+}
+
+const phases = [
+  { name: "chromium", args: ["--project=chromium"] },
+  { name: "chromium-stock-entry", args: ["--project=chromium-stock-entry", "--no-deps"] },
+];
+
+const outcomes = [];
+for (const phase of phases) {
+  console.log(`[e2e] phase ${outcomes.length + 1} of ${phases.length}: ${phase.name}`);
+  outcomes.push({ name: phase.name, status: runPlaywright(["test", ...phase.args]) });
+}
+
+for (const [index, { name, status }] of outcomes.entries()) {
+  console.log(
+    `[e2e] phase ${index + 1} (${name}): ${status === 0 ? "passed" : `FAILED, exit ${status}`}`,
+  );
+}
+process.exit(outcomes.find(({ status }) => status !== 0)?.status ?? 0);

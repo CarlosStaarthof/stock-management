@@ -197,7 +197,7 @@ collection and fetch no data beyond the session; **error** is the shared boundar
 21. **AC-21** — Signing out ends the session: after the sign-out control is used, the session cookie is cleared or expired, `GET /stock-entry` redirects to `/sign-in`, and `GET /api/session` returns `401`.
 22. **AC-22** — Fail closed with no secret: with `AUTH_SECRET` unset, `GET /api/users` carrying any cookie value never returns `200` and its body contains no `users` key. A missing secret degrades to refusal, never to access.
 23. **AC-23** — **Which checks survive with no database.** Given a `.env` whose `DATABASE_URL`, `DIRECT_URL` and `TEST_DATABASE_URL` all point at a hostname that does not resolve, each of `npx prisma validate`, `npm run typecheck`, `npm run lint`, `npm run test:unit` and `npm run build` still exits `0`. No module under `src/` opens a database connection at import time, and no protected page is statically prerendered against a database during `build`.
-24. **AC-24** — **Which checks require one, and what `init` does without it: it skips, visibly — it does not fail.** With no reachable database both `init.ps1` and `init.sh` exit `0`, print a line beginning `[skip] database unreachable at <host>` (or `[skip] TEST_DATABASE_URL is not set`) and ending `database-dependent checks skipped`, do not invoke `npm run test:db`, print no `[FAIL]` line, and end with a final line beginning `[OK] Environment ready` that names the skip: `[OK] Environment ready (database checks skipped)`. Both scripts reach that verdict through the same `node scripts/db-probe.mjs`, which exits `0` when the database answers within 10 seconds and `1` otherwise, and whose output names the host only — run against a URL carrying credentials it prints neither the user info nor the password.
+24. **AC-24** — **Which checks require one, and what `init` does without it: it skips, visibly — it does not fail.** With no reachable database both `init.ps1` and `init.sh` exit `0`, print a line beginning `[skip] database unreachable at <host>` (or `[skip] TEST_DATABASE_URL is not set`) and ending `database-dependent checks skipped`, do not invoke `npm run test:db`, print no `[FAIL]` line, and end with a final line beginning `[OK] Environment ready` that names the skip: `[OK] Environment ready (database checks skipped)`. Both scripts reach that verdict through the same `node scripts/db-probe.mjs`, which opens a real session and exits `0` when the database answers within 10 seconds on either of **two attempts, 2 seconds apart** (about 22 seconds at worst), and `1` otherwise, and whose output names the host only — run against a URL carrying credentials it prints neither the user info nor the password.
 25. **AC-25** — With a reachable `TEST_DATABASE_URL`, the same two scripts run the database step for real: they apply migrations, print `[ok] npm run test:db`, print no `[skip]` line about the database, and end with exactly `[OK] Environment ready`. Making one service test fail makes both scripts exit `1` and list that failure. A schema change with no matching migration is caught here: `prisma migrate status` reporting a pending migration or drift makes both scripts exit `1`.
 26. **AC-26** — The two suites are disjoint and named by convention. `npm run test:unit` executes zero files matching `**/*.db.test.ts`; `npm run test:db` executes only those files, and at least three of them exist under `src/server/auth/`. `npm run test:db` refuses to run against the development database: when `TEST_DATABASE_URL` is absent it exits non-zero naming `TEST_DATABASE_URL`, and when it equals `DATABASE_URL` it exits non-zero with a message containing `TEST_DATABASE_URL must not equal DATABASE_URL` — in both cases before executing a single test.
 27. **AC-27** — Service tests use a real Postgres, per `docs/verification.md` Level 2. No file under `src/` or `tests/` mocks `@prisma/client` or `PrismaClient`; each test seeds the users it needs after `resetTestDb()`; and `npm run test:db` passes twice in a row without manual cleanup between runs, and passes with the file order reversed.
@@ -253,3 +253,16 @@ green and says, on every run, exactly which checks it did not perform.
 
 `Q7` and `Q8` in `specs/domain-model.md § Still open` block only M7 and are unrelated to
 this feature.
+
+## Post-approval amendments
+
+### AC-24: the probe's bound, 2026-09-24
+
+The database probe was rewritten on 2026-09-17 to open a real session against the endpoint the
+next step uses, instead of a bare TCP socket against the pooler. The old probe had reported two
+endpoints "reachable" that were rejecting authentication. On 2026-09-24 it gained **one retry**,
+2 seconds after a first miss. That same day, a single slow Neon moment right after the e2e suite
+had made a gate skip every database check. A run that skips them cannot close a feature (C2.1), so
+the miss wasted the gate rather than hiding anything. The per-attempt bound is unchanged at
+10 seconds; an unreachable database is now reported after about 22 seconds. Proven both ways in
+`tests/unit/db-connection-guard.test.ts`.
