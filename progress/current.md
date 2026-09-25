@@ -1003,3 +1003,143 @@ Brief: leader's scratchpad `impl21-b2.md`. #21 stays `in_progress`. Report: appe
     AC-41 gains the value rule.
   - G2: a `NEW_PIN` in `.env` would act as a default. AC-30 now requires the reads before the
     Prisma client loads.
+- **Phase B gate green, committed.** Final gate (`scratchpad/gate21b2.txt`): `init` exit 0 in
+  18.7 min, `[OK] Environment ready`, database checks executed, 0 connection errors. Unit
+  950/950, e2e 79 + 139 passed with 0 failed, `test:db` 454/454. The 22 `bucket=new-devices` log
+  lines all come after the database stage begins, so they are the sign-in database tests' own and
+  AC-40's budget rule held on the development database. Dev database census before and after
+  the gate: identical (33 users, 8 of them `ADMIN`; 140/19/10/129/152). Commits: `6aa3372`
+  `spec(#21)` for the rulings, and `5644cf5` `feat(#21): Phase B`.
+- **Keep-awake was broken until now.** In Windows PowerShell 5.1, the literal `0x80000001`
+  parses as a negative `Int32`, so `SetThreadExecutionState` threw and nothing kept the machine
+  awake. That includes this session's earlier 90-minute keep-awake. It is fixed in
+  `scratchpad/gate.ps1` and `keepawake.ps1` by passing `[uint32]2147483649`, and the call was
+  verified to return non-zero.
+- **`lint-fence.test.ts`: a second intermittent failure, outside a gate.** It failed in a full
+  `test:unit` run, just after the commit, with nothing else running, then passed alone (first
+  test 3.7 s) and in the next full run (7.6 s). ESLint's cold start competes with the suite's
+  own parallel files for CPU. The item stays deferred, now with this evidence. It is not
+  #21's. **Never fix it by raising the timeout.**
+
+## Feature 21 `pin_auth` — Phase C1 (the public side), implementer, started 2026-09-25
+
+Brief: leader's scratchpad `impl21-c1.md`. #21 stays `in_progress`; `feature_list.json` untouched.
+Report: appended to `progress/impl_pin_auth.md` -> `## Phase C1`.
+
+### Files I expect to touch
+- New: `src/server/auth/profile-request-service.ts` (`requestProfile`), `setup-service.ts`
+  (`setupAvailable`, `completeSetup`), `auth-event-log.ts` (bucket lock, events, retention for
+  the two new services).
+- New pages: `src/app/sign-in/create/{page,actions,form-state}.ts(x)`,
+  `src/app/sign-in/requested/page.tsx`, `src/app/setup/{page,actions,form-state}.ts(x)`;
+  client forms `src/components/CreateProfileForm.tsx`, `SetupForm.tsx`.
+- `profile-admin-service.ts`: export `toProfileListEntry` (setup returns a `ProfileListEntry`).
+- `scripts/pin-reset.ts` (G2: reads before a dynamic import of `src/server`).
+- Tests: new `profile-request-service.db.test.ts`, `setup-service.db.test.ts`,
+  `src/app/sign-in/create/actions.test.ts`, `src/app/setup/actions.test.ts`;
+  `tests/unit/pin-auth-contract.test.ts` (G1 AC-8, AC-19 scan, AC-27 scan, G2 order, AC-41
+  `.env.example`, AC-43 for the three pages); `tests/unit/no-default-password.test.ts` (G1);
+  `tests/unit/stock-takes-contract.test.ts` (010 AC-20's census, named by AC-43);
+  new e2e `tests/e2e/pin-create.spec.ts`, `pin-setup.spec.ts`.
+- `docs/operations.md`: the `/setup` paragraph replaces the marker.
+- Not touched: `.env.example` (not read either), `Samples/`, `feature_list.json`,
+  `tests/support/feature-scope.ts`.
+
+### Approach
+- requestProfile: pepper -> parse -> tx { bucket lock, events, budget; pending-cap lock, PENDING
+  count, cap; bcrypt; insert PENDING row; PROFILE_REQUEST event; retention }. No read of User by
+  any username, no verifyPin.
+- completeSetup: setupAvailable() (else UNAVAILABLE, code not compared) -> tx { "setup" bucket
+  lock, budget (PAUSED, code not compared), constant-time code check (wrong -> one
+  SETUP_FAILURE), fields, bcrypt, ADMIN row, SetupClaim id 1 }. Unique violation -> UNAVAILABLE.
+  The claim is the race guard.
+- Pages force-dynamic, no loading.tsx; `/setup` 404s unless available; paused request echoes no
+  field so its body cannot differ by username.
+- Mutations on byte copies, restored and checked with `sha256sum -c`.
+
+### Log
+- Services, pages and forms written (`auth-event-log.ts`, `profile-request-service.ts`,
+  `setup-service.ts`; `/sign-in/create`, `/sign-in/requested`, `/setup`; `CreateProfileForm`,
+  `SetupForm`, `use-forget-on-hide`); `toProfileListEntry` exported. tsc 0, lint 0.
+- Unit run with the three pages added: 1 red of 950, exactly 010 AC-20's census in
+  `stock-takes-contract.test.ts` ("to have a length of 18 but got 21"). AC-43 names that
+  census and requires it to pass with the number it derives; amending it next.
+- 010 AC-20's census amended under AC-43 (floor 18, the three pages named). Unit checks added
+  to `pin-auth-contract.test.ts` (G1 AC-8, AC-19 scan, AC-27, G2 order, AC-41, AC-43).
+- G1 AC-41 (`no-default-password.test.ts`): new G1 test written first, RED under the old value
+  rule (quoted letters-first value passed as code); rule changed, 5/5 green after two Phase B
+  report lines in `impl_pin_auth.md` were reworded (the stricter rule read their angle-bracketed
+  value after the variable name as a literal; disclosed in place).
+- G1 AC-8: quoted-branch exemption put back on a byte copy -> the G1 test RED
+  (`expected [] to have a length of 1`); restored, `sha256sum -c` OK (4625b5ff...).
+- G2: `scripts/pin-reset.ts` reads both variables at the top, then dynamic imports. Mutation
+  (NEW_USERNAME read moved after the errors import) -> both AC-30 order tests RED; restored,
+  `sha256sum -c` OK (565e4477...), 2/2 green.
+- `docs/operations.md`: *First-run setup* section replaces the marker; its unit test green.
+- AC-41 `.env.example`: 3 tests RED because the two entries are not there yet (the owner is
+  adding them). Left red, as the brief says. The assertions print no file content.
+- Action unit tests (11) green; db tests written; tsc 0, lint 0. Running db files one at a time next.
+- profile-request-service.db.test.ts: 11/11 green, 24 s.
+- setup-service.db.test.ts: first run 36/37 (server render: 'React is not defined', the classic JSX runtime; fixed as src/app/analysis/page.test.ts does); rerun 37/37, 33 s.
+- Security mutations, each on a byte copy, restored, `sha256sum -c` OK for all three files:
+  M1 request row ACTIVE ADMIN -> AC-18 2 red; M2 held username answered PAUSED -> AC-19 db red
+  and AC-19 scan red; M3 availability counts only live ADMINs -> AC-27 4 red; M4 long wrong code
+  accepted -> AC-28/33 4 red; M5 claim insert removed -> AC-29 20/20 red (CREATED, CREATED);
+  M6 code logged and returned in state -> AC-33 db, AC-28 db action and AC-28 unit red.
+- e2e specs written: tests/e2e/pin-create.spec.ts, pin-setup.spec.ts. AC-8 scan caught the setup test's mock line (an unquoted call with arguments); reshaped. Unit 971 pass + the 3 .env.example reds.
+- pin-reset.db.test.ts after G2: 21/21, 52 s.
+- Dev DB census before e2e: users 33, admins 8, pending 0, claims 0, events 0, locks 0. Port 3000 free.
+- setup-service.db.test.ts rerun after the mock reshape: 37/37, 33 s.
+- e2e (`run-e2e.mjs` rebuilt first; its route table lists `/setup`, `/sign-in/create`, `/sign-in/requested`): `pin-create.spec.ts` + `pin-setup.spec.ts`
+  14 passed, 0 failed, 27 s, first run. Census after: identical (33/8/0/0/0/0/0/0). Port 3000 free.
+- `profile-admin-service.ts`: module comment names the setup service's use of `toProfileListEntry`.
+- `sign-in.spec.ts` alone, rebuilt first (BUILD_ID 18:46:57, after the last source edit): 15 passed, 0 failed, 50 s. Census after: identical. Port 3000 free.
+- Report appended: progress/impl_pin_auth.md -> ## Phase C1. Scans re-run over it: only the 3 .env.example reds. Session complete; nothing committed.
+- **Phase C1 returned** (`progress/impl_pin_auth.md` → *Phase C1*). Coordinator rulings:
+  - Finding 2 (010 AC-20's census, from exactly 18 to a floor of 18 plus the three new pages by
+    name) is **accepted**. AC-43 names that census and says it passes with the number it derives
+    from the tree, and 010 AC-2 already uses the floor pattern.
+  - Finding 3 (the `sign-in.spec.ts` AC-36 port flake, about 0.6% per run) goes to C2.
+  - Deviation 8 (a second copy of the bucket lock and sweep) goes to C2, gated on AC-10's
+    statement sequence staying identical.
+- **C1 gate** (`scratchpad/gate21c1.txt`): unit 971/974, e2e 93 + 139 passed with 0 failed,
+  `test:db` 502/502, 0 connection errors, 19.8 min. `init` exit 1 **only** because of the three
+  AC-41 `.env.example` checks, which wait on the owner's two entries. Dev database census
+  identical before and after. **C1 is not committed.** It needs the owner's entries, then one
+  fully green `init`. The C2 brief is ready in `scratchpad/impl21-c2.md`.
+
+## Feature 21 `pin_auth` — C1 finish: `.env.example` retired, implementer, started 2026-09-25
+
+Brief: leader's scratchpad `impl21-env.md`. Owner's decision: 021 → *Post-approval amendments* →
+*`.env` is the only settings file*. #21 stays `in_progress`; `feature_list.json` untouched.
+Report: `progress/impl_pin_auth.md` → `## Phase C1` → `### C1 finish: .env.example retired`.
+
+### Files I expect to touch
+- New: `tests/support/env-file.ts` (`envFileProblems(text)`, labels only, shared by two test
+  files), `tests/unit/env-file.test.ts` (real `.env` by labels; breach proofs on synthetic text).
+- `src/server/auth/password.ts`: export the pepper usability rule as a pure predicate, no
+  behaviour change; `password.test.ts`: prove the predicate is the rule `pinDigest` applies.
+- `tests/unit/repo-hygiene.test.ts`: no exemption; no file named `.env*`; AC-7 / 003 AC-30 doc
+  halves on `docs/operations.md` → *Environment*; header comment.
+- `tests/unit/pin-auth-contract.test.ts`: AC-8's `NEW_PIN` half by name via `envFileProblems`;
+  AC-41's three template tests become checks on *Environment*.
+- `docs/operations.md`: new `## Environment`; the `.env.example` pointer line replaced.
+- `README.md`, `scripts/run-db-tests.mjs`, `src/lib/env.test.ts` (comment), `.gitignore`.
+- `git rm .env.example` (not read).
+- Not touched: `.env` (never read by me), `Samples/`, `feature_list.json`.
+
+### Approach
+- `.env` parsed with `node:util` `parseEnv` (the parser `process.loadEnvFile` uses in
+  `run-db-tests.mjs`); hosts via `new URL(...).hostname`; every check returns a constant label.
+- Breach proofs: a valid synthetic text built from `randomBytes`, hosts under `.invalid`,
+  connection strings from halves; each breach returns exactly its one label.
+
+### Log
+- Plan written. `password.ts`: `isUsablePinPepper` exported (pure; `pinPepper` now calls the same private decoder, no behaviour change); `password.test.ts` test added. `tests/support/env-file.ts` written. `docs/operations.md`: `## Environment` added, the pointer line in *Databases* replaced. Not yet run.
+- `repo-hygiene.test.ts`, `pin-auth-contract.test.ts`, `env-file.test.ts` written; README, `run-db-tests.mjs`, `src/lib/env.test.ts` comment, `.gitignore` edited. tsc 0, lint 0.
+- First run of the five files: 2 red. (1) "no file named .env*": `.env.example` still tracked, expected before the removal. (2) the "DATABASE_URL blank" breach: `node:util` `parseEnv` takes the NEXT line as the value of a blank one (probed on synthetic text), so it would hide a `NEW_PIN` line after a blank value while Prisma's dotenv loads it. Switched the support module to dotenv 16's own line rule (`dotenv/lib/main.js`, the copy Prisma's config loader uses); added breaches for NEW_PIN after a blank value, with `export`, with a colon, quoted, and commented. `env-file.test.ts` 6/6, the real `.env` check included.
+- **BLOCKER on step 6:** `git rm .env.example` refused: "the following file has local modifications". The file carries an uncommitted change (it was ` M` at session start, before I touched anything). Forcing (`-f`) would discard content nobody has reviewed; the brief did not anticipate it, so I did not force, stash or copy. A `git diff --numstat` for line counts only was denied by the permission system, so I have no size either. The file is still tracked and on disk, unread. Needs the coordinator: `git rm -f .env.example` if the owner's decision covers the uncommitted edit.
+- Six mutations, each on the working file with a byte backup in the scratchpad, restored and `sha256sum -c` OK for all three files (`env-file.ts` 129276b7, `operations.md` bc466dd7, `password.ts` 2d5288b5; backups deleted after): M1 pooler check off -> breach red; M2 NEW_PIN by value -> "by name alone" breach red; M3 "because they fail through a pooler" removed -> AC-7 doc test red; M4 AUTH_SECRET's command at 16 bytes -> "shows AUTH_SECRET's command" and "a pepper password.ts accepts" red; M5 "only" removed -> SETUP_CODE one-phrase claim red; M6 predicate loosened -> password.test and the 31-byte breach red.
+- docs: one sentence reworded (production host is a checklist, not a `.env`). Final: tsc 0, lint 0, `test:unit` 983 passed, 1 failed (the `.env*` name test, `.env.example` still tracked: the blocker). `git ls-files | grep -c '^\.env'` = 1.
+- grep for the retired name outside `progress/` (file names only, `.env` and the file itself excluded): `.git/index`, `feature_list.json` (not mine to touch), and three `specs/` files.
+- Report appended: `progress/impl_pin_auth.md` → `### C1 finish: .env.example retired`. Scans re-run over it: green, apart from the one expected red (template still tracked). Session ends blocked on step 6 only; nothing committed.

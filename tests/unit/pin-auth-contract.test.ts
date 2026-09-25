@@ -1,11 +1,19 @@
 import { spawnSync } from "node:child_process";
-import { readFileSync, statSync } from "node:fs";
+import { randomBytes } from "node:crypto";
+import { existsSync, readFileSync, statSync } from "node:fs";
 
 import { describe, expect, it } from "vitest";
 
 import * as messages from "@/lib/auth-messages";
-import { generatePin } from "@/server/auth/credential-rules";
+import { SETUP_CODE_MIN_LENGTH, generatePin } from "@/server/auth/credential-rules";
+import { isUsablePinPepper } from "@/server/auth/password";
 
+import {
+  ENV_FILE_LABELS,
+  entryFor,
+  envFileProblems,
+  operationsEnvironment,
+} from "../support/env-file";
 import { filesTouchedBy } from "../support/feature-scope";
 
 /**
@@ -193,10 +201,36 @@ describe("021 AC-8: no PIN and no setup code is written down anywhere", () => {
     new RegExp(String.raw`\(\s*["'\x60][^"'\x60]*pin[^"'\x60]*["'\x60][^)]*\)\s*\.fill\(\s*["'\x60][^"'\x60]*["'\x60]`, "i"),
   ];
   const PLACEHOLDERS = new Set(["REPLACE_WITH_A_GENERATED_SECRET", "<choose-a-setup-code>"]);
+  // Either a quoted literal, read whole up to its closing quote, or an unquoted value.
   const SETUP_CODE_ASSIGNMENT = new RegExp(
-    String.raw`\b\w*setup_?code\w*["']?\s*[:=]\s*["'\x60]?([^\s"'\x60,;)]{16,})`,
+    String.raw`\b\w*setup_?code\w*["']?\s*[:=]\s*(?:(["'\x60])((?:(?!\1)[^\n])*)\1|([^\s"'\x60,;)]{16,}))`,
     "gi",
   );
+  const IDENTIFIER_OR_CALL = /^[A-Za-z_$][\w$.]*\(?$/;
+
+  /**
+   * The assignments in `source` of a value that could be a setup code (G1, 021 AC-8). A
+   * QUOTED literal is a written-down value whatever it looks like: it could be a code when it
+   * has no whitespace and at least 16 characters, so a sentence such as a message constant
+   * is exempt by its content. Only an UNQUOTED identifier or call is read as code computed
+   * at runtime. The two placeholders are exempt either way.
+   */
+  function setupCodeOffences(source: string): string[] {
+    const offences: string[] = [];
+    for (const match of source.matchAll(SETUP_CODE_ASSIGNMENT)) {
+      const [whole, quote, quoted, unquoted] = match;
+      if (quote !== undefined) {
+        const literal = quoted ?? "";
+        const couldBeACode = !/\s/.test(literal) && Array.from(literal).length >= 16;
+        if (couldBeACode && !PLACEHOLDERS.has(literal)) offences.push(whole);
+        continue;
+      }
+      const value = unquoted ?? "";
+      if (PLACEHOLDERS.has(value) || IDENTIFIER_OR_CALL.test(value)) continue;
+      offences.push(whole);
+    }
+    return offences;
+  }
 
   it("AC-8: no 4- or 6-digit literal is assigned to, passed as or compared with a PIN, and no PIN input is filled with a literal", () => {
     const offenders: string[] = [];
@@ -212,22 +246,26 @@ describe("021 AC-8: no PIN and no setup code is written down anywhere", () => {
     expect(offenders).toEqual([]);
   });
 
-  it("AC-8: no literal that could be a setup code is assigned to a setup-code name, and .env.example assigns no NEW_PIN", () => {
+  it("AC-8: no literal that could be a setup code is assigned to a setup-code name", () => {
     const offenders: string[] = [];
     for (const file of files) {
       const source = read(file);
       if (source === undefined) continue;
-      for (const match of source.matchAll(SETUP_CODE_ASSIGNMENT)) {
-        const value = match[1] ?? "";
-        // An identifier or a call is a value computed at runtime, not a written-down code.
-        if (PLACEHOLDERS.has(value) || /^[A-Za-z_$][\w$.]*\(?$/.test(value)) continue;
-        offenders.push(`${file}: ${match[0]}`);
+      for (const offence of setupCodeOffences(source)) {
+        offenders.push(`${file}: ${offence}`);
       }
     }
     expect(offenders).toEqual([]);
+  });
 
-    const example = read(".env.example") ?? "";
-    expect(example).not.toMatch(/^\s*NEW_PIN\s*=\s*\S/m);
+  it("AC-8: .env assigns nothing to NEW_PIN, checked by name, with no value read out", () => {
+    // `.env` is ignored by git, so the scans above never read it. This reads it through the
+    // file system and answers yes or no; a missing `.env` assigns nothing, and
+    // tests/unit/env-file.test.ts fails on its absence.
+    const env = existsSync(".env") ? readFileSync(".env", "utf8") : "";
+    const assignsNewPin = envFileProblems(env).includes(ENV_FILE_LABELS.newPinPresent);
+
+    expect(assignsNewPin, ".env assigns nothing to NEW_PIN").toBe(false);
   });
 
   it("AC-8: the scans are not vacuous — each pattern catches the shape it names", () => {
@@ -237,6 +275,35 @@ describe("021 AC-8: no PIN and no setup code is written down anywhere", () => {
     expect(pinPatterns[4]?.test(`page.getByLabel("PIN").fill("${digits}")`)).toBe(true);
     const code = "x".repeat(20);
     expect([...["SETUP_CODE", code].join("=").matchAll(SETUP_CODE_ASSIGNMENT)]).toHaveLength(1);
+  });
+
+  it("AC-8 (G1): a letters-first value in quotes is caught under every setup-code name, and only an unquoted identifier or call is read as code", () => {
+    // Built at runtime and letters first, as an identifier is: the shape the old exemption
+    // let through when it sat inside quotes.
+    const value = `k${randomBytes(12).toString("hex")}`;
+    const names = ["SETUP_CODE", "setupCode", "setup_code", "TEST_SETUP_CODE", "firstSetupCode"];
+
+    for (const name of names) {
+      for (const quote of ['"', "'", "`"]) {
+        for (const operator of ["=", ": ", " = "]) {
+          const line = `${name}${operator}${quote}${value}${quote}`;
+          expect(setupCodeOffences(line), line).toHaveLength(1);
+        }
+      }
+      // A quoted key, as in an object literal or JSON.
+      expect(setupCodeOffences(`"${name}": "${value}"`), name).toHaveLength(1);
+    }
+
+    // Read as code: an unquoted identifier, or a call. (The name is interpolated, so the
+    // repository's other credential scan does not read these lines as assignments.)
+    const [name] = names;
+    expect(setupCodeOffences(`${name}: ${value}`)).toEqual([]);
+    expect(setupCodeOffences(`setupCode = ${value}()`)).toEqual([]);
+    // A sentence cannot be a code, and neither can a short literal; the placeholders pass.
+    expect(setupCodeOffences(`${name}_INCORRECT_MESSAGE = "${value} is ${value}"`)).toEqual([]);
+    expect(setupCodeOffences(`${name} = "${value.slice(0, 15)}"`)).toEqual([]);
+    expect(setupCodeOffences(`${name}="REPLACE_WITH_A_GENERATED_SECRET"`)).toEqual([]);
+    expect(setupCodeOffences(`${name}=<choose-a-setup-code>`)).toEqual([]);
   });
 });
 
@@ -276,6 +343,10 @@ describe("021 AC-31: there is no second way in", () => {
     for (const file of importers) {
       expect(file.startsWith("src/app/setup/") || isTestFile(file), file).toBe(true);
     }
+    // It exists now (Phase C1): the page and its action are what reach it.
+    expect(importers).toEqual(
+      expect.arrayContaining(["src/app/setup/page.tsx", "src/app/setup/actions.ts"]),
+    );
   });
 
   it("AC-31: the one provider is the credentials provider, and its authorize reaches one service", () => {
@@ -367,5 +438,275 @@ describe("021 AC-39: tests import the messages, and never spell them", () => {
       }
     }
     expect(offenders).toEqual([]);
+  });
+});
+
+/* ------------------------------------------------------------------ AC-19 */
+
+describe("021 AC-19: Create profile compares no username and no PIN", () => {
+  it("AC-19: profile-request-service.ts has no where naming username or requestedUsername, and never calls verifyPin", () => {
+    const source = read("src/server/auth/profile-request-service.ts") ?? "";
+    expect(source).toContain("export async function requestProfile(");
+
+    // Every Prisma `where` object, and every raw SQL WHERE clause, in the file.
+    const whereClauses = [
+      ...source.matchAll(/\bwhere\s*:\s*\{[^}]*\}/g),
+      ...source.matchAll(/\bWHERE\b[^`;]*/g),
+    ].map((match) => match[0]);
+    expect(whereClauses.length).toBeGreaterThan(0);
+    for (const clause of whereClauses) {
+      expect(clause).not.toMatch(/username/i);
+    }
+    expect(source).not.toMatch(/\bverifyPin\b/);
+  });
+});
+
+/* ------------------------------------------------------------------ AC-27 */
+
+describe("021 AC-27: nothing leads to /setup", () => {
+  it("AC-27: /setup is not a protected path, and the middleware does not match it", () => {
+    const config = read("src/lib/auth-config.ts") ?? "";
+    const paths = /PROTECTED_PATHS\s*=\s*\[([^\]]*)\]/.exec(config)?.[1] ?? "";
+    expect(paths).toContain('"/stock-entry"');
+    expect(paths).not.toContain("/setup");
+    expect(read("src/middleware.ts") ?? "").not.toContain("/setup");
+  });
+
+  it("AC-27: no href naming /setup appears under src/", () => {
+    const HREF_TO_SETUP = /\bhref\s*[=:]\s*\{?\s*["'\x60][^"'\x60]*\/setup\b/;
+    const offenders = repositoryFiles()
+      .filter((file) => file.startsWith("src/") && CODE.test(file))
+      .filter((file) => HREF_TO_SETUP.test(read(file) ?? ""));
+    expect(offenders).toEqual([]);
+
+    // Not vacuous: the same pattern finds a link to /setup written the way the sign-in page
+    // writes its link to Create profile.
+    const signInLink = /\bhref\s*=\s*"\/sign-in\/create"/.exec(read("src/app/sign-in/page.tsx") ?? "");
+    expect(signInLink).not.toBeNull();
+    expect(HREF_TO_SETUP.test((signInLink?.[0] ?? "").replace("/sign-in/create", "/setup"))).toBe(
+      true,
+    );
+  });
+});
+
+/* ------------------------------------------------------------------ AC-30 (G2) */
+
+/** Comments removed, so a comment naming a variable is not read as a read of it. */
+function withoutComments(source: string): string {
+  return source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:\\])\/\/.*$/gm, "$1");
+}
+
+const UNDER_SRC_SERVER = /^(@\/server\/|(\.\.?\/)+src\/server\/)/;
+
+/**
+ * What stops `NEW_PIN` and `NEW_USERNAME` being read before anything that reaches Prisma's
+ * client is evaluated: a static import of a module under `src/server/` other than `import
+ * type`, a missing read or a missing dynamic import, or a read after the first dynamic
+ * `import(` of one.
+ */
+function readOrderProblems(raw: string): string[] {
+  const source = withoutComments(raw);
+  const problems: string[] = [];
+
+  const staticImports = [
+    ...source.matchAll(/^\s*import\s+(?!type\b)[^;]*?\bfrom\s+["']([^"']+)["']/gm),
+    ...source.matchAll(/^\s*import\s+["']([^"']+)["']/gm),
+    ...source.matchAll(/^\s*export\s+[^;]*?\bfrom\s+["']([^"']+)["']/gm),
+  ];
+  for (const match of staticImports) {
+    if (UNDER_SRC_SERVER.test(match[1] ?? "")) problems.push(`static import of ${match[1]}`);
+  }
+  for (const match of source.matchAll(/\brequire\(\s*["']([^"']+)["']\s*\)/g)) {
+    if (UNDER_SRC_SERVER.test(match[1] ?? "")) problems.push(`require of ${match[1]}`);
+  }
+
+  const firstImport = [...source.matchAll(/\bimport\(\s*["']([^"']+)["']\s*\)/g)].find((match) =>
+    UNDER_SRC_SERVER.test(match[1] ?? ""),
+  );
+  if (firstImport?.index === undefined) problems.push("no dynamic import( of src/server");
+
+  for (const variable of ["NEW_PIN", "NEW_USERNAME"]) {
+    const reads = new RegExp(
+      String.raw`process\.env(?:\.${variable}\b|\[\s*["']${variable}["']\s*\])`,
+    );
+    const index = reads.exec(source)?.index;
+    if (index === undefined) {
+      problems.push(`${variable} is never read`);
+    } else if (firstImport?.index !== undefined && index > firstImport.index) {
+      problems.push(`${variable} is read after the first dynamic import( of src/server`);
+    }
+  }
+  return problems;
+}
+
+describe("021 AC-30 (G2): the reset script reads its two variables before Prisma's client can fill them", () => {
+  it("AC-30: scripts/pin-reset.ts has no static import of src/server other than import type, and reads NEW_PIN and NEW_USERNAME before its first dynamic import( of one", () => {
+    expect(readOrderProblems(read("scripts/pin-reset.ts") ?? "")).toEqual([]);
+  });
+
+  it("AC-30: the order check is not vacuous: a moved read, a static import and a missing import are each caught", () => {
+    const script = read("scripts/pin-reset.ts") ?? "";
+    const pinRead = /^const \w+ = process\.env\.NEW_PIN \?\? "";\r?\n/m.exec(script)?.[0] ?? "";
+    const usernameRead =
+      /^const \w+ = process\.env\.NEW_USERNAME \?\? "";\r?\n/m.exec(script)?.[0] ?? "";
+    expect(pinRead).not.toBe("");
+    expect(usernameRead).not.toBe("");
+
+    // Each read moved to the end of the file, after every import.
+    for (const moved of [pinRead, usernameRead]) {
+      expect(readOrderProblems(script.replace(moved, "") + moved)).toHaveLength(1);
+    }
+    const staticImport = ["import { db } from ", '"@/server/db";\n'].join("");
+    expect(readOrderProblems(staticImport + script)).toEqual(["static import of @/server/db"]);
+    const typeImport = ["import type { SessionUser } from ", '"@/server/auth/session-user";\n'];
+    expect(readOrderProblems(typeImport.join("") + script)).toEqual([]);
+    expect(readOrderProblems(script.replaceAll("import(", "load("))).toContain(
+      "no dynamic import( of src/server",
+    );
+  });
+});
+
+/* ------------------------------------------------------------------ AC-41 */
+
+describe("021 AC-41: the operations document says how to make each setting and how to set up", () => {
+  // `docs/operations.md` → *Environment*, one `### ` entry per setting. Since 2026-09-25 it
+  // holds what the retired settings template held (021 → Post-approval amendments).
+  const section = operationsEnvironment();
+  const entry = (variable: string): string => entryFor(section, variable);
+  const COMMAND_WORD = /^(openssl|node|npx|npm|pnpm|python3?|head|pwsh|powershell|bun|deno)\b/;
+
+  /** The commands an entry shows for generating a value: its code spans that begin with one. */
+  function generationCommands(block: string): string[] {
+    const spans = [...block.matchAll(/`([^`\n]+)`/g)]
+      .map((match) => (match[1] ?? "").trim())
+      .filter((span) => COMMAND_WORD.test(span));
+    return [...new Set(spans)];
+  }
+
+  // Every assertion is a yes or no with a label, so a failure names the missing statement
+  // without printing the document.
+  const has = (text: string, pattern: RegExp): boolean => pattern.test(text);
+
+  it("AC-41: PIN_PEPPER and SETUP_CODE each show the placeholder and the command AUTH_SECRET shows", () => {
+    const commands = generationCommands(entry("AUTH_SECRET"));
+    expect(commands.length, "a generation command in the AUTH_SECRET entry").toBeGreaterThan(0);
+
+    for (const variable of ["PIN_PEPPER", "SETUP_CODE"]) {
+      const block = entry(variable);
+      expect(block !== "", `an entry for ${variable}`).toBe(true);
+      const placeholder = new RegExp(
+        String.raw`^${variable}=REPLACE_WITH_A_GENERATED_SECRET\s*$`,
+        "m",
+      );
+      expect(has(block, placeholder), `${variable} shows REPLACE_WITH_A_GENERATED_SECRET`).toBe(true);
+      commands.forEach((command, index) => {
+        expect(block.includes(command), `${variable} shows AUTH_SECRET's command ${index + 1}`).toBe(
+          true,
+        );
+      });
+    }
+  });
+
+  it("AC-41: the command AUTH_SECRET shows makes a pepper password.ts accepts, long enough for a setup code", () => {
+    const [command] = generationCommands(entry("AUTH_SECRET"));
+    const script = /^node -e "([^"]+)"$/.exec(command ?? "")?.[1];
+    expect(script !== undefined, "the command is node -e with a double-quoted script").toBe(true);
+
+    // Run by this Node, with no shell. What it prints is a fresh random value, made for this
+    // check only, and it is judged by yes or no, never printed.
+    const result = spawnSync(process.execPath, ["-e", script ?? ""], { encoding: "utf8" });
+    const made = (result.stdout ?? "").trim();
+
+    expect(result.status, "the command exits 0").toBe(0);
+    expect(isUsablePinPepper(made), "its output is a pepper password.ts accepts").toBe(true);
+    expect(
+      Array.from(made).length >= SETUP_CODE_MIN_LENGTH,
+      `its output has at least ${SETUP_CODE_MIN_LENGTH} characters`,
+    ).toBe(true);
+  });
+
+  it("AC-41: PIN_PEPPER differs per environment, is backed up outside the server like AUTH_SECRET, and changing or losing it invalidates every PIN", () => {
+    const block = entry("PIN_PEPPER");
+    const claims: [string, RegExp][] = [
+      [
+        "differs per environment",
+        /\b(each|every|per|its own)\s+environment\b|\benvironment\s+(has|needs|gets)\s+its\s+own\b/i,
+      ],
+      ["is backed up", /\bback(ed)?[\s-]*(it\s+)?up\b/i],
+      ["outside the server", /\boutside\b|\boff the server\b|\baway from the server\b/i],
+      ["like AUTH_SECRET", /AUTH_SECRET/],
+      ["changing or losing it", /\b(chang|los)/i],
+      ["invalidates", /\binvalidat/i],
+      ["every PIN", /\bevery\s+PIN\b|\ball\s+PINs\b/i],
+      // The same claims, each held to one sentence, so words scattered across the entry
+      // cannot pass for them.
+      [
+        "backed up outside the server like AUTH_SECRET, in one sentence",
+        /\bback(ed)?[\s-]*(it\s+)?up\b[^.]*\boutside the server\b[^.]*AUTH_SECRET/i,
+      ],
+      [
+        "changing or losing it invalidates every PIN, in one sentence",
+        /\b(chang|los)[^.]*\binvalidat[^.]*\b(every\s+PIN|all\s+PINs)\b/i,
+      ],
+    ];
+    expect(block !== "", "a PIN_PEPPER entry").toBe(true);
+    for (const [claim, pattern] of claims) {
+      expect(has(block, pattern), `PIN_PEPPER says ${claim}`).toBe(true);
+    }
+  });
+
+  it("AC-41: SETUP_CODE is at least 16 characters and is used only until the first ADMIN exists", () => {
+    const block = entry("SETUP_CODE");
+    const claims: [string, RegExp][] = [
+      ["16", /\b16\b/],
+      ["characters", /\bcharacters?\b/i],
+      ["the first ADMIN", /\bfirst\s+(ADMIN|administrator)\b/i],
+      ["only until", /\b(only|until)\b/i],
+      ["at least 16 characters, in one phrase", /\bat least 16 characters\b/i],
+      [
+        "used only until the first ADMIN exists, in one phrase",
+        /\bonly until the first (ADMIN|administrator) exists\b/i,
+      ],
+    ];
+    expect(block !== "", "a SETUP_CODE entry").toBe(true);
+    for (const [claim, pattern] of claims) {
+      expect(has(block, pattern), `SETUP_CODE says ${claim}`).toBe(true);
+    }
+  });
+
+  it("AC-41: docs/operations.md describes first-run setup at /setup with the setup-code placeholder, and no marker is left", () => {
+    const operations = readFileSync("docs/operations.md", "utf8");
+
+    expect(operations).toContain("SETUP_CODE=<choose-a-setup-code>");
+    expect(operations).toMatch(/^### First-run setup/m);
+    expect(operations).toContain("`/setup`");
+    expect(operations).not.toMatch(/added with `\/setup`/);
+  });
+});
+
+/* ------------------------------------------------------------------ AC-43 */
+
+describe("021 AC-43: the three public pages are dynamic and have no loading.tsx above them", () => {
+  const PAGES = [
+    "src/app/sign-in/create/page.tsx",
+    "src/app/sign-in/requested/page.tsx",
+    "src/app/setup/page.tsx",
+  ];
+
+  it("AC-43: each declares force-dynamic", () => {
+    for (const page of PAGES) {
+      expect(read(page), page).toContain('export const dynamic = "force-dynamic";');
+    }
+  });
+
+  it("AC-43: no loading.tsx or loading.ts sits at or above any of them", () => {
+    for (const page of PAGES) {
+      const segments = page.split("/").slice(0, -1);
+      for (let depth = 2; depth <= segments.length; depth += 1) {
+        const directory = segments.slice(0, depth).join("/");
+        expect(existsSync(`${directory}/loading.tsx`), `${directory}/loading.tsx`).toBe(false);
+        expect(existsSync(`${directory}/loading.ts`), `${directory}/loading.ts`).toBe(false);
+      }
+    }
   });
 });

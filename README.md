@@ -31,14 +31,20 @@ Must print `[OK] Environment ready`. Nothing is done until it does.
 
 ```powershell
 npm ci                      # installs dependencies and generates the Prisma client
-cp .env.example .env        # then fill in the two Neon connection strings
+# create .env before the next step: see below
 npm run dev                 # http://localhost:3000
 ```
+
+`.env` is the only settings file, and it is never committed. Create it from
+[`docs/operations.md` → *Environment*](docs/operations.md#environment), which lists the
+eight settings, what each is for and how to make each one.
 
 Node 20 or newer. No Docker: Postgres is a Neon branch, not a local container. Nothing
 in the checks needs a reachable database — `npm run typecheck`, `npm run lint`,
 `npm run test:unit`, `npm run test:e2e` and `npm run build` all pass without one, and
-`npm run test:e2e` installs its own browser the first time it runs.
+`npm run test:e2e` installs its own browser the first time it runs. `npm run test:unit`
+does need `.env` to exist: it checks that the eight settings are there, naming any that is
+missing and printing no value.
 
 ## How work happens here
 

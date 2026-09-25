@@ -821,8 +821,9 @@ Finished and verified steps only, in the order they were done.
    - `scripts/pin-reset.ts` accepts exactly `--list` and `--profile <id>`. Anything else,
      `--create-admin` included, is refused with the usage lines and creates nothing. With
      `NEW_PIN` unset or empty it refuses before reading anything, and names `NEW_PIN`. It
-     never prompts. A `ValidationError` prints as `NEW_PIN: <message>` or
-     `NEW_USERNAME: <message>`. A conflict, not-found or pepper error prints its own message on
+     never prompts. A `ValidationError` prints as the variable's name, a colon and the
+     message, for `NEW_PIN` or `NEW_USERNAME` (reworded in Phase C1: G1's stricter scan reads an
+     angle-bracketed value after that name as a written-down one). A conflict, not-found or pepper error prints its own message on
      its own line. Any other error prints its name and code only, never its message. It
      imports only `operator-service` and `errors`.
    - `package.json` gains `"pin:reset": "tsx scripts/pin-reset.ts"`, where `admin:create` was.
@@ -1078,8 +1079,8 @@ No `init` was run: the coordinator runs the gate.
    `OperatorCredentialsInput`, and the lock-state words (`-`, `not locked`,
    `locked until <ISO>`). `--list` prints tab-separated fields with no header, so every line
    is a profile.
-3. **Refusal texts.** A PIN or username `ValidationError` prints as `NEW_PIN: <message>` or
-   `NEW_USERNAME: <message>`. That both names the variable and carries the matching message.
+3. **Refusal texts.** A PIN or username `ValidationError` prints as the variable's name, a colon
+   and the message, for `NEW_PIN` or `NEW_USERNAME` (reworded in Phase C1, as above). That both names the variable and carries the matching message.
    A taken username prints a line equal to `USERNAME_TAKEN_MESSAGE(username)`. The missing
    and unwanted `NEW_USERNAME` messages are this module's own sentences, not
    `auth-messages.ts` constants, because no screen renders them.
@@ -1120,3 +1121,492 @@ No `init` was run: the coordinator runs the gate.
   message can quote the query's arguments, which here include a hash.
 - **Timing.** The `pin-reset.db.test.ts` file spawns `npm` 26 times and takes about 55 to 60 s.
   Each test makes one spawn, or two for the pepper case, and stays well under the 30 s limit.
+
+## Phase C1
+
+Brief: the coordinator's scratchpad `impl21-c1.md`. It covers the public side: *Create
+profile*, its acknowledgement, first-run `/setup`, their services, and the gaps G1 and G2.
+**Status: complete for the implementer, with one test left red on purpose** (AC-41's
+`.env.example` half, see *Findings*). Nothing is committed. `feature_list.json`, `Samples/`,
+`tests/support/feature-scope.ts` and `.env.example` are untouched, and `.env.example` was
+not read. I ran no full `test:db`, no full `test:e2e` and no `init`.
+
+### Work log
+
+Finished and verified steps only, in the order they were done.
+
+1. **Services, pages and forms written.** `auth-event-log.ts` (the bucket lock, a bucket's
+   events, one event plus retention), `profile-request-service.ts`, `setup-service.ts`; the
+   pages `/sign-in/create`, `/sign-in/requested` and `/setup`, their actions and form
+   states; `CreateProfileForm`, `SetupForm` and the `useForgetOnHide` hook.
+   `toProfileListEntry` is now exported from `profile-admin-service.ts`. `tsc` 0, lint 0.
+2. **One shipped assertion went red, and it was the expected one.** With the three pages
+   added, `npm run test:unit` failed 1 of 950: 010 AC-20's force-dynamic census in
+   `stock-takes-contract.test.ts` reported that it expected a length of 18 but got 21. AC-43
+   names this census and requires it to pass with the number it derives from the tree. So
+   the typed 18 became a floor of 18, as 010 AC-2's sibling derivation already uses a
+   floor, and the three new pages are named in it. The test title is unchanged.
+3. **G1, AC-41's half** (`no-default-password.test.ts`). I wrote the new non-vacuity test
+   first, against the old value rule, and it was red: a quoted letters-first value under
+   `NEW_PIN` produced no offence. Then I changed the rule. For the three new names, a
+   quoted literal is an offence unless it is `REPLACE_WITH_A_GENERATED_SECRET` or a
+   `<choose-a-…>` placeholder, and only an unquoted identifier or call is read as code.
+   #3's names keep `isNotAPassword`. The repository scan then found two lines in this
+   report's Phase B section: an angle-bracketed value after `NEW_PIN` and a colon. I
+   reworded both in place and disclosed the rewording there. Result: 5/5 green.
+4. **G1, AC-8's half** (`pin-auth-contract.test.ts`). The scan now reads a quoted literal
+   whole, up to its closing quote. The literal is an offence when it has no whitespace, has
+   at least 16 characters and is not a placeholder. An unquoted value is exempt only as an
+   identifier, a call or a placeholder. A new test builds a letters-first value at runtime
+   and checks it in quotes. It uses five setup-code names, three quote characters, three
+   operators and a quoted key. It also asserts that a sentence, a short literal, both
+   placeholders, an unquoted identifier and an unquoted call are not offences.
+   - **Proved red:** on a byte copy I put the identifier exemption back into the
+     quoted-literal branch. The new test failed with `expected [] to have a length of 1`.
+   - **Restored:** `sha256sum -c` reported `OK` (`4625b5ff…`).
+5. **G2** (`scripts/pin-reset.ts`). Both variables are read on the first lines after the
+   header comment. Nothing under `src/server/` is imported statically. `main` loads
+   `operator-service` and `errors` with `await import(…)` after the reads.
+   `pin-auth-contract.test.ts` gained `readOrderProblems`, which strips comments first. It
+   reports four problems: a static non-type import of `src/server/`, a `require` of it, a
+   missing read or missing dynamic import, and a read after the first dynamic import.
+   There is also a non-vacuity test built from the real script.
+   - **Mutation:** on a byte copy I moved the `NEW_USERNAME` read to after the `errors`
+     import. Both AC-30 order tests went red.
+   - **Restored:** `sha256sum -c` reported `OK` (`565e4477…`), and the tests were green 2/2.
+   - `pin-reset.db.test.ts`: **21/21** (52 s).
+6. **`docs/operations.md`.** The marker line is replaced by *First-run setup*: the
+   placeholder `SETUP_CODE=<choose-a-setup-code>`, the three steps, when `/setup` exists,
+   that it never comes back, the setup budget, and the note on migrated databases. Its unit
+   test is green.
+7. **AC-41's `.env.example` test** was written in `pin-auth-contract.test.ts`. It reads the
+   file through `fs`, and every assertion is a labelled true or false, so a failure prints
+   no line of the file. It is **red, 3 tests**, because the two entries are not there yet.
+   It stays red, as the brief says.
+8. **Action unit tests** (no database): `src/app/sign-in/create/actions.test.ts` (6) and
+   `src/app/setup/actions.test.ts` (5, using the real `next/navigation`). **11/11**.
+9. **Database files, one at a time:**
+   - `profile-request-service.db.test.ts`: **11/11** (24 s).
+   - `setup-service.db.test.ts`, first run: **36/37**. The server render failed with
+     `React is not defined`: Vitest compiles JSX with the classic runtime. I fixed it the
+     way `src/app/analysis/page.test.ts` does, by putting `React` on `globalThis` in this
+     file only. The re-run was **37/37** (33 s).
+   - After the mock was reshaped (step 11), the re-run was **37/37** again (33 s).
+   - No run hit a connection error or a timeout.
+10. **The six security mutations**, each on a byte copy, then restored with `sha256sum -c`
+    `OK` for all three files. See the table below.
+11. **The AC-8 scan caught one of my lines.** The setup test's mock of `password.ts` put a
+    call with arguments under the `setupCodeMatches` key. The scan reads that as an
+    unquoted non-identifier. I reshaped it so the key's value is a plain identifier.
+12. **End to end.** Dev database census before the runs: 33 users, 8 `ADMIN`, 0 `PENDING`,
+    0 claims, 0 `AuthEvent`s (0 in `request:new-devices`, 0 in `pin:new-devices`), 0 lock
+    rows.
+    - `pin-create.spec.ts` and `pin-setup.spec.ts`: `run-e2e.mjs` rebuilt first, and its
+      route table lists `/setup`, `/sign-in/create` and `/sign-in/requested`. **14 passed,
+      0 failed**, 27 s, on the first run.
+    - `sign-in.spec.ts` alone, with nothing else running, after a rebuild
+      (`BUILD_ID` 18:46:57, after the last source edit): **15 passed, 0 failed**, 50 s.
+    - The census after each run was identical to the census before. Port 3000 was free
+      after each run.
+13. **Last checks.** `npm run typecheck` 0 and `npm run lint` 0. `npm run test:unit`: 971
+    passed and 3 failed, the three `.env.example` tests of step 7.
+
+### Security mutations
+
+Each was made on a byte copy of the named file, run against its tests, then restored. After
+every restore, `sha256sum -c` reported `OK` for `profile-request-service.ts` (`c97d3f44…`),
+`setup-service.ts` (`eb32bc23…`) and `src/app/setup/actions.ts` (`321715b4…`).
+
+| # | Mutation | What went red |
+|---|---|---|
+| M1 | `requestProfile` writes an `ACTIVE` `ADMIN` row, with the username set and no requested username | `profile-request-service.db.test.ts` AC-18: 2 of 4 red, both "to match object { status: 'PENDING' … }" |
+| M2 | a request reads `User` by the typed username and answers `PAUSED` when it is held | the AC-19 database test (the live username got `PAUSED`, not `SENT`); the AC-19 source scan (a `where` naming `username`) |
+| M3 | availability counts only `ACTIVE` `ADMIN`s that hold a username | AC-27: 4 red (the `DEACTIVATED` case, the migrated case, "completeSetup returns UNAVAILABLE", the page's 404) |
+| M4 | a wrong code of 16 or more characters is accepted | AC-28 wrong code, AC-28 pause, AC-28 action and AC-33: 4 red, each `CREATED` where `CODE_INCORRECT` was expected |
+| M5 | the `SetupClaim` insert removed | AC-29: **20 of 20** repetitions red, each with outcomes `CREATED, CREATED` |
+| M6 | the typed code added to the wrong-code log line, and returned in the action's state | the AC-33 database test (the code was in the output); the AC-28 action test in the database file (a fifth key); `src/app/setup/actions.test.ts` AC-28 (a fifth key) |
+
+M5 red in every repetition shows that the race path the tests exercise is the claim, not
+the availability check. Both submissions pass availability and then queue on the setup
+bucket's lock. The second submission is stopped only by the second insert of the claim's
+row.
+
+### Files created
+- `src/server/auth/auth-event-log.ts`: the bucket lock, a bucket's events in the window,
+  one event plus the AC-14 retention sweep, and the unique-violation test. Used by the two
+  new services.
+- `src/server/auth/profile-request-service.ts`: `requestProfile`.
+- `src/server/auth/setup-service.ts`: `setupAvailable` and `completeSetup`.
+- `src/app/sign-in/create/page.tsx`, `actions.ts` and `form-state.ts`: *Create profile*.
+- `src/app/sign-in/requested/page.tsx`: the one acknowledgement.
+- `src/app/setup/page.tsx`, `actions.ts` and `form-state.ts`: first-run setup, a 404 unless
+  setup is available.
+- `src/components/CreateProfileForm.tsx`, `SetupForm.tsx` and `use-forget-on-hide.ts`.
+- Tests:
+  - `src/server/auth/profile-request-service.db.test.ts` (11) and
+    `setup-service.db.test.ts` (37);
+  - `src/app/sign-in/create/actions.test.ts` (6) and `src/app/setup/actions.test.ts` (5);
+  - `tests/e2e/pin-create.spec.ts` (12) and `pin-setup.spec.ts` (2).
+
+### Files modified
+- `scripts/pin-reset.ts`: G2.
+- `src/server/auth/profile-admin-service.ts`: `toProfileListEntry` exported, and one
+  sentence of its comment.
+- `tests/unit/pin-auth-contract.test.ts`:
+  - G1 for AC-8, with its test;
+  - AC-31, now that `setup-service` exists: its importers include the setup page and
+    action;
+  - new checks: AC-19's source scan, AC-27's two scans, G2's order check (two tests),
+    AC-41's `.env.example` checks (three tests) and operations check, and AC-43 for the
+    three pages (two tests).
+- `tests/unit/no-default-password.test.ts`: G1 for AC-41, with its test. The scan's loop
+  moved into `offencesIn`, which the new test also calls.
+- `tests/unit/stock-takes-contract.test.ts`: 010 AC-20's census, amended as AC-43 requires
+  (work log 2).
+- `docs/operations.md`: *First-run setup*.
+- `progress/impl_pin_auth.md`: two Phase B sentences reworded (work log 3), and this
+  section.
+- `progress/current.md`: plan and log.
+
+### Acceptance criteria (C1 halves)
+| AC | Where it is satisfied | Test that proves it |
+|----|----|----|
+| AC-18 | `profile-request-service.ts:82`; `sign-in/create/actions.ts` (four fields only); the `/sign-in` link (Phase B) | db: "a valid request…", "a request forged…", "each invalid input…" (11 inputs); unit: `create/actions.test.ts` AC-18 (4); e2e: `pin-create.spec.ts` AC-18 (5), and the no-JS AC-19 test for the `303` |
+| AC-19 | nothing in `requestProfile` reads by any username; the only `User` query before the insert is the `PENDING` count | db: "requests for a live, a deactivated, a requested and an unheld username…"; unit: `pin-auth-contract` AC-19 scan; e2e: no-JS "…same 303, Location and cookies, and a byte-identical acknowledgement" |
+| AC-20 | the request budget under the bucket lock; the cap under `macroads:pending-cap` (`profile-request-service.ts:116`); a refusal echoes nothing | db: AC-20 (4, including a concurrency test at the cap); unit: `create/actions.test.ts` AC-20; e2e: no-JS "a paused request… byte-identical…" |
+| AC-27 | `setup-service.ts:77`; `setup/page.tsx:18` | db: AC-27 (8, including the server render in both states); unit: `pin-auth-contract` AC-27 (2); e2e: `pin-setup.spec.ts` "…answers 404 signed out, with no setupCode field…" |
+| AC-28 | `setup-service.ts:102` (budget, then `setupCodeMatches` at `:120`, then fields, then the `ADMIN` and the claim at `:152`); `setup/actions.ts:60` | db: AC-28 (7); unit: `setup/actions.test.ts` AC-28 (4); e2e: `pin-setup.spec.ts` "/sign-in?setup=done renders SETUP_COMPLETE_MESSAGE… no session cookie". The `setupCodeMatches` unit half is Phase A's |
+| AC-29 | the claim's single row, with the unique violation mapped to `UNAVAILABLE` | db: AC-29, repetitions 1 to 20 |
+| AC-30 (G2) | `scripts/pin-reset.ts:27` and `:71` | unit: `pin-auth-contract` AC-30 (2); db: `pin-reset.db.test.ts` 21/21 |
+| AC-31 (C1 half) | `setup-service` imported by `src/app/setup/` and tests only; nothing under `src/app/setup/` signs in | unit: `pin-auth-contract` AC-31 (amended, plus Phase B's) |
+| AC-32 (C1 half) | step 1 of `requestProfile`; `setupAvailable`'s pepper check | db: "requestProfile returns UNAVAILABLE and creates nothing"; setup "setupAvailable() is false…"; unit: `create/actions.test.ts` "UNAVAILABLE renders SIGN_IN_UNAVAILABLE_MESSAGE" |
+| AC-33 (C1 half) | the only lines logged: the wrong-code line (bucket only) and the missing-pepper line on a request (variable name only) | db: request and setup AC-33 console spies; unit: `setup/actions.test.ts` AC-33 |
+| AC-34 (C1 half) | no money anywhere on the three pages; `CREATED` carries a `ProfileListEntry` | e2e: `pin-create.spec.ts` AC-34, `pin-setup.spec.ts`; db: the server render has no `€`, and `deepKeys` of `CREATED` has no money, `pin`, `hash` or `code` key |
+| AC-35 (C1 half) | single-column forms, every control `min-h-11` | e2e: `pin-create.spec.ts` AC-35 at 390 and 320 px |
+| AC-36 (C1 half) | `CreateProfileForm` + `useForgetOnHide` | e2e: `pin-create.spec.ts` AC-36; a failed attempt keeping the username and emptying both PINs is in AC-18's invalid-input test |
+| AC-41 (rest) | `docs/operations.md` *First-run setup*; G1's value rule | unit: `no-default-password.test.ts` (5); `pin-auth-contract` AC-41 operations check; **`.env.example` checks red** (see *Findings*) |
+| AC-43 (C1 half) | the three pages are `force-dynamic`, with no `loading.tsx` above them | unit: `stock-takes-contract` 010 AC-20 (amended); `stock-entry-contract` 010 AC-2 (unchanged; it derives the new directories); `pin-auth-contract` AC-43 (2) |
+| G1 | both scans | work log 3 and 4, each watched red first |
+| G2 | the reset script | work log 5, mutation red |
+
+### Verification output
+
+```
+$ npm run typecheck                                            -> exit 0
+$ npm run lint                                                 -> exit 0
+$ npm run test:unit
+ Test Files  1 failed | 67 passed (68)
+      Tests  3 failed | 971 passed (974)
+   (the 3: 021 AC-41's .env.example checks: the entries are not in the file yet)
+$ npm run test:db -- src/server/auth/profile-request-service.db.test.ts   Tests 11 passed (11)  24 s
+$ npm run test:db -- src/server/auth/setup-service.db.test.ts             Tests 37 passed (37)  33 s
+$ npm run test:db -- src/server/auth/pin-reset.db.test.ts                 Tests 21 passed (21)  52 s
+$ npm run test:e2e -- tests/e2e/pin-create.spec.ts tests/e2e/pin-setup.spec.ts
+  14 passed (27.4s)
+$ npm run test:e2e -- tests/e2e/sign-in.spec.ts
+  15 passed (50.3s)
+dev database census, before and after both e2e runs (identical):
+  {"users":33,"admins":8,"pending":0,"setupClaims":0,"requestNewDevices":0,"pinNewDevices":0,"authEvents":0,"accountLocks":0}
+```
+
+No `init` was run: the coordinator runs the gate.
+
+### Findings: left for a ruling or for the owner
+
+1. **AC-41's `.env.example` checks are red (3 tests), and I left them red.** The file does
+   not yet hold the two entries the owner is adding. I could not read the file, so the test
+   finds "the generation command AUTH_SECRET shows" by rule:
+   - a code span in the `AUTH_SECRET` entry that names a command (`openssl`, `node`,
+     `npx`, and so on);
+   - failing that, the text from such a word to the end of its line.
+
+   Each new entry must contain every command found. The sentences AC-41 requires are
+   checked by pattern:
+   - `PIN_PEPPER`: "each/every/per environment", "back up", "outside the server",
+     `AUTH_SECRET`, "change or lose", "invalidate", "every PIN";
+   - `SETUP_CODE`: "16", "characters", "first ADMIN/administrator", "only/until".
+
+   An entry worded differently could turn one check red with no fault in the file. Whoever
+   next reads the file with the entries in it should check the patterns against the
+   wording. An entry is the lines after the previous assignment, down to its own
+   assignment line.
+2. **010 AC-20's census was amended under AC-43** (work log 2). I read AC-43's "passes with
+   the number it derives from the tree" as licensing that edit, because it names this
+   census. If the reviewer reads it otherwise, the alternative is to leave the test red
+   until a ruling.
+3. **A latent flake in `sign-in.spec.ts` AC-36, which I did not touch.** It checks that the
+   full page URL does not contain the three typed digits, and the URL's port is 3000. A
+   random draw of 300 or 000 fails the test with nothing wrong: about 2 in 1,000 per draw,
+   and there are three draws. My AC-36 test on `/sign-in/create` reads only the path, the
+   query and the fragment. The fix belongs to whoever owns that spec.
+
+### Deviations from the spec
+1. **The requested-username field is named `requestedUsername`, not `username`.** AC-18
+   forges a `username` field. With both named `username`, `FormData.get` returns the first,
+   and the forgery would be ambiguous. With distinct names, the forged field is simply never
+   read. The label is still `Username`.
+2. **A paused or unavailable request echoes nothing back to the form.** The UI states keep
+   the name and username "after an error". I applied that to field errors only, because
+   AC-20 requires the paused body to be byte-identical whatever username was typed. An echo
+   would break that.
+3. **An unavailable request (no pepper) renders `SIGN_IN_UNAVAILABLE_MESSAGE`.** AC-39 has
+   no request-specific sentence, and AC-32 names this message for the sign-in page.
+4. **At setup, a username already held by a `YARD_STAFF` profile is refused, after a
+   correct code, with `USERNAME_TAKEN_MESSAGE(username)`.** The spec does not cover this
+   case. S2's reason for silence does not apply: the person has the setup code. If a unique
+   violation still reaches the `catch`, availability is read again. The answer is
+   `UNAVAILABLE` when an `ADMIN` now exists, and otherwise the taken-username message. It
+   is never Prisma's error text.
+5. **An unavailable setup submission is `notFound()`, the page's own 404.** AC-39 has no
+   message for it.
+6. **AC-28's end-to-end `303` is not run end to end**, because no spec may claim setup.
+   Three pieces prove it instead:
+   - against the test database, the action throws Next's redirect to
+     `/sign-in?setup=done`;
+   - Next answers a server-action redirect with `303`, which the no-JS
+     `/sign-in/create` test shows end to end through the same mechanism;
+   - end to end, `/sign-in?setup=done` renders `SETUP_COMPLETE_MESSAGE` and sets no session
+     cookie.
+
+   "Setup sets no cookie" rests on two more facts. The AC-31 scan covers the source. Outside
+   a request, Next has no cookie store, so an action that touched one would have thrown
+   something other than the redirect.
+7. **Modules beyond the contract table:** `auth-event-log.ts`, `use-forget-on-hide.ts`,
+   the two form components, the form-state files, and the export of `toProfileListEntry`.
+8. **`sign-in-service.ts` keeps its own copy of the retention sweep and the bucket lock.**
+   Moving it onto `auth-event-log.ts` would refactor Phase B's committed module, which is
+   outside C1. The rule is the same in both places, and so is the lock key
+   (`macroads:budget:<bucket>`). Only the lock's key is shared: the code is not.
+9. **The pending cap has its own transaction lock (`macroads:pending-cap`).** Every request
+   takes it after its bucket lock. Without it, requests from different buckets could all
+   read 19 and all insert. A test proves it holds: three concurrent requests at 19 pending.
+10. **The two AC-18 inputs a text field cannot hold, a line break and a carriage return,
+    are sent end to end through a hidden field.** That is what a hand-made request carries.
+    Both are also proved at the service.
+
+### Notes for the reviewer
+- **No PIN, digest, hash, key or code is printed or written.**
+  - Every PIN comes from `generatePin`, and trivial ones are built by rule.
+  - Every setup code is `randomBytes` set with `vi.stubEnv`. No `process.env` is read
+    under `src/server/auth/` outside `password.ts` (AC-6).
+  - The census script prints counts only. I read no `.env` value.
+  - The red runs quoted in the work log are described, not pasted: their failure lines
+    carried runtime values.
+- **AC-19's statement sequence** is, in order: the bucket's advisory lock, its events, the
+  cap's lock, the `PENDING` count, the insert, the event, the two retention deletes. The
+  four cases were identical. The test pins the count as the only `User` statement before
+  the insert.
+- **Setup's order is as S9 lists it.** Availability is read before the transaction. Inside
+  the transaction come the `setup` bucket's lock, the budget, the constant-time
+  comparison, the fields, one bcrypt, the `ADMIN`, then the claim. A request refused by
+  availability or the budget costs no comparison and no bcrypt. A refused profile request
+  costs no bcrypt either: the hash is made after both checks.
+- **The e2e hydration wait reads React's root the way `support/hydration.ts` does.** That
+  helper is not exported, so the spec has a local copy.
+- **Timing:** the database files took 24 s, 33 s and 52 s. The setup file's twenty AC-29
+  repetitions each run about 0.9 s under the per-test limit.
+- **The owner's `.env.example` entries** are the one thing left before AC-41 can go green.
+
+### C1 finish: .env.example retired
+
+Brief: the coordinator's scratchpad `impl21-env.md`, carrying out the owner's decision in 021 →
+*Post-approval amendments* → *`.env` is the only settings file*. **Status: complete except
+step 6, which is blocked** (see *Findings* 1). `git rm .env.example` refused because the file
+has an uncommitted change. I did not force it. So the file is still tracked and still on disk,
+unread, and one test is red because of it: the new "no file named `.env…`" test. Everything
+else is done and green. Nothing is committed. `feature_list.json`, `Samples/` and `.env` are
+untouched. I never read `.env`: only the tests read it, at runtime, through `fs`. I ran no
+`test:db`, no `test:e2e` and no `init`.
+
+#### Work log
+
+Finished and verified steps only, in order.
+
+1. **`password.ts` exports the pepper rule.** The decode-and-length check that `pinPepper`
+   applied inline is now a private `decodedPinPepper(value)`. `pinPepper` calls it, and so does
+   the new export `isUsablePinPepper(value): boolean`, which reads no environment. Behaviour
+   is unchanged: the same trim, the same base64 shape test, the same 32-byte floor, and the
+   same two error messages. A new `password.test.ts` test runs the six unusable values the
+   fail-closed block already lists, plus three usable ones (32 bytes in standard base64, 32
+   bytes in URL-safe base64, 48 bytes padded with whitespace). For each value it asserts that
+   `isUsablePinPepper` and `pinDigest` agree.
+2. **`tests/support/env-file.ts`** holds `envFileProblems(text)`, the fixed labels, and two
+   helpers for reading the document: `operationsEnvironment()` and `entryFor(section, name)`.
+   Headings inside a fenced block are skipped.
+3. **`docs/operations.md` → `## Environment`**, placed before *Profiles*. It contains:
+   - the file rule, and "the names here match `.env`; the values never go anywhere but `.env`";
+   - a table of the eight settings;
+   - what `npm run test:unit` checks;
+   - one `### ` entry per setting, or per pooled/unpooled pair.
+
+   The placeholders are `USER:PASSWORD` at hosts under `.invalid`, and
+   `REPLACE_WITH_A_GENERATED_SECRET`. The same command, a `node -e` one-liner that prints 32
+   random bytes in base64, appears in the `AUTH_SECRET`, `PIN_PEPPER` and `SETUP_CODE`
+   entries. In *Databases*, the line that pointed at the template now points at *Environment*.
+4. **`repo-hygiene.test.ts`.** `CREDENTIAL_EXEMPT` is empty. The template's placeholder test
+   became "no file in the repository has a name beginning with `.env`". It covers tracked
+   files plus new files git would carry, so a `.gitignore` negation is caught too.
+   AC-7's and 003 AC-30's documentation halves are now three labelled checks on *Environment*.
+   The header comment is rewritten to match.
+5. **`pin-auth-contract.test.ts`.**
+   - AC-8's old combined test is split. The setup-code scan keeps its body. The `NEW_PIN` half
+     is its own test, and it reads `.env` for one yes/no fact through `envFileProblems`.
+   - AC-41's three template tests now read *Environment* through `entryFor`. C1's claim
+     patterns are kept word for word, with one change: `generationCommands` now takes only code
+     spans that start with a command word. The line fallback is gone, because a document
+     entry also holds spans such as `npm run test:db`.
+   - Added: two one-sentence claims for `PIN_PEPPER` and two one-phrase claims for
+     `SETUP_CODE`, so that words scattered across an entry cannot pass.
+   - Added: a test that runs `AUTH_SECRET`'s documented command with this Node and no shell.
+     It checks that the output passes `isUsablePinPepper` and has at least
+     `SETUP_CODE_MIN_LENGTH` characters, by yes or no, and never prints it.
+6. **README, `run-db-tests.mjs`, `src/lib/env.test.ts`, `.gitignore`**, as the brief lists.
+   `README.md` also says that `npm run test:unit` now needs `.env` to exist. That is the
+   trade-off the amendment accepts.
+7. **The first run found a real parser gap.** The "DATABASE_URL blank" breach came back with
+   two labels, not one. I probed Node's `util.parseEnv` on synthetic text: when a value is
+   only whitespace, it takes the **next line** as that value. A line assigning `NEW_PIN` that
+   follows a blank value would then disappear from its result, while Prisma, which loads
+   `.env` with dotenv 16.6.1 through `@prisma/config` → `c12`, would still load it. That is
+   the G2 hole. So the support module now copies dotenv 16's `LINE` expression and its value
+   clean-up from `dotenv/lib/main.js`, word for word. A new test proves that `NEW_PIN` is
+   found in four cases: after a blank value, with `export` in front, with a colon, and in
+   quotes. It also proves that a comment is not an assignment.
+8. **Six mutations** went red and were then restored. See the table.
+9. **`git rm .env.example` refused.** That is *Findings* 1.
+10. **Final run:** typecheck 0, lint 0, `test:unit` 983 passed and 1 failed. The failure is
+    step 9's.
+
+#### Mutations
+
+Each was made on the working file, with a byte backup in the scratchpad, then run and
+restored. After every restore, `sha256sum -c` reported `OK` for `tests/support/env-file.ts`
+(`129276b7…`), `docs/operations.md` (`bc466dd7…`) and `src/server/auth/password.ts`
+(`2d5288b5…`). The backups were deleted afterwards.
+
+| # | Mutation | What went red |
+|---|---|---|
+| M1 | the `DATABASE_URL` pooler check never fires | the breach test: "DATABASE_URL unpooled: expected [] to deeply equal [ Array(1) ]" |
+| M2 | `NEW_PIN` judged by a non-empty value instead of by name | the breach "NEW_PIN assigned nothing, by name alone" |
+| M3 | "because they fail through a pooler" removed from the doc | repo-hygiene AC-7: "Environment says migrations use DIRECT_URL because they fail through a pooler" |
+| M4 | `AUTH_SECRET`'s command changed to make 16 bytes | AC-41: "PIN_PEPPER shows AUTH_SECRET's command 1" and "its output is a pepper password.ts accepts" |
+| M5 | "only" removed from `SETUP_CODE`'s "used only until the first ADMIN exists" | AC-41: the one-phrase claim. C1's loose only-or-until pattern stayed green, which is why the one-phrase claim was added |
+| M6 | `isUsablePinPepper` also accepts any value over 20 characters | `password.test.ts`: "isUsablePinPepper with 31 bytes"; `env-file.test.ts`: the breach "PIN_PEPPER of 31 bytes" |
+
+#### Files created
+- `tests/support/env-file.ts`: `envFileProblems`, `ENV_FILE_LABELS`, `ALL_ENV_FILE_LABELS`,
+  `ENV_FILE_SETTINGS`, `operationsEnvironment`, `entryFor`.
+- `tests/unit/env-file.test.ts` (6 tests): the real `.env` (1), and synthetic proofs (5).
+
+#### Files modified
+- `src/server/auth/password.ts`: `isUsablePinPepper` exported; `pinPepper` shares its
+  decoder. No behaviour change.
+- `src/server/auth/password.test.ts`: one test, the predicate against `pinDigest`.
+- `tests/unit/repo-hygiene.test.ts`: as in work log 4.
+- `tests/unit/pin-auth-contract.test.ts`: as in work log 5.
+- `docs/operations.md`: `## Environment`, and the *Databases* pointer line.
+- `README.md`: *Run the app*.
+- `scripts/run-db-tests.mjs`: the message for a missing `TEST_DATABASE_URL` points at
+  *Environment*.
+- `src/lib/env.test.ts`: its comment.
+- `.gitignore`: the negation for the template is gone.
+- `progress/current.md`: plan and log. `progress/impl_pin_auth.md`: this section.
+
+#### Acceptance criteria (this step's halves)
+| AC | Where it is satisfied | Test that proves it |
+|----|----|----|
+| 002 AC-7 (amended) | `docs/operations.md:7` onwards, `:35`; `.env` checked by `tests/support/env-file.ts:99` (`:120` pooled; the unpooled `DIRECT_URL` check follows it) | `repo-hygiene.test.ts:151`, `:166`; `env-file.test.ts:145` (real file), `:171` (breaches) |
+| 002 AC-8 (amended) | `CREDENTIAL_EXEMPT` empty; `.gitignore` | `repo-hygiene.test.ts` credential scans (green with no exemption) and `:135` (**red until the template is removed**) |
+| 003 AC-30 (amended) | `docs/operations.md:53`; `env-file.ts` unpooled check and `:125` (host) | `repo-hygiene.test.ts:151`, `:181`; `env-file.test.ts:145`, `:171` |
+| 021 AC-8 (`.env` half) | `tests/support/env-file.ts:140`, by name, using dotenv's rule | `pin-auth-contract.test.ts:261`; `env-file.test.ts:171` (two `NEW_PIN` breaches), `:185` (four forms and a comment) |
+| 021 AC-41 (Environment and `.env` halves) | `docs/operations.md:66`, `:85`, `:101`; `env-file.ts:131` (length) and `:135` (pepper, through `password.ts:65`) | `pin-auth-contract.test.ts:590`, `:610`, `:628`, `:658`; `env-file.test.ts:145`; `password.test.ts` "isUsablePinPepper answers what pinDigest does…" |
+
+#### Verification output
+
+```
+$ npm run typecheck                                  -> exit 0
+$ npm run lint                                       -> exit 0
+$ npm run test:unit
+ FAIL  tests/unit/repo-hygiene.test.ts > repository hygiene > AC-8, amended 2026-09-25: no file in the repository has a name beginning with .env
+     → expected [ '.env.example' ] to deeply equal []
+ Test Files  1 failed | 68 passed (69)
+      Tests  1 failed | 983 passed (984)
+$ git ls-files | grep -c '^\.env'                    -> 1   (the template, still tracked: Findings 1)
+```
+
+The count, against C1's 974:
+- plus 6 in `env-file.test.ts`;
+- plus 1 in `password.test.ts`;
+- AC-8 split in two: plus 1;
+- AC-41: three template tests became three document tests, plus the command test: plus 1;
+- `repo-hygiene`: three template tests removed, and four tests added: plus 1.
+
+That makes 984. On this run, the real `.env` passes every check.
+
+#### Findings: for the coordinator
+
+1. **Blocker: `git rm .env.example` refused.** Git said "the following file has local
+   modifications" and suggested `--cached` or `-f`. The file already showed as modified in
+   the session's opening `git status`, before I changed anything. The brief did not expect
+   this. `-f` would discard an uncommitted change that nobody has reviewed, so I did not
+   force it, stash it or copy it. A `git diff --numstat` asking only for line counts was
+   denied by the permission system, so I cannot say how large the change is. What I can say:
+   the file is tracked, so every repository scan read it on this run, and the scans are green
+   over it. The credential scan now has no exemption, and it finds no connection string that
+   is not a placeholder. The `NEW_PIN` / `PIN_PEPPER` / `SETUP_CODE` scan and AC-8's
+   setup-code scan find no assignment that is not a placeholder. Once the owner's decision is
+   confirmed to cover the uncommitted edit, the one remaining step is `git rm -f
+   .env.example`. After that, the red test should go green and `git ls-files | grep -c
+   '^\.env'` should print 0.
+2. **The brief's grep will still find `feature_list.json`**. It quotes the original
+   criteria text of 002 AC-7 and AC-8 and of 003 AC-7 and AC-30, and I was told not to touch
+   it. Outside `specs/`, the grep (`.env` and the template itself excluded, file names only)
+   found exactly `.git/index`, which will clear with the removal, and `feature_list.json`.
+3. **Three lines in `specs/` are neither a recorded amendment nor criterion text**, and still
+   describe the template as current: `002-app_scaffold.md:58` (a `.env` copied from it),
+   `:211` (*Authentication*: the two auth settings appear in it), and
+   `003-auth_and_roles.md:84` (*Environment*: they already exist in it). They are for the
+   spec-writer. I did not edit specs.
+4. **Disclosure.** My first repository grep, run before I knew the file would match, printed
+   the template's first line. It is a comment naming the file and saying to copy it and to
+   never commit `.env`. No assignment line was shown, and I read nothing else of the file. I
+   excluded it from every later search.
+
+#### Deviations from the spec and the brief
+1. **`envFileProblems` lives in `tests/support/env-file.ts`, not in `env-file.test.ts`.**
+   `pin-auth-contract.test.ts` shares it, and importing one test file from another would run
+   the imported file's tests twice.
+2. **`.env` is read by dotenv's rule, not by `node:util`** (work log 7). This is a copy of
+   third-party logic, about ten lines. The alternative, importing `dotenv` itself, would rely
+   on an undeclared transitive dependency.
+3. **`NEW_PIN` is a problem if it is assigned at all, even to nothing.** The old template
+   check allowed an empty assignment. AC-8 says "assigns nothing … checked by name", and the
+   owner's check found "there is no `NEW_PIN`". The real `.env` passes.
+4. **More checks than the brief lists:**
+   - the command test (step 5);
+   - the four one-sentence or one-phrase claims;
+   - blank-value, letter-case and no-host breaches;
+   - the fixed-label proof;
+   - two AC-30 document statements: "separate", and "on a different host from `DIRECT_URL`".
+
+   Each one is a statement the section already makes.
+5. **The *Environment* entries use `REPLACE_WITH_A_GENERATED_SECRET` for `SETUP_CODE`**, as
+   C1's template test required. *First-run setup* keeps `<choose-a-setup-code>`, which its
+   own test requires. Both are placeholders that AC-8 and AC-41 allow.
+
+#### Notes for the reviewer
+- **No value is printed, and none can be.** `envFileProblems` returns only strings from
+  `ALL_ENV_FILE_LABELS`, which contains names and facts. A test proves this over every breach,
+  a fully broken text and an empty one. The real-file test asserts `[]` on those labels, and
+  asserts existence with a message that names the file and *Environment*.
+- **The synthetic `.env` texts** are built at runtime:
+  - values from `randomBytes`, and the `NEW_PIN` breach from `generatePin`;
+  - hosts under `.invalid`;
+  - connection strings joined from a scheme constant and two halves;
+  - names interpolated from variables, so no source line is an assignment the scans read.
+- **The command test runs `node -e` taken from the document**, with `process.execPath` and
+  no shell. It only accepts the exact shape `node -e "…"`. Anyone who can edit the document
+  can also edit the test, so it opens no new path.
+- **`isUsablePinPepper` is the only new export** under `src/server/auth/`. It reads no
+  environment, so AC-6's reader census and AC-42's import-time test are unaffected, and both
+  stay green.

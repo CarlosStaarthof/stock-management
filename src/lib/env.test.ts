@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import { MissingEnvVariableError, parseEnv } from "@/lib/env";
 
-// Spec 002 AC-8 forbids every tracked file except .env.example from containing a
-// connection string with credentials in it. The fixtures below are therefore assembled
-// at runtime; their values are exactly the ones AC-9 names.
+// Spec 002 AC-8 forbids a source or test file from containing a connection string with
+// credentials in it. The fixtures below are therefore assembled at runtime; their values
+// are exactly the ones AC-9 names.
 const POOLED_URL = ["postgresql://u:p", "h/db"].join("@");
 const DIRECT_URL = ["postgresql://u:p", "h2/db"].join("@");
 

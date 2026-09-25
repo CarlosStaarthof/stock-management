@@ -32,7 +32,8 @@ const developmentUrl = (process.env.DATABASE_URL ?? "").trim();
 if (testUrl === "") {
   console.error(
     "[test:db] TEST_DATABASE_URL is not set. These tests truncate tables between tests, " +
-      "so they need their own database or Neon branch. See .env.example.",
+      "so they need their own database or Neon branch. See the Environment section of " +
+      "docs/operations.md.",
   );
   process.exit(1);
 }

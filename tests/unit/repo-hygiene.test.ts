@@ -2,24 +2,27 @@ import { spawnSync } from "node:child_process";
 import { readFileSync, statSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
+import { operationsEnvironment } from "../support/env-file";
+
 /**
- * Spec 002 AC-8, automated. Run by `npm run test:unit`, so the check cannot rot into a
- * paragraph nobody executes. It reads files from disk on purpose: the point is what the
- * repository contains, not what anybody remembers putting there.
+ * Spec 002 AC-7 and AC-8 and 003 AC-30, automated, as amended by the owner's decision of
+ * 2026-09-25 (021 → Post-approval amendments → *`.env` is the only settings file*). Run by
+ * `npm run test:unit`, so the checks cannot rot into a paragraph nobody executes. It reads
+ * files from disk on purpose: the point is what the repository contains, not what anybody
+ * remembers putting there.
  *
- * AC-8's detector is used verbatim. Two things then decide whether a hit is a problem:
+ * AC-8's detector is used verbatim, and no file is exempt from it. A hit is an offence
+ * unless it is a documented placeholder: fake credentials against a host that cannot
+ * resolve, with no dot in it or under an RFC 2606 reserved name such as `.invalid` or
+ * `example.com`. This allowance exists because AC-9 dictates the fixture strings `…u:p@h/db`
+ * and `…u:p@h2/db`, which the spec and `feature_list.json` both quote: AC-8's detector fires
+ * on the spec that defines it. See progress/impl_app_scaffold.md. Source, test, script and
+ * configuration files get no allowance at all: see the third test.
  *
- *  - `.env.example` is exempt by AC-8 itself, and the exemption is closed by the third
- *    test below, which proves the file is still a placeholder.
- *  - Anywhere else, a hit is an offence unless it is a documented placeholder — fake
- *    credentials against a host that cannot resolve - no dot in it, or under an RFC 2606
- *    reserved name such as `.invalid` or `example.com`. This
- *    allowance exists because AC-9 dictates the fixture strings `…u:p@h/db` and
- *    `…u:p@h2/db`, which the spec and `feature_list.json` both quote: AC-8's detector
- *    fires on the spec that defines it. See progress/impl_app_scaffold.md.
- *
- * Source, test, script and configuration files get no allowance at all — see the second
- * test.
+ * There is no committed settings template any more, and no file whose name begins with
+ * `.env` may be committed. `.env` itself is checked by `tests/unit/env-file.test.ts`, which
+ * prints no value. AC-7's and AC-30's documentation halves are checked here, against
+ * `docs/operations.md` → *Environment*, which says what each setting is and how to make it.
  */
 
 // Assembled from two halves so that this file does not itself contain the string it
@@ -29,7 +32,8 @@ const CREDENTIAL_PATTERN = new RegExp("postgres(ql)?://[^\\s]*:[^\\s]*" + "@");
 // Same shape, with the user-info and host captured so a hit can be judged.
 const CREDENTIAL_PARTS = new RegExp("postgres(?:ql)?://([^\\s@]*)" + "@([^\\s/?\"'`\\\\)\\]]*)", "g");
 
-const CREDENTIAL_EXEMPT = new Set([".env.example"]);
+// Empty since 2026-09-25: its one entry, the settings template, was retired with the file.
+const CREDENTIAL_EXEMPT: ReadonlySet<string> = new Set();
 
 const PLACEHOLDER_USER_INFO = new Set(["u:p", "USER:PASSWORD"]);
 
@@ -128,57 +132,62 @@ describe("repository hygiene", () => {
     expect(offenders).toEqual([]);
   });
 
-  it("AC-8: .env.example is a placeholder, not a real credential", () => {
-    const example = readFileSync(".env.example", "utf8");
+  it("AC-8, amended 2026-09-25: no file in the repository has a name beginning with .env", () => {
+    // Tracked files and new files git would carry: a negation added to .gitignore would let
+    // a settings file through, and this is what catches it.
+    const offenders = repositoryFiles().filter((file) =>
+      (file.split("/").pop() ?? "").startsWith(".env"),
+    );
 
-    // The exemption above is a hole unless the exempt file is proved harmless: a real
-    // Neon string pasted into .env.example would otherwise pass unnoticed.
-    expect(example).toContain("USER:PASSWORD");
-    expect(example).not.toContain("neon.tech");
-
-    // Stronger than the two literal checks AC-8 asks for: every host in the file is
-    // under .invalid, a TLD reserved by RFC 2606 that can never resolve.
-    const hosts = [...example.matchAll(CREDENTIAL_PARTS)].map(([, , host]) => host ?? "");
-    expect(hosts.length).toBeGreaterThan(0);
-    for (const host of hosts) {
-      expect(host.endsWith(".invalid")).toBe(true);
-    }
+    expect(offenders).toEqual([]);
   });
 
-  it("003 AC-30: .env.example documents the test database alongside the other four", () => {
-    const example = readFileSync(".env.example", "utf8");
+  describe("docs/operations.md → Environment says what each setting is", () => {
+    const section = operationsEnvironment();
+    // A document, not a secret: still, each check is a labelled yes or no, so a failure
+    // names the missing statement instead of printing the section.
+    const says = (pattern: RegExp): boolean => pattern.test(section);
 
-    // `npm run test:db` deletes every row between tests. The template has to say which
-    // variable points at the database it is allowed to do that to, or the first person to
-    // run it points it at their own.
-    for (const variable of ["TEST_DATABASE_URL", "TEST_DIRECT_URL"]) {
-      expect(example).toMatch(new RegExp(`^${variable}=`, "m"));
-    }
+    it("AC-7 and 003 AC-30: the section exists and names the four settings and the two test ones", () => {
+      expect(section !== "", "docs/operations.md has a ## Environment section").toBe(true);
 
-    // Placeholders, not credentials: the user info is USER:PASSWORD and the host is
-    // under .invalid, which can never resolve (RFC 2606).
-    const assignments = example
-      .split("\n")
-      .filter((line) => /^TEST_(DATABASE|DIRECT)_URL=/.test(line));
+      for (const variable of [
+        "DATABASE_URL",
+        "DIRECT_URL",
+        "AUTH_SECRET",
+        "AUTH_URL",
+        "TEST_DATABASE_URL",
+        "TEST_DIRECT_URL",
+      ]) {
+        expect(section.includes(`\`${variable}\``), `Environment names ${variable}`).toBe(true);
+      }
+    });
 
-    expect(assignments).toHaveLength(2);
-    for (const line of assignments) {
-      const [, userInfo, host] = [...line.matchAll(CREDENTIAL_PARTS)][0] ?? [];
-      expect(userInfo).toBe("USER:PASSWORD");
-      expect((host ?? "").replace(/:\d+$/, "").endsWith(".invalid")).toBe(true);
-    }
-  });
+    it("AC-7: it says DATABASE_URL is pooled, with -pooler in its host, that DIRECT_URL is unpooled, and that migrations use DIRECT_URL because they fail through a pooler", () => {
+      const statements: [string, RegExp][] = [
+        ["the pooled host contains -pooler", /\bpooled\b[^.]*host contains `-pooler`/i],
+        ["DATABASE_URL is the pooled string", /`DATABASE_URL` is the pooled\b/],
+        ["DIRECT_URL is the unpooled string", /`DIRECT_URL` is the unpooled\b/],
+        [
+          "migrations use DIRECT_URL because they fail through a pooler",
+          /\bmigrations? use `DIRECT_URL`[^.]*\bbecause\b[^.]*\bfail[^.]*\bpooler\b/i,
+        ],
+      ];
+      for (const [statement, pattern] of statements) {
+        expect(says(pattern), `Environment says ${statement}`).toBe(true);
+      }
+    });
 
-  it("AC-7: .env.example documents all four variables and the pooled/direct split", () => {
-    const example = readFileSync(".env.example", "utf8");
-
-    for (const variable of ["DATABASE_URL", "DIRECT_URL", "AUTH_SECRET", "AUTH_URL"]) {
-      expect(example).toMatch(new RegExp(`^${variable}=`, "m"));
-    }
-
-    expect(example).toContain("-pooler");
-    expect(example).toMatch(/pooled/i);
-    expect(example).toMatch(/unpooled/i);
-    expect(example).toMatch(/migrat/i);
+    it("003 AC-30: it says what the test database is for, and that npm run test:db empties it", () => {
+      const statements: [string, RegExp][] = [
+        ["npm run test:db empties the test database", /`npm run test:db` empties the test database\b/],
+        ["the test database is separate", /\bseparate\b/i],
+        ["TEST_DIRECT_URL is unpooled", /`TEST_DIRECT_URL` is its unpooled\b/],
+        ["TEST_DIRECT_URL is on a different host from DIRECT_URL", /different host from `DIRECT_URL`/],
+      ];
+      for (const [statement, pattern] of statements) {
+        expect(says(pattern), `Environment says ${statement}`).toBe(true);
+      }
+    });
   });
 });

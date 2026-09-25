@@ -451,9 +451,22 @@ describe("AC-20: the checks that survive with no database", () => {
     // but this feature adds ONE page file, not two - `/stock-takes/page.tsx` has existed
     // since #3 as a placeholder and is replaced rather than created. 17 + 1 = 18. Recorded
     // in progress/impl_stock_takes_history.md rather than silently rounded.
-    expect(pages).toHaveLength(18);
+    //
+    // AMENDED BY 021 AC-43: the census passes with the number it DERIVES from the tree. 18
+    // was the count #10 left behind, and it stays as the floor, like 010 AC-2's floor on
+    // the loading.tsx derivation: a later feature adds pages, and the filter still cannot
+    // quietly match nothing. #21 adds three public pages here (and `/profiles` later),
+    // and each is named so that dropping one from the census is red.
+    expect(pages.length).toBeGreaterThanOrEqual(18);
     expect(pages).toContain(`${PAGE_TREE}/page.tsx`);
     expect(pages).toContain(`${PAGE_TREE}/counts/[id]/page.tsx`);
+    for (const page of [
+      "src/app/sign-in/create/page.tsx",
+      "src/app/sign-in/requested/page.tsx",
+      "src/app/setup/page.tsx",
+    ]) {
+      expect(pages).toContain(page);
+    }
 
     for (const page of pages) {
       expect(read(page), page).toContain('export const dynamic = "force-dynamic";');

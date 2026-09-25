@@ -50,14 +50,30 @@ const PIN_PEPPER_MIN_BYTES = 32;
 // that is not base64 is a mistyped pepper, not a shorter one.
 const BASE64 = /^[A-Za-z0-9+/_-]+={0,2}$/;
 
+/** The pepper's bytes, or `null` when `value` is not base64 of at least 32 bytes. */
+function decodedPinPepper(value: string): Buffer | null {
+  const trimmed = value.trim();
+  const bytes = BASE64.test(trimmed) ? Buffer.from(trimmed, "base64") : Buffer.alloc(0);
+  return bytes.length >= PIN_PEPPER_MIN_BYTES ? bytes : null;
+}
+
+/**
+ * Whether `value` is a pepper this module accepts: the rule `pinPepper` applies, as a yes or
+ * no that reads no environment. The `.env` check in `tests/unit/env-file.test.ts` asks it,
+ * so the file is judged by this module's rule, not by a copy of it.
+ */
+export function isUsablePinPepper(value: string): boolean {
+  return decodedPinPepper(value) !== null;
+}
+
 function pinPepper(): Buffer {
   const value = (process.env.PIN_PEPPER ?? "").trim();
   if (value === "") {
     throw new CredentialSecretError("PIN_PEPPER", "is not set");
   }
 
-  const bytes = BASE64.test(value) ? Buffer.from(value, "base64") : Buffer.alloc(0);
-  if (bytes.length < PIN_PEPPER_MIN_BYTES) {
+  const bytes = decodedPinPepper(value);
+  if (bytes === null) {
     throw new CredentialSecretError(
       "PIN_PEPPER",
       `is not usable: it must be base64 that decodes to at least ${PIN_PEPPER_MIN_BYTES} bytes`,

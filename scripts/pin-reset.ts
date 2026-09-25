@@ -18,11 +18,14 @@
  * AC-6). A failure it did not expect is reported by its name only, because a database
  * error's message can quote the values it was given.
  */
-import {
-  listProfilesForOperator,
-  setCredentialsForOperator,
-} from "@/server/auth/operator-service";
-import { ConflictError, NotFoundError, ValidationError } from "@/server/errors";
+
+// Both variables are read FIRST, before any module that reaches Prisma's client is loaded.
+// That client fills every variable this process was started without from the project's
+// `.env` when it loads, so a PIN or a username written there would act as a default (021
+// AC-30, G2). Nothing under `src/server/` is imported statically for that reason: `main`
+// loads it after these two lines, and a source check in `npm run test:unit` holds the order.
+const typedPin = process.env.NEW_PIN ?? "";
+const typedUsername = process.env.NEW_USERNAME ?? "";
 
 const USAGE = [
   "usage: npm run pin:reset -- --list",
@@ -61,53 +64,50 @@ function parseArguments(args: string[]): Command {
   );
 }
 
-async function list(): Promise<void> {
-  for (const line of await listProfilesForOperator()) {
-    console.log(
-      [
-        line.id,
-        line.username ?? "-",
-        line.name,
-        line.role,
-        line.status,
-        line.pinState,
-        line.lockState,
-      ].join("\t"),
-    );
-  }
-}
-
-async function repair(id: string): Promise<void> {
-  const pin = process.env.NEW_PIN ?? "";
-  if (pin === "") {
-    fail(
-      "NEW_PIN is not set. There is no prompt, no default and no generated PIN: set NEW_PIN to the PIN you chose.",
-      true,
-    );
-  }
-  const username = process.env.NEW_USERNAME ?? "";
-
-  const profile = await setCredentialsForOperator({
-    id,
-    pin,
-    username: username === "" ? undefined : username,
-  });
-
-  console.log(
-    `pin:reset: profile ${profile.id} (${profile.username}, ${profile.name}, ${profile.role}) ` +
-      "has a new PIN. Every session it had has ended.",
-  );
-}
-
 async function main(): Promise<void> {
   const command = parseArguments(process.argv.slice(2));
 
+  // Only now, after the two reads at the top of this file.
+  const { listProfilesForOperator, setCredentialsForOperator } = await import(
+    "@/server/auth/operator-service"
+  );
+  const { ConflictError, NotFoundError, ValidationError } = await import("@/server/errors");
+
   try {
     if (command.form === "list") {
-      await list();
-    } else {
-      await repair(command.id);
+      for (const line of await listProfilesForOperator()) {
+        console.log(
+          [
+            line.id,
+            line.username ?? "-",
+            line.name,
+            line.role,
+            line.status,
+            line.pinState,
+            line.lockState,
+          ].join("\t"),
+        );
+      }
+      return;
     }
+
+    if (typedPin === "") {
+      fail(
+        "NEW_PIN is not set. There is no prompt, no default and no generated PIN: set NEW_PIN to the PIN you chose.",
+        true,
+      );
+    }
+
+    const profile = await setCredentialsForOperator({
+      id: command.id,
+      pin: typedPin,
+      username: typedUsername === "" ? undefined : typedUsername,
+    });
+
+    console.log(
+      `pin:reset: profile ${profile.id} (${profile.username}, ${profile.name}, ${profile.role}) ` +
+        "has a new PIN. Every session it had has ended.",
+    );
   } catch (error) {
     if (error instanceof ValidationError) {
       fail(`${VARIABLE_FOR_FIELD[error.field] ?? error.field}: ${error.message}`);

@@ -9,6 +9,7 @@ import {
   accountKey,
   currentPinKeyId,
   hashPin,
+  isUsablePinPepper,
   pinDigest,
   setupCodeConfigured,
   setupCodeMatches,
@@ -243,6 +244,32 @@ describe("without a usable PIN_PEPPER, every PIN operation fails closed (021 S3,
       }
     });
   }
+
+  it("isUsablePinPepper answers what pinDigest does: no for each value above, yes for 32 or more bytes in either base64", () => {
+    const bytes = randomBytes(PEPPER_BYTES);
+    const usable: Array<{ label: string; value: string }> = [
+      { label: "32 bytes, base64", value: bytes.toString("base64") },
+      { label: "32 bytes, base64url", value: bytes.toString("base64url") },
+      { label: "48 bytes, padded with whitespace", value: ` ${newPepper(48)}\n` },
+    ];
+    const cases = [
+      ...unusable.map(({ label, value }) => ({ label, value: value ?? "", expected: false })),
+      ...usable.map(({ label, value }) => ({ label, value, expected: true })),
+    ];
+
+    for (const { label, value, expected } of cases) {
+      vi.stubEnv("PIN_PEPPER", value);
+      let digestWorks = true;
+      try {
+        pinDigest(generatePin(4));
+      } catch {
+        digestWorks = false;
+      }
+
+      expect(digestWorks, `pinDigest with ${label}`).toBe(expected);
+      expect(isUsablePinPepper(value), `isUsablePinPepper with ${label}`).toBe(expected);
+    }
+  });
 });
 
 describe("verifyPin's work does not depend on whether a usable hash exists (021 S3, AC-10's unit half)", () => {

@@ -60,19 +60,47 @@ function isNotAPassword(value: string): boolean {
   );
 }
 
+// The three names 021 AC-41 adds, and the one value it allows them besides a placeholder of
+// the `<choose-a-…>` form.
+const SECRET_NAMES = new Set(["NEW_PIN", "PIN_PEPPER", "SETUP_CODE"]);
+const SECRET_PLACEHOLDER = "REPLACE_WITH_A_GENERATED_SECRET";
+const CHOOSE_PLACEHOLDER = /^<choose-a-[a-z-]+>$/;
+const IDENTIFIER_OR_CALL = /^[A-Za-z_$][\w$.]*\(?$/;
+
+/**
+ * 021 AC-41, as ruled for G1: under `NEW_PIN`, `PIN_PEPPER` and `SETUP_CODE`, a QUOTED
+ * literal is an offence whatever its shape, because a letters-first secret looks exactly
+ * like an identifier. Only an UNQUOTED identifier or call is read as code. The two
+ * placeholders pass either way. #3's own names keep #3's rule (`isNotAPassword`).
+ */
+function isNotASecret(value: string, quoted: boolean): boolean {
+  if (value === SECRET_PLACEHOLDER || CHOOSE_PLACEHOLDER.test(value)) return true;
+  return !quoted && IDENTIFIER_OR_CALL.test(value);
+}
+
+/** Every assignment in `content` the detector reads as a written-down credential. */
+function offencesIn(content: string): string[] {
+  const offences: string[] = [];
+  for (const [match, name, value] of content.matchAll(ASSIGNS_A_PASSWORD)) {
+    // The pattern consumes an opening quote before the value, if there is one.
+    const quoted = /["'`]$/.test(match.slice(0, match.length - value.length));
+    const allowed = SECRET_NAMES.has(name) ? isNotASecret(value, quoted) : isNotAPassword(value);
+    if (!allowed) offences.push(match);
+  }
+  return offences;
+}
+
 describe("no default password", () => {
   it("AC-7, amended by 021 AC-41: no tracked file assigns a value to ADMIN_PASSWORD, NEW_PIN, PIN_PEPPER or SETUP_CODE", () => {
     const offenders: string[] = [];
 
     for (const file of repositoryFiles()) {
+      // This test file itself defines the detector; skip its own definitions.
+      if (file === "tests/unit/no-default-password.test.ts") continue;
       const content = readIfScannable(file);
       if (content === undefined) continue;
 
-      for (const [match, , value] of content.matchAll(ASSIGNS_A_PASSWORD)) {
-        // This test file itself defines the detector; skip its own definitions.
-        if (file === "tests/unit/no-default-password.test.ts") continue;
-        if (!isNotAPassword(value)) offenders.push(`${file}: ${match}`);
-      }
+      for (const offence of offencesIn(content)) offenders.push(`${file}: ${offence}`);
     }
 
     expect(offenders).toEqual([]);
@@ -101,6 +129,26 @@ describe("no default password", () => {
       const found = [...`${name}=${literal}`.matchAll(ASSIGNS_A_PASSWORD)];
       expect(found, name).toHaveLength(1);
       expect(isNotAPassword(found[0]?.[2] ?? ""), name).toBe(false);
+    }
+  });
+
+  it("021 AC-41 (G1): a letters-first value in quotes is caught under each new name, and only an unquoted identifier or call is read as code", () => {
+    // Letters first, as an identifier is: the shape a quoted value used to pass as code.
+    const value = `k${randomBytes(12).toString("hex")}`;
+
+    for (const name of ["NEW_PIN", "PIN_PEPPER", "SETUP_CODE"]) {
+      for (const quote of ['"', "'", "`"]) {
+        for (const operator of ["=", ": ", " = "]) {
+          const line = `${name}${operator}${quote}${value}${quote}`;
+          expect(offencesIn(line), line).toHaveLength(1);
+        }
+      }
+      // An unquoted identifier or call is code computed at runtime.
+      expect(offencesIn(`${name}: ${value}`), name).toEqual([]);
+      expect(offencesIn(`${name}: ${value}()`), name).toEqual([]);
+      // The placeholders, quoted or not.
+      expect(offencesIn(`${name}=${PLACEHOLDER}`), name).toEqual([]);
+      expect(offencesIn(`${name}="REPLACE_WITH_A_GENERATED_SECRET"`), name).toEqual([]);
     }
   });
 });

@@ -13,7 +13,6 @@ dist/
 # environment — never commit secrets or connection strings
 .env
 .env.*
-!.env.example
 
 # test output
 coverage/

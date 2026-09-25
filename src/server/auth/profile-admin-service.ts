@@ -17,7 +17,9 @@ import { ConflictError, NotFoundError } from "@/server/errors";
  *
  * Feature #21 builds this module in two phases. Phase B ships the shapes and
  * `resetProfilePin`, because a reset is what ends every session that used the old PIN
- * (AC-17, AC-24), and the sign-in swap is not complete until that holds.
+ * (AC-17, AC-24), and the sign-in swap is not complete until that holds. First-run setup
+ * (`setup-service.ts`) returns the administrator it creates through `toProfileListEntry`, so
+ * there is one way a profile leaves the server.
  */
 
 export type AccountLockView = {
@@ -65,7 +67,11 @@ const PROFILE_SELECT = {
  * One profile as the admin section shows it. Every field is copied by name, and the PIN
  * hash and its key are reduced to two booleans before anything leaves this module.
  */
-async function toProfileListEntry(reader: Reader, id: string, now: Date): Promise<ProfileListEntry> {
+export async function toProfileListEntry(
+  reader: Reader,
+  id: string,
+  now: Date,
+): Promise<ProfileListEntry> {
   const row = await reader.user.findUnique({ where: { id }, select: PROFILE_SELECT });
   if (row === null) {
     throw new NotFoundError(`Profile ${id} does not exist`);
