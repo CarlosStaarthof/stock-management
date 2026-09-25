@@ -13,6 +13,12 @@ the derived `force-dynamic` and `loading.tsx` censuses; #11 must be closed first
 feature amends 011 AC-1 and AC-20), #20 `test_db_reset` (`TRUNCATED_TABLES` and 020 AC-4's
 `information_schema` equality)
 
+**Amended after approval, 2026-09-25: Phase 0 comes first.** Before anything else in this spec is
+built, sixteen shipped git assertions written by #4, #7, #8, #10 and #11 are re-spelled so that each
+names the feature whose work it describes. Without this, #21 cannot get a green gate before its
+commit. Phase 0 is built, gated and committed on its own (AC-44 to AC-47). See *Post-approval
+amendments* at the end.
+
 ## Revision of 2026-09-23 — username + PIN
 
 The first draft of this spec (37 criteria) implemented **PIN-only** sign-in: the PIN alone
@@ -878,8 +884,12 @@ and AC-42. Every other criterion needs Postgres or a browser and lives in `*.db.
 that database always holds an `ADMIN` row; AC-27 to AC-29 prove it against the test database and
 assert its `404` end to end.
 
+*Added with Phase 0, 2026-09-25:* the paragraph above covers AC-1 to AC-43. AC-44, AC-45 and
+AC-46 need neither a database nor a browser, and neither do AC-47's documentation and commit
+halves. AC-46 is a proof the implementer runs and records, not a gate test.
+
 1. **AC-1** — **The schema is Part 3, and Part 3 says what the owner decided.** `prisma/schema.prisma` declares `User` with exactly the scalar fields `id`, `username`, `requestedUsername`, `name`, `role`, `status`, `pinHash`, `pinKeyId`, `sessionEpoch`, `createdAt`, `updatedAt`, in that order — no `email`, no `passwordHash`, no `active`, and no field whose name matches `/pin/i` other than `pinHash` and `pinKeyId` — with `username` declared `String?` and `@unique`. It declares the models `AccountLock` (`accountKey` as `@id`, `consecutiveFailures`, `level`, `lockedUntil`, `updatedAt`), `AuthEvent` (`id`, `kind`, `bucket`, `accountKey`, `at`, with `@@index([bucket, kind, at])` and `@@index([accountKey, at])`) and `SetupClaim` (`id` as `Int @id`, `userId` `@unique` with a relation to `User` declaring `onDelete: Restrict`, `claimedAt`), and the enums `ProfileStatus { PENDING ACTIVE REJECTED DEACTIVATED }` and `AuthEventKind { PIN_FAILURE PROFILE_REQUEST SETUP_FAILURE BUDGET_RESET }` in those orders; `Role` is unchanged. `specs/domain-model.md` Part 3 lists exactly these fields, models and enums and names #21 as the source of the change. The shipped assertions of Part 3 are amended to match and to nothing else: in `tests/unit/schema-and-migration.test.ts` the census becomes **twelve** models and **five** enums and the per-model field lists gain these changes; in `tests/unit/project-contract.test.ts` the "nine models and three enums" test becomes twelve and five. `npx prisma validate` and `npx prisma generate` exit `0` with no reachable database.
-2. **AC-2** — **One migration, which keeps every row and seeds nothing.** `git diff --name-only <this feature's base commit>..HEAD -- prisma/migrations` lists files in exactly one new directory, `prisma/migrations/<timestamp>_pin_profiles/`. Its SQL creates both enum types and the three tables; adds `status` and sets it from `active` — `ACTIVE` where `active` was true and `DEACTIVATED` where false — **before** the statement that drops `active`; adds `username`, `requestedUsername`, `pinHash`, `pinKeyId` and `sessionEpoch` and sets none of the first four on any existing row; drops `email`, its unique index, `passwordHash` and `active`; and creates the unique index on `username`, the foreign key of `SetupClaim.userId` and the ten `CHECK` constraints named in *Data touched*. The SQL contains no `INSERT INTO` naming `"User"`, `"SetupClaim"`, `"AccountLock"` or `"AuthEvent"`. `npx prisma migrate status` reports no drift and no pending migration against both databases. The implementer applies it to the development database and records in `progress/impl_pin_auth.md` the `User` row count and the count of `active = true` rows before, and the row count and the count of `ACTIVE` rows after — the two pairs equal — and the count of rows with `role = ADMIN` after, which decides whether `/setup` is available there (AC-27).
+2. **AC-2** — **One migration, which keeps every row and seeds nothing.** `git diff --name-only <this feature's base commit>..HEAD -- prisma/migrations` lists files in exactly one new directory, `prisma/migrations/<timestamp>_pin_profiles/`. Its SQL creates both enum types and the three tables; adds `status` and sets it from `active` — `ACTIVE` where `active` was true and `DEACTIVATED` where false — **before** the statement that drops `active`; adds `username`, `requestedUsername`, `pinHash`, `pinKeyId` and `sessionEpoch` and sets none of the first four on any existing row; drops `email`, its unique index, `passwordHash` and `active`; and creates the unique index on `username`, the foreign key of `SetupClaim.userId` and the ten `CHECK` constraints named in *Data touched*. The SQL contains no `INSERT INTO` naming `"User"`, `"SetupClaim"`, `"AccountLock"` or `"AuthEvent"`. `npx prisma migrate status` reports no drift and no pending migration against both databases. The implementer applies it to the development database and records in `progress/impl_pin_auth.md` the `User` row count and the count of `active = true` rows before, and the row count and the count of `ACTIVE` rows after — the two pairs equal — and the count of rows with `role = ADMIN` after, which decides whether `/setup` is available there (AC-27). **Two checks are written through Phase 0's feature-scoped helper (AC-45), never as a range ending at `HEAD`:** this criterion's own "exactly one new directory" compares **the base commit with the working tree** while #21 is `in_progress`, and **#21's own commits** afterwards. A two-commit range would see nothing before the commit and would count later features' migrations after it. And **004 AC-23's census** (`schema-and-migration.test.ts`, *"prisma/migrations holds exactly two directories"*) is re-spelled as **#4's own claim**: the files #4's commits added under `prisma/migrations` lie in exactly one directory, matching `/^\d{14}_create_stock_domain$/`. The first two directories must still be `create_user` then `create_stock_domain`, in that order. It is never re-amended when a later feature adds a migration, because a hand-maintained count is the list that went stale in #9.
 3. **AC-3** — **The database refuses an impossible profile.** Against the test database, each of these is refused by Postgres with an error naming the violated constraint, and leaves the table's row count unchanged: a `PENDING` row with a `NULL` `requestedUsername`, with a non-null `username`, with a `NULL` `pinHash`, or with `role = ADMIN`; an `ACTIVE` row with a non-null `requestedUsername`; a `username` or a `requestedUsername` containing an upper-case letter, beginning with a digit, or of 2 or of 33 characters; a `pinHash` without a `pinKeyId`, and a `pinKeyId` without a `pinHash`; a `pinHash` on a `REJECTED` or `DEACTIVATED` row, or on a non-`PENDING` row whose `username` is `NULL`; a `SetupClaim` whose `id` is not `1`; an `AccountLock` or `AuthEvent` whose `accountKey` is not 64 lowercase hexadecimal characters. A second `User` with an existing `username`, a second `SetupClaim` row, and deleting a `User` that a `SetupClaim` references are each refused with a unique-violation or foreign-key error and change no row.
 4. **AC-4** — **The truncate list names the three new tables, and every shipped claim that no table was added is re-spelled as history.** `TRUNCATED_TABLES` in `src/server/test-db.ts` equals as a set exactly `["AccountLock", "AuthEvent", "Item", "ItemLocation", "ItemPrice", "ItemType", "SetupClaim", "StockCount", "StockCountLine", "Supplier", "User"]`, and 020 AC-4's `information_schema` equality in `src/server/test-db.db.test.ts` passes **unmodified**. `src/server/test-db.test.ts`'s 020 AC-2 set assertion becomes these eleven. The two shipped assertions that state a past feature added no table — "AC-29: TRUNCATED_TABLES is unchanged, because #8 adds no table" in `tests/unit/count-entry-contract.test.ts` and the two "AC-22" `TRUNCATED_TABLES` / schema assertions in `tests/unit/stock-takes-contract.test.ts` — are rewritten as claims about **their own feature's fixed commit range** (`git diff --name-only <that feature's base>..<that feature's commit> -- prisma src/server/test-db.ts` is empty), per `docs/conventions.md` → Tests, so they stay true after this feature and after every later one; neither is deleted.
 5. **AC-5** — **A PIN is stored as bcrypt over a keyed HMAC, tested with no database.** In `src/server/auth/password.ts`: `pinDigest(pin)` returns 64 lowercase hex characters, identical for one pepper and different under another; `hashPin(pin)` returns `{ pinHash, pinKeyId }` whose `pinHash` matches `/^\$2[aby]\$(1[0-9]|[2-9][0-9])\$/` (bcrypt at cost 10 or above); hashing one PIN twice gives two different `pinHash` values and `verifyPin(pin, pinHash)` is `true` for both; `verifyPin` is `false` for a different PIN, and `false` for the same PIN once `PIN_PEPPER` is replaced by another generated value — so no stored value can be tested without the pepper; no `pinHash` contains the PIN or its digest; `pinKeyId` is 16 lowercase hex characters, identical for every hash made under one pepper and different under another; `accountKey(username)` is 64 lowercase hex characters, identical for two spellings of one username that differ only in letter case, different under another pepper, and does not contain the username. With `PIN_PEPPER` unset, empty, or decoding to fewer than 32 bytes, each of these throws, and the thrown message names `PIN_PEPPER` and contains no part of its value. Every PIN, username and pepper in these tests is generated at runtime.
@@ -921,6 +931,10 @@ assert its `404` end to end.
 41. **AC-41** — **The environment and the operations document say how to do it, and nothing assigns a secret.** `.env.example` documents `PIN_PEPPER` and `SETUP_CODE`, each with the placeholder value `REPLACE_WITH_A_GENERATED_SECRET` and the generation command it already shows for `AUTH_SECRET`; it states that `PIN_PEPPER` must differ per environment, must be backed up outside the server like `AUTH_SECRET`, and that changing or losing it invalidates every PIN; and that `SETUP_CODE` must be at least 16 characters and is used only until the first `ADMIN` exists. `docs/operations.md` replaces its *Creating the first administrator* section with: first-run setup at `/setup` on a database with no `ADMIN`; the one-time step for a database migrated from 003 (`pin:reset -- --list`, then `-- --profile <id>` with `NEW_USERNAME=<choose-a-username>` and `NEW_PIN=<choose-a-pin>`); lockout recovery; and recovery from a lost `PIN_PEPPER` as S4 lists it — with placeholders only, including `SETUP_CODE=<choose-a-setup-code>`, and never a value. `tests/unit/no-default-password.test.ts` is amended to detect assignments to `NEW_PIN`, `PIN_PEPPER` and `SETUP_CODE` and to require the `<choose-a-pin>` placeholder in `docs/operations.md`, and passes; the repository's credential scan in `npm run test:unit` passes.
 42. **AC-42** — **Which checks survive with no database,** mirroring 003 AC-23 and 010 AC-20. With `DATABASE_URL`, `DIRECT_URL`, `TEST_DATABASE_URL` and `TEST_DIRECT_URL` all pointing at a hostname that does not resolve, `npx prisma validate`, `npm run typecheck`, `npm run lint`, `npm run test:unit` and `npm run build` each exit `0`, and both `init` scripts exit `0` ending with `[OK] Environment ready (database checks skipped)`. No module this feature adds opens a connection, or reads `PIN_PEPPER`, `SETUP_CODE` or `AUTH_SECRET`, at import time.
 43. **AC-43** — **The gate is green in full, and the e2e suite is stable at `retries: 0`.** `npx prisma validate`, `npm run typecheck`, `npm run lint`, `npm run test:unit`, `npx prisma migrate status`, `npm run test:db` and `npm run test:e2e` all pass, and `./init.ps1` ends with `[OK] Environment ready` having **executed** the database checks. The derived `force-dynamic` census (010 AC-20) finds `src/app/sign-in/create/page.tsx`, `src/app/sign-in/requested/page.tsx`, `src/app/setup/page.tsx` and `src/app/profiles/page.tsx` and passes with the number it **derives** from the tree; the derived `loading.tsx` assertion (010 AC-2) finds no `loading.tsx` at or above any of them. The shipped tests whose subject this feature removes — `src/server/auth/admin-create.db.test.ts`, the email-and-password tests of `password.test.ts`, `user-service.db.test.ts` and `credentials-logging.db.test.ts` — are replaced by the tests of the criteria that supersede them in the table below; every other shipped `*.db.test.ts` and unit test that built a `SessionUser` or a `User` row with an email or a password hash changes only in how it builds that fixture — no assertion is added, removed or weakened — verified at review with the same `git diff` range as AC-40. Two consecutive full `npm run test:e2e` runs report `0 flaky` and `0 failed`; if the suite is not stable at `retries: 0`, the implementer reports that rather than restoring retries or raising a timeout. `git status --porcelain -- Samples` is empty.
+44. **AC-44** — **Phase 0: one helper decides whose work a git assertion is about, and it is proven on a throwaway repository.** `tests/support/feature-scope.ts` exports `isAttributedTo(subject, id)`, `featureStatus(id)`, `commitsOf(id)`, `filesTouchedBy(id, paths)`, `changedLinesBy(id, paths)` and `workingTreeChanges(paths)`. Every export except the first takes an optional last argument `{ cwd }`, which defaults to the process's working directory. With id 8, `isAttributedTo` is `true` for the subjects `feat(#8): x`, `fix(#8): x`, `spec(#8): x` and `refactor(#8): x`. It is `false` for `feat(#80): x`, `feat(#18): x`, `feat(#08): x`, `feat(#8) x`, `feat(#8):x`, `Feat(#8): x`, `fix(app): x`, `harness(repo): x`, `spec: x` and `Revert "feat(#8): x"`. With id 1, `feat(#10): x` is `false`. `tests/unit/feature-scope.test.ts` builds a temporary git repository with its own local identity and configuration, its own `feature_list.json` and its own commits, and removes it afterwards. For a protected directory P and two features X and Y, it asserts the following there. (a) With X `in_progress`, each of these under P appears in `filesTouchedBy(X, [P])`: a modified tracked file, a change that is only staged, a deleted file and an untracked file. A git-ignored file under P does not appear. (b) With X `done` and Y `in_progress`, the same changes give `[]`. (c) With X `done` and a clean tree, a commit under P whose subject is `fix(#X): …` or `spec(#X): …` puts its files in `filesTouchedBy(X, [P])`. A commit whose subject is `feat(#Y): …` or `fix(app): …` does not, and neither does one whose only `fix(#X): ` is on a body line. (d) With X `in_progress`, a clean tree and one X commit under P, that commit's files appear. (e) `changedLinesBy(X, [P])` returns exactly the `+` and `-` lines of each X commit's own patch at zero context, in commit order, with file headers excluded. While X is `in_progress`, the working tree's lines follow them. (f) `workingTreeChanges([P])` lists a changed file under P whatever any feature's status is, and returns `[]` on a clean tree. (g) A file in a directory named `[id]` under P is found by that literal path. (h) Instead of returning a list, `filesTouchedBy` and `changedLinesBy` throw, with a message containing the id, in three cases: the id is absent from `feature_list.json`; `feature_list.json` is missing or is not JSON; or the feature is not `in_progress` and `commitsOf` finds no commit attributed to it. `commitsOf`, `filesTouchedBy` and `changedLinesBy` also throw in a shallow clone, and every function that runs `git` throws when `cwd` is not inside a git repository. Across every call, the temporary repository's `.git/index` bytes and `git for-each-ref` output are unchanged. The test needs no database and runs in `npm run test:unit`.
+45. **AC-45** — **Phase 0: every shipped git assertion about one feature's work names that feature, and the one about `Samples/` stays strict.** In the five test files of *Phase 0*'s table, rows 1 to 10 and 12 to 14 each replace their `git status` call with `expect(filesTouchedBy(<the row's owner>, <the row's paths, unchanged>)).toEqual([])`. The one exception is that `Samples` leaves row 1's list, and the same test asserts `expect(workingTreeChanges(["Samples"])).toEqual([])`. Row 15 asserts that `filesTouchedBy(10, <its nine paths, unchanged>)` equals exactly `["src/components/stock-entry/CalendarGrid.tsx"]`. Row 16 asserts that `changedLinesBy(10, ["playwright.config.ts"])` has length 4 and that every line matches the pattern it matches today. Row 11 is byte-identical. No test title changes, and no test is added to or removed from those five files. Every other expectation in the sixteen tests is unchanged: row 2's dependency check, row 6's `/api` check, row 7's provider check, row 8's existence and `data-testid` checks, row 10's `migration_lock.toml` check and row 16's seven configuration checks. This is verified at review with `git show <the Phase 0 commit> -- tests/unit`. With `#21` `in_progress`, all sixteen pass before any other #21 change is made, and again at #21's close. `tests/unit/feature-scope.test.ts` scans every tracked and untracked file under `tests/` and every `*.test.ts` under `src/`. With comments removed, no file passes an argument beginning `--porcelain` to `git` except `tests/support/feature-scope.ts` and `tests/unit/stock-entry-contract.test.ts`, which does so exactly once, inside row 11's test. In raw source, comments included, none of the scanned files contains `..HEAD` or the phrase `stays true forever`, and neither does `docs/conventions.md`. The scanning test builds both banned strings from parts, so its own source spells neither, and it is not excepted from its own scan.
+46. **AC-46** — **Phase 0: each converted assertion is watched going red for its owner and staying green for every other feature.** The implementer works in a `git worktree` holding a detached checkout of Phase 0 (either its commit, or a scratch commit of its uncommitted change on top of `HEAD`), never in the main checkout and never on `main`. There, one line that changes no meaning is added to each of `prisma/schema.prisma`, `prisma/migrations/migration_lock.toml`, `src/server/test-db.ts`, `src/middleware.ts`, `src/app/api/error-response.ts`, `src/app/(public)/loading.tsx`, `src/server/counts/count-service.ts`, `src/app/stock-entry/page.tsx`, `playwright.config.ts` and `package.json`. The line is a comment in the file's own syntax, or a second trailing newline for `package.json`. The five test files of *Phase 0*'s table are then run with `npx vitest run` in twelve configurations, with statuses changed only in the worktree's `feature_list.json`. **R0:** the probe lines are uncommitted and every status is as in the main checkout (`#21` `in_progress`); every converted row passes. **R1 to R5:** the probe lines are uncommitted, exactly one of `#4`, `#7`, `#8`, `#10` and `#11` is `in_progress`, and `#21` is `pending`; the converted rows that fail are exactly that feature's rows. **R6 to R10:** every status is as in the main checkout, and the probe lines are committed with the subject `fix(#<n>): phase 0 probe` for each of those five features in turn, with the worktree reset to its starting commit between runs and its tree clean; the converted rows that fail are exactly that feature's rows. **R11:** the probe lines are committed as `feat(#21): phase 0 probe`; every converted row passes. For each run, `progress/impl_pin_auth.md` records the statuses changed, the commit subject if any, the command and the title of every failing test in the five files. It also records a table of the fifteen converted rows against the twelve runs, in which every cell matches what this criterion implies. Row 11 is not probed: nothing under `Samples/` is modified in any checkout, and row 11's strictness rests on AC-44 (f). Before the worktree is created and after it is removed, the main checkout's `git rev-parse HEAD`, `git for-each-ref` and `git status --porcelain` outputs are recorded and are identical, and `git worktree list` then names only the main checkout.
+47. **AC-47** — **Phase 0 lands first and alone, and the conventions say what the tests now depend on.** In `docs/conventions.md` → *Tests*, the bullet that began "An assertion whose subject is the working tree expires at the commit" is replaced. The new bullet names `tests/support/feature-scope.ts` and three kinds of git assertion: a path no feature may change (`workingTreeChanges` empty, checked in every session), a path feature N did not touch (`filesTouchedBy(N, …)` empty) and what feature N changed (an equality on `filesTouchedBy` or `changedLinesBy`). It also says why neither the working tree nor a commit range ending at the branch tip may carry a claim about one feature's work. *Commits* lists `spec` among the types. It states that every commit made for a feature is scoped `(#<id>)`: `spec(#N)`, `feat(#N)`, `fix(#N)`, and the same scope for any other type. It states that a commit made for no feature takes a word scope and belongs to no feature. It names the helper as reading the subject line alone, and it states what a missing scope and a wrong number each do. Phase 0 is one commit whose subject begins `test(#21): `. In `git log` it comes before every other `(#21)` commit except `spec(#21)` ones. `git show --name-only --format= <it>` lists exactly `tests/support/feature-scope.ts`, `tests/unit/feature-scope.test.ts`, `tests/unit/analysis-contract.test.ts`, `tests/unit/count-entry-contract.test.ts`, `tests/unit/schema-and-migration.test.ts`, `tests/unit/stock-entry-contract.test.ts`, `tests/unit/stock-takes-contract.test.ts`, `docs/conventions.md` and files under `progress/`. `progress/impl_pin_auth.md` records one `init` run made with `#21` `in_progress` while the working tree differs from `HEAD` only by that change. The run ends with `[OK] Environment ready` having executed the database checks.
 
 ## There is no criterion about criteria here, deliberately
 
@@ -971,6 +985,16 @@ forces it**; the tables below are a reader's index to those, not a claim to be t
 | `hashing-boundary.test.ts`, `no-default-password.test.ts` | AC-6, AC-41 | Detect `createHmac` / `timingSafeEqual`; name `hashPin` / `verifyPin` and `pin-reset.ts`; detect `NEW_PIN`, `PIN_PEPPER`, `SETUP_CODE` |
 | Every e2e spec importing `support/users.ts` (19 specs) | AC-40 | The three mechanical substitutions, nothing else |
 | Every `*.db.test.ts` / unit test building a `SessionUser` or `User` | AC-43 | Fixture construction only |
+| 004 AC-23: "migration_lock.toml … is unmodified" (`schema-and-migration.test.ts`, *Phase 0* row 7) | AC-45 | Now checked against #4's own commits instead of the working tree. #21 does not edit the file; the assertion is converted because its claim is about #4's work |
+| 004 AC-23: "prisma/migrations holds exactly two directories, in order" (`schema-and-migration.test.ts:341`) | AC-2 | Re-spelled as #4's own claim (one directory, `create_stock_domain`), keeping the order of the first two. Forced by AC-2's migration. Never re-amended by later migrations |
+| 007 AC-3: "the PUBLIC segment's loading.tsx is unchanged" (`stock-entry-contract.test.ts`, row 8) | AC-45 | Now checked against #7's own commits. The file is #7's to protect, not a global invariant (see *Phase 0*); its existence and `data-testid` checks stay |
+| 007 AC-1: `auth-config.ts` and `middleware.ts`; 007 AC-32: `prisma/` (rows 9, 10) | AC-45 | Now checked against #7's own commits. #21 edits all three for the `/profiles` route (AC-1, AC-2) |
+| 007 AC-32: "the source workbook is untouched" (row 11) | — | **Unchanged**: a global invariant, checked strictly against the working tree |
+| 008 AC-27: `error-response.ts`; 008 AC-29: `prisma/` and `TRUNCATED_TABLES`; 008 AC-1: `auth-config.ts` and `middleware.ts` (`count-entry-contract.test.ts`, rows 3–6) | AC-45 | Now checked against #8's own commits. #21 edits `prisma/`, `test-db.ts` (AC-4), `auth-config.ts` and `middleware.ts`. Row 5 is also one of the two AC-4 names |
+| 010 AC-4: `count-service.ts` and `stock-entry/page.tsx`; 010 AC-22: schema, migrations, truncate list and five modules (`stock-takes-contract.test.ts`, rows 12–14) | AC-45 | Now checked against #10's own commits. #21 edits `stock-entry/page.tsx` (AC-37), `prisma/`, `test-db.ts`, `auth-config.ts` and `middleware.ts`. Row 13 is also AC-4's |
+| 010 AC-22: "CalendarGrid.tsx is the only changed file in #7's trees"; 010 AC-21/AC-22: "playwright.config.ts changed by exactly its two route patterns" (rows 15, 16) | AC-45 | Changed from a range ending at the branch tip to #10's own commits. The old range absorbs later features' edits: row 16 had already absorbed #11's, and row 15 would turn red at #21's commit |
+| 011 AC-25: the exact list of untouched paths; 011 AC-14: `package.json` (`analysis-contract.test.ts`, rows 1, 2) | AC-45 | Now checked against #11's own commits. #21 edits `package.json` (AC-30) and most of AC-25's list. `Samples` leaves AC-25's list and is checked strictly next to it |
+| `docs/conventions.md` → *Tests* and *Commits* | AC-47 | The working-tree bullet is corrected, and the `(#<id>)` commit scope is recorded as something tests now depend on |
 
 **The e2e specs themselves must change**, and the reason is structural: 19 specs read `user.email`
 — to register cleanup, to check the header, to fill the form directly, to name an audit actor —
@@ -1081,4 +1105,293 @@ the server. Neither value is ever typed into a chat, a spec, a test or a commit.
 - **Lock cap: 24 hours**, as S6 decides, not 7 days.
 - **Defaults 1–4 and 6** (trivial-PIN rule, budgets, a reset ends sessions, display name at most 80
   characters, username format) approved as written.
+
+## Post-approval amendments
+
+### Phase 0: shipped git assertions name the feature whose work they describe, 2026-09-25
+
+This amendment adds a prerequisite. It adds AC-44 to AC-47, a note after the no-database paragraph,
+a note under the header, and rows in the amendment table. It changes no decision, no contract and
+no wording in AC-1 to AC-43. Phase 0 also depends on #8 `stock_entry_ui`, because four of the
+assertions it converts are #8's. #8 is done.
+
+#### Why #21 could not get a green gate without it
+
+The #11 review found fourteen shipped unit tests that assert a path is unchanged **in the working
+tree**: `git status --porcelain -- <paths>` must print nothing. This was first-pass observation O3
+in `progress/review_analysis.md`, and it is also recorded in `progress/current.md`. Each of these
+tests was written by one feature about **its own** work ("this feature adds no migration"), and
+each held for as long as that feature was being built. But the working tree does not record whose
+work it holds.
+
+#21 has to change most of those paths legitimately:
+
+- a migration and `prisma/schema.prisma` (AC-1, AC-2);
+- `TRUNCATED_TABLES` in `src/server/test-db.ts` (AC-4);
+- `src/lib/auth-config.ts` and `src/middleware.ts`, for the `/profiles` route;
+- `src/server/auth/**`;
+- a `package.json` script (AC-30);
+- the header in `src/app/stock-entry/page.tsx` (AC-37).
+
+Those tests would therefore stay red for as long as #21 is uncommitted, and `CHECKPOINTS.md`
+C2.1 requires a green gate before the commit. The only way through would be to edit shipped
+assertions that no #21 criterion named, and this spec forbids that ("a finding to report, not a
+licence to edit it"). Phase 0 removes the deadlock before any other #21 change. It is a harness
+change to tests owned by five features.
+
+#### Two more assertions with the same flaw, found while classifying
+
+Two #10 assertions do not read the working tree. They read a commit range that runs from #10's
+spec approval to **the tip of the branch** (`ee448cb..HEAD`). 010's seventh amendment introduced
+that range for presence claims, and it fixed only half the problem: a range that ends at the tip
+keeps absorbing every later feature's edits to the same paths.
+
+- **This has already happened once.** "playwright.config.ts changed by exactly its two route
+  patterns" should measure #10's edit. It now measures #10's edit plus #11's, and it passes only
+  because #11 happened to rewrite the same two lines.
+- **The other one breaks at #21's commit.** "CalendarGrid.tsx is the only changed file in #7's
+  trees" names `src/app/stock-entry`, `auth-config.ts` and `middleware.ts`, and #21 edits all
+  three. A range between two commits ignores the working tree, so the test stays green while #21 is
+  uncommitted and turns red from #21's commit onward. That is the mirror image of the deadlock.
+
+Both are converted. Phase 0 therefore covers **sixteen** assertions, not fourteen.
+
+#### Three kinds of claim, and one way to check each
+
+A test that asks git whether a path changed makes one of three claims:
+
+1. **No feature may ever change this path.** This is a global invariant, and it needs a written
+   "never" behind it. Today there is one: `CLAUDE.md` says "Never modify anything under
+   `Samples/`", and `docs/conventions.md` → *Forbidden* says the same. A global invariant stays on
+   the working tree. It is strict for every session, forever.
+2. **Feature N did not touch this path.** The claim is about N's own work, so the test reads N's own
+   work:
+   - **while N is `in_progress`:** N's commits **and** the working tree. `docs/verification.md`
+     allows at most one feature to be `in_progress`, so any uncommitted change belongs to N;
+   - **otherwise:** N's commits only. That history is closed, so the claim stays true for good,
+     and nothing a later feature does can change it.
+3. **Feature N changed exactly this.** The check reads the same commits and working tree, but
+   asserts equality instead of emptiness.
+
+**A strengthening of the design first proposed.** The first proposal read only the working tree
+while N was `in_progress`. But a feature can commit before it is done; Phase 0 itself is committed
+in the middle of #21. A check that reads only the working tree loses sight of a protected-path
+edit as soon as its own feature commits it. Reading both is never looser than reading either one.
+It also adds no false red, because every commit it adds belongs to N.
+
+#### Whose commit is whose
+
+The only record is the subject line. Since #2, this repository has written every feature commit
+as `<type>(#N): …`, for example `spec(#10): approve …`, `feat(#10): …` and `fix(#10): …`. The
+helper follows these rules:
+
+- **A commit is N's** exactly when its subject begins with lower-case letters, then `(#N)`, then
+  a colon and a space.
+- **Any type counts.** A `refactor(#8)` is #8's work too.
+- **The closing parenthesis is part of the match,** so `(#1)` never matches `(#10)`.
+- **Some commits belong to no feature:** those scoped to a word (`fix(app)`, `fix(harness)`,
+  `harness(repo)`) and those with no scope (`spec: …`).
+- **Nothing else is read.** The helper ignores the body, the author, the date, and the
+  `Feature:` trailer that the conventions' template shows but no commit carries.
+
+**Rejected: a base-to-feature-commit range per feature,** as AC-4's parenthesis spells it. That
+range assumes a feature's commits are contiguous, and they are not. `66ff57a fix(#8)` landed after
+#9's and #10's commits, and `d722275 fix(#10)` landed after #11's spec approval. A range ending at
+a feature's first commit misses its later fixes. A range ending at its last commit takes in other
+features' commits in between.
+
+#### The helper — `tests/support/feature-scope.ts`
+
+The helper lives in one place so that no test reimplements it.
+
+| Export | Returns |
+|---|---|
+| `isAttributedTo(subject, id)` | Whether a subject line belongs to feature `id`. |
+| `featureStatus(id)` | That feature's `status` in `feature_list.json`. |
+| `commitsOf(id)` | Full SHAs of the commits reachable from `HEAD` that belong to `id`, oldest first. |
+| `filesTouchedBy(id, paths)` | Repository-relative files under `paths`, sorted and distinct, that `commitsOf(id)` changed. While `id` is `in_progress`, this adds `workingTreeChanges(paths)`. |
+| `changedLinesBy(id, paths)` | The `+` and `-` lines of each commit's own patch under `paths`, at zero context, file headers dropped, for `commitsOf(id)` in commit order. While `id` is `in_progress`, the working tree's lines against `HEAD` follow, and every line of an untracked file counts as added. |
+| `workingTreeChanges(paths)` | Files under `paths`, sorted and distinct, that differ from `HEAD` (modified, added, deleted, or renamed, with both names listed; staged or not), or that are untracked and not ignored. |
+
+Every export except `isAttributedTo` takes an optional last argument, `{ cwd }`. It defaults to the
+process's working directory, which is where `git` runs and where `feature_list.json` is read.
+
+**It fails closed.** In these cases it throws, and the message names the feature id where there is
+one:
+
+- `git` cannot run, or it exits non-zero. The shipped checks read `(stdout ?? "").trim()`, so a
+  `git` that failed to start looked like "nothing changed".
+- The clone is shallow. A truncated history would make every history check pass by reading
+  nothing.
+- `feature_list.json` is missing, is not JSON, or has no feature with the given id.
+- The feature is not `in_progress` and no commit belongs to it. A history check over no commits
+  asserts nothing.
+
+**It is read-only.** It runs only `log`, `show`, `diff`, `status`, `ls-files` and `rev-parse`.
+Every call passes `--no-optional-locks`, so `status` never rewrites the index while other test
+files run in parallel. Every call also passes `--literal-pathspecs`, so `[id]` in a path means
+those four characters, not a character class. `log` runs with `--full-history`, so path limiting
+never simplifies a commit away.
+
+#### The sixteen, classified
+
+The owner is the feature whose criterion the test title cites. For every row, `git blame` of the
+test's `it(` line at `5d28556` confirms it; the blamed commit is in the *Owner* column. This is
+decided per assertion, not per file. For example, row 7 is #4's, although #3 created
+`schema-and-migration.test.ts`. Line numbers are those of the `git` call at `5d28556`. Rows 1–14
+are the fourteen from O3, and rows 15–16 are the two found while classifying. All paths are
+relative to `tests/unit/`.
+
+| # | File:line | Test title | Owner | Kind | Protected paths | Does #21 edit them? |
+|---|---|---|---|---|---|---|
+| 1 | `analysis-contract.test.ts:371` | `AC-25: the schema, the migrations and the truncate list are untouched` | #11 (`5d28556`) | #11's work. **`Samples` is split out as a global** | 21 paths, from `prisma/schema.prisma` to `src/components/item-master`, plus `Samples` | Yes: AC-1, AC-2, AC-4, AC-37, `/profiles`, `src/server/auth/**`, `src/app/api` |
+| 2 | `analysis-contract.test.ts:427` | `AC-14: no charting library was added, so the fence has nothing new to hold` | #11 (`5d28556`) | #11's work | `package.json`, `package-lock.json` | Yes: AC-30 |
+| 3 | `count-entry-contract.test.ts:173` | `AC-27: src/app/api/error-response.ts is unchanged by this feature` | #8 (`ddcabef`) | #8's work | `src/app/api/error-response.ts` | Not named by 021 |
+| 4 | `count-entry-contract.test.ts:264` | `AC-29: prisma/ is byte-identical — this feature adds no migration and no table` | #8 (`ddcabef`) | #8's work | `prisma` | Yes: AC-1, AC-2 |
+| 5 | `count-entry-contract.test.ts:272` | `AC-29: TRUNCATED_TABLES is unchanged, because #8 adds no table` | #8 (`ddcabef`) | #8's work, also named by AC-4 | `src/server/test-db.ts` | Yes: AC-4 |
+| 6 | `count-entry-contract.test.ts:284` | `AC-1: the middleware gains no /api entry and no new pattern` | #8 (`ddcabef`) | #8's work. Its `/api` content check stays | `src/lib/auth-config.ts`, `src/middleware.ts` | Yes: `/profiles` |
+| 7 | `schema-and-migration.test.ts:353` | `004 AC-23: migration_lock.toml still records provider postgresql and is unmodified` | #4 (`faccf65`) | #4's work. Its provider check stays | `prisma/migrations/migration_lock.toml` | No. A new migration leaves it alone while the provider stays the same |
+| 8 | `stock-entry-contract.test.ts:143` | `AC-3: the PUBLIC segment's loading.tsx is unchanged and still there` | #7 (`9e4b675`) | #7's work (decided below). Its existence and `data-testid` checks stay | `src/app/(public)/loading.tsx` | No |
+| 9 | `stock-entry-contract.test.ts:154` | `AC-1: auth-config.ts and middleware.ts are byte-identical to their shipped state` | #7 (`9e4b675`) | #7's work | `src/lib/auth-config.ts`, `src/middleware.ts` | Yes: `/profiles` |
+| 10 | `stock-entry-contract.test.ts:711` | `AC-32: prisma/ is byte-identical — this feature adds no migration` | #7 (`9e4b675`) | #7's work. Its `migration_lock.toml` existence check stays | `prisma` | Yes: AC-1, AC-2 |
+| 11 | `stock-entry-contract.test.ts:720` | `AC-32: the source workbook is untouched` | Written by #7 (`9e4b675`); the rule belongs to no feature | **Global.** Byte-identical | `Samples` | No |
+| 12 | `stock-takes-contract.test.ts:103` | `AC-4: count-service.ts is byte-identical to its shipped state` | #10 (`b468f60`) | #10's work | `src/server/counts/count-service.ts` | Not named by 021 |
+| 13 | `stock-takes-contract.test.ts:227` | `AC-22: the schema, the migrations and TRUNCATED_TABLES are unchanged` | #10 (`b468f60`) | #10's work, also named by AC-4 | 9 paths, from `prisma/schema.prisma` to `count-summary-service.ts` | Yes: AC-1, AC-2, AC-4, `/profiles`, AC-38 |
+| 14 | `stock-takes-contract.test.ts:343` | `AC-4: /stock-entry/page.tsx is byte-identical, so #7's rendering cannot have moved` | #10 (`b468f60`) | #10's work | `src/app/stock-entry/page.tsx` | Yes: AC-37 |
+| 15 | `stock-takes-contract.test.ts:533` | `AC-22: CalendarGrid.tsx is the only changed file in #7's trees` | #10 (`b468f60`) | #10's work. **A presence claim** over a range ending at the branch tip | 9 paths. Expects exactly `CalendarGrid.tsx` | Yes: turns red at #21's commit |
+| 16 | `stock-takes-contract.test.ts:561` | `AC-21, AC-22: playwright.config.ts changed by exactly its two route patterns` | #10 (`b468f60`) | #10's work. **A presence claim about lines** over a range ending at the branch tip | `playwright.config.ts`. Expects 4 lines | Not named by 021. It has already absorbed #11's edit |
+
+**Every converted row passes under the new check today.** The check was run per row at
+`5d28556` with `git log --full-history -- <the row's paths>`. For rows 1–14, no commit on the list
+belongs to the row's owner. Rows 15 and 16 find one #10 commit, `b468f60 feat(#10)`. Its only file
+in row 15's trees is `src/components/stock-entry/CalendarGrid.tsx`. Its patch to
+`playwright.config.ts` is exactly the four route-pattern lines, so row 16 measures what 010 AC-21
+claimed, #10's own edit, again. Every commit that touched any row's paths carries either its own
+feature's scope or no feature at all; `db5568c harness(repo)` created `Samples/`. The repository is
+not a shallow clone.
+
+#### `src/app/(public)/loading.tsx` belongs to #7; it is not a global invariant
+
+A global invariant needs a written "never", and nothing says "never" about this file. `CLAUDE.md`'s
+*Never* list and the conventions' *Forbidden* list name `Samples/` and nothing like this file.
+
+What the file matters for is 007 AC-3's rule that "the refusal is the server's answer". Checks on
+the tree hold that rule, not checks on history:
+
+- no `loading.tsx` at or above a protected page (007 AC-3's census and 010 AC-2's derived one);
+- in the same test as row 8, the file exists and still renders `data-testid="loading"`.
+
+Phase 0 changes none of those. A later feature that restyles the public loading fallback is doing
+legitimate work. A feature that puts a `loading.tsx` above a protected page is caught by the census,
+whatever its commit says.
+
+**Tradeoff.** Once #7 is done, another feature's edit to this file's markup is no longer noticed
+as an edit. Only what the file still has to do is checked.
+
+#### How Phase 0 meets AC-4, and what else in 021 it touches
+
+**AC-4.** AC-4 requires three assertions to be re-spelled as claims about their own feature's
+commits. Two of them are rows 5 and 13. The third is 010's content check, "AC-22: TRUNCATED_TABLES
+still holds exactly its eight entries".
+
+- Phase 0 delivers rows 5 and 13 early, through the helper, and AC-4's text is not edited. The
+  helper's claim implies the one in AC-4's parenthesis. `c79a0ed..ddcabef` and
+  `ee448cb..b468f60` each contain exactly one commit, `ddcabef feat(#8)` and `b468f60 feat(#10)`,
+  and each of those is among the commits the helper reads for its feature.
+- The eight-entry check reads file content, not git, so it stays AC-4's work in #21's main phase.
+  The helper is the natural way to write it: `filesTouchedBy(10, ["prisma",
+  "src/server/test-db.ts"])` is empty.
+
+**The rest of 021.** AC-2, AC-40 and AC-43 describe `git diff <this feature's base
+commit>..HEAD` commands that a reviewer runs once. They are not shipped assertions, and they
+stand. If the implementer ships any of them as a test, AC-45's scan requires the helper instead.
+AC-43's review range includes the Phase 0 commit. The assertion changes that range shows in the
+five test files are Phase 0's, covered by AC-45. They are not AC-43's fixture-only edits.
+
+#### The commit scope now matters, and what breaking it does
+
+AC-47 records the scope in `docs/conventions.md` → *Commits*. Every commit made for a feature is
+scoped `(#N)`: `spec(#N)` approves or amends its spec, `feat(#N)` builds it, and `fix(#N)`
+repairs it later. Any other type takes the same scope. A commit made for no feature takes a word
+scope (`harness`, `app`). If a commit breaks the convention, this is what happens:
+
+- **The scope is missing, or malformed** (`fix(app)` for #8's work, `fix(#08)`, `fix #8:`). The
+  commit belongs to no feature, and every "N did not touch this" check ignores it. The result is a
+  false green, never a false red. Only review catches it. If the gate runs while the edit is still
+  uncommitted and N is `in_progress`, the working-tree half catches it too.
+- **The number is wrong** (`fix(#10)` for #8's work). The commit belongs to #10 for good, because
+  history on `main` is not rewritten. If it touched a path that #10's checks protect, those checks
+  turn red for a change #10 did not make. The remedy is an attribution correction added to the
+  helper: keyed by the commit's SHA, carrying its reason, and reviewed on its own. The remedy is
+  never an edit to the assertion. No correction exists today, and none is needed.
+- **A revert** (`Revert "fix(#8): …"`) belongs to no feature, and the reverted commit stays #8's.
+  If a revert should clear #8, that takes the same kind of correction.
+
+#### Known limits, accepted
+
+- **A fix under a feature that is already `done` is checked only once it is committed.** The
+  feature is not `in_progress`, so its own checks read only history. They turn red at the first
+  gate after the commit, not before it. A feature's own closing gate is not affected: AGENTS.md
+  §5 runs `init` before the status becomes `done`.
+- **A shallow clone makes these checks throw.** CI (#16, out of scope here) will need full
+  history.
+- **Global invariants are checked only in the working tree.** A committed change under
+  `Samples/` is caught by the gate in the session that made it (`init` step 3, row 11, and the last
+  sentence of AC-43), not afterwards. Row 11 stays byte-identical, including its old weakness: if
+  `git` cannot run, it reads the empty output as "clean". `init` step 3 checks the same path
+  separately.
+
+#### Order
+
+1. This amendment and `feature_list.json` are committed together as `spec(#21): …`.
+2. Phase 0 is built with no other #21 change in the working tree. The implementer makes AC-44 and
+   AC-45 green, runs and records AC-46's proofs, and records AC-47's `init` run. Phase 0 is then
+   committed on its own, as `test(#21): …`.
+3. The rest of #21 follows, from AC-1.
+
+Under R1–R5 and R6–R10 of AC-46, the rows that must fail are:
+
+| `in_progress` (R1–R5), or committed as `fix(#n)` (R6–R10) | Rows that fail |
+|---|---|
+| #4 | 7 |
+| #7 | 8, 9, 10 |
+| #8 | 3, 4, 5, 6 |
+| #10 | 12, 13, 14, 15, 16 |
+| #11 | 1, 2 |
+| #21 (R0; R11 as `feat(#21)`) | none |
+
+**The worktree needs `node_modules`.** If the implementer links it to the main checkout's copy,
+they remove that link on its own before removing the worktree, so removing the worktree cannot
+delete anything through the link. Afterwards, they confirm that the main checkout still runs
+`npx vitest --version`.
+
+#### What Phase 0 does not do
+
+- It does not change row 11. It does not change any check that is not about git history or the
+  working tree, such as content checks, censuses of the tree and source scans.
+- It does not change 004 AC-23's census of migration directories (see the next section), and it
+  does not change 010's eight-entry `TRUNCATED_TABLES` check (AC-4's work).
+- It adds no hook that enforces the commit convention. A `commit-msg` hook could, and that would be
+  its own harness change.
+- It rewrites no history and adds no attribution correction.
+- It adds no history check for global invariants.
+- It adds no CI.
+
+#### Resolved (coordinator, 2026-09-25): 004 AC-23's migration census
+
+Phase 0 surfaced it. `schema-and-migration.test.ts` asserts that `prisma/migrations` holds **exactly two**
+directories, and AC-2's migration makes three. It's a census of the tree, not a git check, so Phase 0
+didn't cover it.
+
+**Decision: the spec-writer's proposed disposition, adopted, and written into AC-2.** The census is
+re-spelled as **#4's own claim**: #4's commits added files in exactly one migration directory,
+`create_stock_domain`. The first two directories must still be in order. The alternative, amending the
+count to three, was **rejected**: every later migration would have to edit #4's test again, and a
+hand-maintained count is exactly the kind of list that went stale in #9 (010 AC-2's reasoning). Each
+later migration is asserted by its own feature's criterion instead, in the feature-scoped form.
+
+**Also tightened in AC-2:** its own "exactly one new directory" was written as a two-commit range,
+`<base>..HEAD`. That would have been empty for the whole of #21's uncommitted build, and would have
+counted later features' migrations after the commit. It now goes through the same helper: the base
+commit against the working tree while #21 is `in_progress`, and #21's own commits afterwards.
 
