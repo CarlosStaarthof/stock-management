@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import type { JSX, ReactNode } from "react";
 
+import { HydrationGate } from "@/components/HydrationGate";
+
 import "./globals.css";
 
 /**
@@ -22,7 +24,14 @@ export default function RootLayout({
 }: Readonly<{ children: ReactNode }>): JSX.Element {
   return (
     <html lang="en">
-      <body className="min-h-screen bg-white text-slate-900 antialiased">{children}</body>
+      <body className="min-h-screen bg-white text-slate-900 antialiased">
+        {/*
+          Every page renders inside the gate, so no element a page renders can be hydrated
+          while the document is still being parsed. Why that matters, and what it cost when
+          it was not so: `src/components/HydrationGate.tsx`.
+        */}
+        <HydrationGate>{children}</HydrationGate>
+      </body>
     </html>
   );
 }

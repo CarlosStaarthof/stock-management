@@ -460,10 +460,15 @@ test("AC-12, AC-13: for a draft, a submitted and an approved count, one body and
       const adminJumps = await jumpTargets(adminPage);
 
       // NO HYDRATION SEPARATOR IN EITHER BODY. A `<!-- -->` between two adjacent React
-      // children is emitted by the server and REMOVED when the page hydrates, so a body
-      // carrying one is eight characters longer until a moment later - and this comparison
-      // caught exactly that, in both directions, before the sentence it came from was made
-      // one string. Asserting its absence is what stops the equality below being a race.
+      // children is emitted by the server, and a normal hydration KEEPS it (all 246 on
+      // `/summary`, in every clean load measured). It disappears only when React throws the
+      // server's markup away and renders the page again on the client — minified #418,
+      // whose cause `src/components/HydrationGate.tsx` removes — and a body that had been
+      // regenerated is eight characters shorter per separator. This comparison caught an
+      // eight-character difference, in both directions, before the sentence it came from
+      // was made one string; that fits a regeneration on one side, and it was never
+      // reproduced, so it is not proven. Asserting the absence keeps the equality below
+      // independent of hydration either way.
       expect(staffBody, url).not.toContain("<!-- -->");
       expect(adminBody, url).not.toContain("<!-- -->");
       expect(adminBody.length, url).toBe(staffBody.length);

@@ -124,14 +124,16 @@ export async function longestDescription(locationCode: "DUBLIN" | "CLONMEL"): Pr
 export async function bodyOf(page: Page, url: string): Promise<string> {
   await page.goto(url);
 
-  // The read waits for the document to be QUIET first, and that is not decoration. These
-  // pages are `force-dynamic` and Next streams them, so `goto` resolving on `load` does
-  // not by itself mean the last chunk of the body has been inserted - and a byte
-  // comparison taken mid-flush is a failure that says nothing about the two roles. One
-  // such inequality (8 characters, on a `?show=all` detail) was observed during this
-  // session and never reproduced; the wait is the answer to it either way, because at
-  // `retries: 0` a measurement that is sometimes taken early is a measurement that is
-  // sometimes wrong.
+  // The read waits for the document to be QUIET first. What that wait does was first
+  // written down as "the last streamed chunk may not be inserted at `load`", and that was
+  // wrong: `load` fires only after the parser has finished the whole document, streamed or
+  // not. What CAN still change the body after `load` is React failing to hydrate it
+  // (minified #418) and rendering it again on the client, which drops every `<!-- -->`
+  // separator; a normal hydration keeps them. One inequality of 8 characters — exactly one
+  // `<!-- -->` — was observed on a `?show=all` detail and never reproduced, which fits a
+  // regeneration on one side and is not proven. The wait could not have prevented that; it
+  // only makes the read come after it. The cause is removed by
+  // `src/components/HydrationGate.tsx` (`progress/impl_hydration_418.md`).
   await page.waitForLoadState("networkidle");
   await page.getByTestId("stock-takes-body").waitFor();
 

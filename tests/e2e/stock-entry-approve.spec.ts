@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import type { Page } from "@playwright/test";
+import type { BrowserContext, Page } from "@playwright/test";
 
 import {
   APPROVE_THIS_COUNT,
@@ -21,6 +21,7 @@ import { getCountSummary } from "@/server/counts/count-summary-service";
 
 import { seededMasterCounts } from "./support/item-master";
 import { databaseIsReachable, skipWithoutDatabase } from "./support/database";
+import { LOADS_PER_TEST, failedLoads, openWatchedPages } from "./support/hydration";
 import {
   RESERVED_YEAR,
   actorFor,
@@ -94,6 +95,42 @@ async function submittedCount(staff: TestUser, month: number): Promise<string> {
   await fillQuantities(countId, 0);
   await submitAs(countId, staff);
   return countId;
+}
+
+/**
+ * The hidden fields of the form that holds `testId`, exactly as the SERVER sent them.
+ *
+ * NOT READ FROM THE LIVE DOM, because the live DOM can lose them. React writes a server
+ * action's `$ACTION_*` fields into server-rendered HTML only. Hydration leaves them where
+ * they are, but a hydration mismatch (minified React #418, seen intermittently on
+ * `/summary`) makes React throw the server's `<main>` away and render it again on the
+ * client, and a client-rendered form has no `$ACTION_*` field at all. Observed: the `<main>`
+ * holding four of them removed and one holding none put back ~45 ms after `load`, and the
+ * old capture, run as soon as `goto` returned, found only `countId`.
+ *
+ * So the page is fetched through the context's own request API (its cookies, no script
+ * runs) and parsed by `DOMParser` in a blank page (the browser's HTML parser, which runs no
+ * script either and decodes the attribute values as a form would post them). Nothing
+ * between the server's bytes and this array executes, so hydration cannot change the answer.
+ */
+async function hiddenFieldsAsServed(
+  context: BrowserContext,
+  url: string,
+  testId: string,
+): Promise<{ name: string; value: string }[]> {
+  const html = await (await context.request.get(url)).text();
+
+  const blank = await context.newPage();
+  const fields = await blank.evaluate(
+    ({ served, id }) =>
+      [...new DOMParser().parseFromString(served, "text/html").querySelectorAll("form")]
+        .filter((form) => form.querySelector(`[data-testid="${id}"]`) !== null)
+        .flatMap((form) => [...form.querySelectorAll<HTMLInputElement>('input[type="hidden"]')])
+        .map((field) => ({ name: field.getAttribute("name") ?? "", value: field.value })),
+    { served: html, id: testId },
+  );
+  await blank.close();
+  return fields;
 }
 
 /** The `<main>` of a page, which is everything below #3's shared header. */
@@ -419,17 +456,12 @@ test("AC-15, AC-27: a staff session never approves, however it asks", async ({
   const adminContext = await browser.newContext();
   const adminPage = await adminContext.newPage();
   await signIn(adminPage, admin);
-  await adminPage.goto(`/stock-entry/counts/${countId}/summary`);
 
-  const hidden = await adminPage
-    .locator("form", { has: adminPage.getByTestId("approve-count") })
-    .locator('input[type="hidden"]')
-    .evaluateAll((fields) =>
-      fields.map((field) => ({
-        name: field.getAttribute("name") ?? "",
-        value: (field as HTMLInputElement).value,
-      })),
-    );
+  const hidden = await hiddenFieldsAsServed(
+    adminContext,
+    `/stock-entry/counts/${countId}/summary`,
+    "approve-count",
+  );
   await adminContext.close();
 
   // Non-vacuity: the capture really did find the Server Action's own reference.
@@ -473,10 +505,17 @@ test("AC-15, AC-27: a staff session never approves, however it asks", async ({
     },
   );
 
-  const posted = (await submission).postData() ?? "";
+  const forged = await submission;
+  const posted = forged.postData() ?? "";
   expect(posted).toContain("role");
   expect(posted).toContain(admin.id);
 
+  // THE SERVER'S ANSWER, NOT THE REQUEST LEAVING. The server responds only once the action
+  // has run, so the rows below are read after it. `waitForLoadState` alone does not wait:
+  // the count page is already loaded when `submit()` fires, so it resolved in under 1 ms
+  // and the rows were read ~65 ms after the post left, before any answer. Observed: with
+  // the service's role check removed, the test still passed.
+  expect(await forged.response(), "the server answered the forged post").not.toBeNull();
   await page.waitForLoadState("load");
 
   // NOTHING MOVED. The refusal is the service's, not the button's absence.
@@ -529,3 +568,41 @@ test("AC-10: an ADMIN approves and reopens with the bundle disabled", async ({ b
 
   await context.close();
 });
+
+/* ------------------------------------------ minified React #418, on the page it was found */
+
+/**
+ * `/summary` HYDRATES THE SERVER'S MARKUP ON EVERY LOAD. This is the page where the failure
+ * `hiddenFieldsAsServed` works around was first seen, and the one where it was measured most
+ * often before `src/components/HydrationGate.tsx`: React threw this `<main>` away and
+ * rendered it again, and the approve form came back without its `$ACTION_*` fields. What is
+ * checked, and why so many loads: `tests/e2e/support/hydration.ts`.
+ *
+ * THREE TESTS, 84 LOADS. Several tests rather than one, so each stays inside the suite's
+ * 45 s. Three rather than the six first written: with the gate taken out, two pages loading
+ * at once failed 20 of 168 loads, and even at the low end of that rate's 95% interval (7.8%)
+ * 84 loads all pass about once in a thousand runs, at half the time
+ * (`progress/review_repairs_0924.md`, R-1). Re-proved at this shape with the gate taken out:
+ * all three failed, on 10 of their 84 loads. The likeliest regression, the gate removed from
+ * the layout or moved, is caught deterministically by `src/app/layout.test.ts`; these tests
+ * are for what that cannot see. One count serves all three: loading a page changes nothing.
+ */
+let hydrationCountId: string | undefined;
+
+for (const batch of [1, 2, 3] as const) {
+  test(`#418, batch ${String(batch)}: two pages, ${String(LOADS_PER_TEST)} loads each, of /summary, and React hydrates the server's markup on every one`, async ({
+    browser,
+  }) => {
+    hydrationCountId ??= await submittedCount(await newUser(), 7);
+    const url = `/stock-entry/counts/${hydrationCountId}/summary`;
+    const admin = await newUser("ADMIN");
+
+    const { contexts, pages } = await openWatchedPages(browser, admin, 2);
+    const failures = await Promise.all(
+      pages.map((page, index) => failedLoads(page, url, `page ${String(index + 1)}`)),
+    );
+    expect(failures.flat()).toEqual([]);
+
+    for (const context of contexts) await context.close();
+  });
+}

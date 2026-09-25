@@ -420,6 +420,11 @@ test("AC-16: it still works with JavaScript disabled, and Save now is a real sub
   // A real form whose action is a Server Action. React renders that as `method="POST"`
   // back to this page's own URL plus a hidden `$ACTION_ID_…` field naming the function —
   // which is exactly what makes the submit work with no bundle at all.
+  //
+  // Reading them from the LIVE DOM is sound HERE ONLY because this context runs no script:
+  // nothing hydrates, so the DOM is the server's HTML. With JavaScript on, a hydration
+  // mismatch re-renders the form on the client without them (see `hiddenFieldsAsServed` in
+  // `stock-entry-approve.spec.ts`).
   const form = page.locator("form", { has: page.getByTestId("save-now") });
   await expect(form).toHaveAttribute("method", /post/i);
   expect(await form.getAttribute("action")).toBe("");
