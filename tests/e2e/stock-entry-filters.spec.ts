@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 
 import {
+  ALL_CHANGES_SAVED,
   CLEAR_FILTERS,
   NO_MATCHING_LINES,
   NO_SUPPLIER,
@@ -335,6 +336,13 @@ test("AC-23, AC-24, AC-25: a filter can never let a counter believe they have fi
   // the right direction and leaves the hiding sentence about the rest.
   await page.getByTestId("count-line").first().getByTestId("none-held").click();
   await expect(page.getByTestId("counted-summary")).toHaveText(countedSummary(1, lineCount));
+  // The progress line moves on the TAP (AC-24); the header is what says the save has been
+  // ACKNOWLEDGED. Everything from the `page.goto` loop below is rendered by the server from
+  // the database, so it needs that row committed first. Without this wait the navigation
+  // leaves while the save is in flight, the server renders the page before the save has
+  // committed, and the closing sentence still counts the tapped row as uncounted. Not a
+  // stale read: the click that moved the progress line to 1 set *Saving…* in the same render.
+  await expect(page.getByTestId("save-status")).toHaveText(ALL_CHANGES_SAVED);
   await expect(page.getByTestId("filter-hiding")).toHaveText(
     filtersHiding(hiddenLines, hiddenLines),
   );
