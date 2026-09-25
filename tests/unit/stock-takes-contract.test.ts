@@ -455,8 +455,8 @@ describe("AC-20: the checks that survive with no database", () => {
     // AMENDED BY 021 AC-43: the census passes with the number it DERIVES from the tree. 18
     // was the count #10 left behind, and it stays as the floor, like 010 AC-2's floor on
     // the loading.tsx derivation: a later feature adds pages, and the filter still cannot
-    // quietly match nothing. #21 adds three public pages here (and `/profiles` later),
-    // and each is named so that dropping one from the census is red.
+    // quietly match nothing. #21 adds three public pages here and the admin section's
+    // `/profiles`, and each is named so that dropping one from the census is red.
     expect(pages.length).toBeGreaterThanOrEqual(18);
     expect(pages).toContain(`${PAGE_TREE}/page.tsx`);
     expect(pages).toContain(`${PAGE_TREE}/counts/[id]/page.tsx`);
@@ -464,6 +464,7 @@ describe("AC-20: the checks that survive with no database", () => {
       "src/app/sign-in/create/page.tsx",
       "src/app/sign-in/requested/page.tsx",
       "src/app/setup/page.tsx",
+      "src/app/profiles/page.tsx",
     ]) {
       expect(pages).toContain(page);
     }

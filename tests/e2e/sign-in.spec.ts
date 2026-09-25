@@ -503,7 +503,12 @@ test("AC-36: a half-typed PIN is forgotten when the page hides, when it is resto
       ...Object.values({ ...window.sessionStorage }),
     ]);
     const cookies = (await page.context().cookies()).map((cookie) => cookie.value);
-    return [...stored, ...cookies, page.url()].filter((value) => value.includes(digits));
+    // The path, the query and the fragment: what a page can write into its URL. The origin's
+    // port is the server's, not the page's, and holds digits a random draw can repeat.
+    const url = new URL(page.url());
+    return [...stored, ...cookies, `${url.pathname}${url.search}${url.hash}`].filter((value) =>
+      value.includes(digits),
+    );
   };
 
   const hidden = await tapDigits();

@@ -19,6 +19,9 @@ export const PROTECTED_PATHS = [
   // Feature #6: the item master. The middleware decides SIGNED IN OR NOT and nothing
   // else; ADMIN is decided from the stored User row by `requireAdminPage` (006 AC-1).
   "/item-master",
+  // Feature #21: the admin section. Signed in or not, and nothing else; ADMIN is decided
+  // from the stored row by `requireAdminPage` and by every service it calls (021 AC-22).
+  "/profiles",
 ] as const;
 
 /** Spec 003 "Open questions": 7 days, refreshed at most once every 24 hours. */

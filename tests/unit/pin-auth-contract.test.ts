@@ -686,11 +686,12 @@ describe("021 AC-41: the operations document says how to make each setting and h
 
 /* ------------------------------------------------------------------ AC-43 */
 
-describe("021 AC-43: the three public pages are dynamic and have no loading.tsx above them", () => {
+describe("021 AC-43: the four new pages are dynamic and have no loading.tsx above them", () => {
   const PAGES = [
     "src/app/sign-in/create/page.tsx",
     "src/app/sign-in/requested/page.tsx",
     "src/app/setup/page.tsx",
+    "src/app/profiles/page.tsx",
   ];
 
   it("AC-43: each declares force-dynamic", () => {
@@ -708,5 +709,62 @@ describe("021 AC-43: the three public pages are dynamic and have no loading.tsx 
         expect(existsSync(`${directory}/loading.ts`), `${directory}/loading.ts`).toBe(false);
       }
     }
+  });
+});
+
+/* ------------------------------------------------------------------ AC-22 */
+
+describe("021 AC-22: /profiles is an ADMIN's, refused as a service", () => {
+  const ADMIN_FUNCTIONS = [
+    "listProfiles",
+    "approveProfile",
+    "rejectProfile",
+    "changeProfileRole",
+    "resetProfilePin",
+    "deactivateProfile",
+    "clearAccountLock",
+    "createProfile",
+    "pinFailureSummary",
+    "resumeNewDeviceSignIn",
+  ];
+
+  it("AC-22: PROTECTED_PATHS carries /profiles, and the matcher carries its static pattern", () => {
+    const config = read("src/lib/auth-config.ts") ?? "";
+    const paths = /PROTECTED_PATHS\s*=\s*\[([^\]]*)\]/.exec(config)?.[1] ?? "";
+    expect(paths).toContain('"/profiles"');
+    expect(read("src/middleware.ts") ?? "").toContain('"/profiles/:path*"');
+  });
+
+  it("AC-22: the page asks requireAdminPage for the key profiles before it reads anything", () => {
+    const page = read("src/app/profiles/page.tsx") ?? "";
+    const body = page.slice(page.indexOf("export default async function"));
+    expect(body.indexOf('await requireAdminPage("profiles")')).toBeGreaterThan(0);
+    expect(body.indexOf('await requireAdminPage("profiles")')).toBeLessThan(body.indexOf("listProfiles("));
+  });
+
+  it("AC-22: each of the ten exported functions of profile-admin-service.ts asserts ADMIN as its first statement", () => {
+    const source = read("src/server/auth/profile-admin-service.ts") ?? "";
+    const exported = [...source.matchAll(/^export async function (\w+)\(/gm)].map((match) => match[1]);
+    expect(exported.filter((name) => name !== "toProfileListEntry").sort()).toEqual([...ADMIN_FUNCTIONS].sort());
+
+    for (const name of ADMIN_FUNCTIONS) {
+      const start = source.indexOf(`export async function ${name}(`);
+      const bodyStart = source.indexOf("{\n", source.indexOf("): Promise<", start));
+      const firstStatement = source.slice(bodyStart + 2).trimStart().split("\n")[0];
+      expect(firstStatement, name).toBe('assertRole(actor, "ADMIN");');
+    }
+  });
+});
+
+/* ------------------------------------------------------------------ AC-37 */
+
+describe("021 AC-37: /profiles carries the one identity header", () => {
+  it("AC-37: the page renders IdentityHeader with the profile's name, and no header of its own", () => {
+    const page = read("src/app/profiles/page.tsx") ?? "";
+    expect(page).toContain('import { IdentityHeader } from "@/components/IdentityHeader";');
+    expect(page).toContain("<IdentityHeader");
+    expect(page).toContain("name={user.name}");
+    expect(page).not.toMatch(/<header\b/);
+    expect(page).not.toContain("user.username");
   });
 });

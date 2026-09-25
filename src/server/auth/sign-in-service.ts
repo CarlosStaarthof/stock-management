@@ -8,9 +8,15 @@ import {
   BUDGET_WINDOW_HOURS,
   bucketFor,
   decideAttempt,
-  EVENT_RETENTION_DAYS,
   PIN_FAILURE_BUDGET,
 } from "@/server/auth/attempt-budget";
+import {
+  AUTH_TRANSACTION_OPTIONS,
+  bucketEvents,
+  lockBucket,
+  recordEvent,
+  type Transaction,
+} from "@/server/auth/auth-event-log";
 import { parsePin, parseUsername } from "@/server/auth/credential-rules";
 import {
   accountKey,
@@ -59,18 +65,6 @@ export type SignInOutcome =
   | { outcome: "PAUSED" }
   | { outcome: "UNAVAILABLE" };
 
-const MS_PER_HOUR = 3_600_000;
-const MS_PER_DAY = 24 * MS_PER_HOUR;
-
-/**
- * Attempts at one username queue on its row lock, and attempts from one bucket on its
- * advisory lock, so a transaction may wait for others to finish their bcrypt. The limits
- * are generous for that reason; nothing here is slow on its own.
- */
-const TRANSACTION_OPTIONS = { maxWait: 60_000, timeout: 60_000 } as const;
-
-type Transaction = Parameters<Parameters<typeof db.$transaction>[0]>[0];
-
 type ProfileRow = {
   id: string;
   username: string | null;
@@ -88,33 +82,17 @@ function bucketKind(bucket: string): string {
 }
 
 /**
- * Every `AuthEvent` past retention, and every lock row whose lock has ended and which has
- * not changed in as long. Run whenever an event is written, so the tables stay bounded by
- * the budgets (AC-14).
+ * One `PIN_FAILURE`, carrying the account key or `null`, and the retention sweep every
+ * event write runs (AC-14) — both from `auth-event-log.ts`, the one source of the lock key
+ * and the sweep.
  */
-async function deleteExpired(tx: Transaction, now: Date): Promise<void> {
-  const cutoff = new Date(now.getTime() - EVENT_RETENTION_DAYS * MS_PER_DAY);
-
-  await tx.authEvent.deleteMany({ where: { at: { lt: cutoff } } });
-  await tx.accountLock.deleteMany({
-    where: {
-      updatedAt: { lt: cutoff },
-      OR: [{ lockedUntil: null }, { lockedUntil: { lte: now } }],
-    },
-  });
-}
-
 async function recordFailure(
   tx: Transaction,
   bucket: string,
   key: string | null,
   now: Date,
 ): Promise<void> {
-  await tx.authEvent.create({
-    data: { kind: "PIN_FAILURE", bucket, accountKey: key, at: now },
-    select: { id: true },
-  });
-  await deleteExpired(tx, now);
+  await recordEvent(tx, "PIN_FAILURE", bucket, now, key);
   logWarn("auth.pin_failed", { bucket: bucketKind(bucket) });
 }
 
@@ -178,21 +156,17 @@ export async function attemptSignIn(
   const deviceId = verifyDeviceToken(device.deviceToken);
   const bucket = bucketFor("PIN_FAILURE", deviceId);
 
+  // Attempts at one username queue on its row lock, and attempts from one bucket on its
+  // advisory lock, so a transaction may wait for others to finish their bcrypt: the limits
+  // (`AUTH_TRANSACTION_OPTIONS`) are generous for that reason.
   try {
     return await db.$transaction(async (tx): Promise<SignInOutcome> => {
       const now = new Date();
 
       // Step 2. The bucket's lock is held to the end of the transaction, so concurrent
       // attempts cannot all read "nine" and all be evaluated (AC-14).
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`macroads:budget:${bucket}`}, 0))`;
-      const events = await tx.authEvent.findMany({
-        where: {
-          bucket,
-          kind: { in: ["PIN_FAILURE", "BUDGET_RESET"] },
-          at: { gt: new Date(now.getTime() - BUDGET_WINDOW_HOURS * MS_PER_HOUR) },
-        },
-        select: { kind: true, at: true },
-      });
+      await lockBucket(tx, bucket);
+      const events = await bucketEvents(tx, bucket, "PIN_FAILURE", now);
       if (
         decideAttempt(events, "PIN_FAILURE", now, PIN_FAILURE_BUDGET, BUDGET_WINDOW_HOURS) ===
         "REFUSE"
@@ -262,7 +236,7 @@ export async function attemptSignIn(
       await writeLock(tx, key, applyOutcome(lock, "FAILURE", now));
       await recordFailure(tx, bucket, key, now);
       return { outcome: "INCORRECT" };
-    }, TRANSACTION_OPTIONS);
+    }, AUTH_TRANSACTION_OPTIONS);
   } catch (error) {
     // `signDeviceToken` needs AUTH_SECRET; without it no session could be issued either.
     // The transaction has rolled back, so the successful attempt changed nothing.

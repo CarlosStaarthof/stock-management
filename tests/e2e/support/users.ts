@@ -51,11 +51,22 @@ function skipWithoutPepper(): void {
   }
 }
 
-export async function createTestUser(role: Role, label = "e2e"): Promise<TestUser> {
+/**
+ * `byteCount` random bytes as letters `a`-`p`, one per hex digit: the entropy of hex with no
+ * digit in it. A fixture name is rendered on pages whose money checks assert that a price's
+ * digits appear nowhere, and a hex suffix once contained one (021's ruling C2-4).
+ */
+function randomLetters(byteCount: number): string {
+  return randomBytes(byteCount)
+    .toString("hex")
+    .replace(/[0-9a-f]/g, (digit) => String.fromCharCode(97 + Number.parseInt(digit, 16)));
+}
+
+export async function createTestUser(role: Role, label = "tester"): Promise<TestUser> {
   skipWithoutPepper();
 
-  const username = `e2e-${randomBytes(10).toString("hex")}`;
-  const name = `${label}-${randomBytes(8).toString("hex")}`;
+  const username = `e2e-${randomLetters(10)}`;
+  const name = `${label}-${randomLetters(8)}`;
   const pin = generatePin(6);
 
   const user = await createActiveProfile({ name, username, role, pin });

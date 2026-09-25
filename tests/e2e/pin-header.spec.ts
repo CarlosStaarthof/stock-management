@@ -16,7 +16,7 @@ import type { TestUser } from "./support/users";
  * The profile's name is ONE UNBROKEN RUN OF 80 LETTERS — the longest name the rules allow
  * (`MAX_NAME_LENGTH`), with no hyphen or space for a browser to break at. Before #21 the
  * same header overflowed on three pages with a 61-character run (010's fifth and sixth
- * amendments, 011 AC-20). `/profiles` joins the list with #21's Phase C.
+ * amendments, 011 AC-20). `/profiles`, the admin section, is the fourth.
  */
 const created: string[] = [];
 
@@ -48,13 +48,13 @@ for (const width of [390, 320]) {
   test.describe(`at ${width} px`, () => {
     test.use({ viewport: { width, height: 800 } });
 
-    test(`AC-37: at ${width} px an 80-character unbroken name widens none of the three pages`, async ({
+    test(`AC-37: at ${width} px an 80-character unbroken name widens none of the four pages`, async ({
       page,
     }) => {
       const admin = await unbrokenProfile("ADMIN");
       await signIn(page, admin);
 
-      for (const path of ["/stock-entry", "/stock-takes", "/analysis"]) {
+      for (const path of ["/stock-entry", "/stock-takes", "/analysis", "/profiles"]) {
         await page.goto(path);
         const name = page.getByTestId("signed-in-name");
         await expect(name, path).toHaveText(admin.name);

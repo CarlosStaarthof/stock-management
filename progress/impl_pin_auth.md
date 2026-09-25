@@ -1610,3 +1610,438 @@ That makes 984. On this run, the real `.env` passes every check.
 - **`isUsablePinPepper` is the only new export** under `src/server/auth/`. It reads no
   environment, so AC-6's reader census and AC-42's import-time test are unaffected, and both
   stay green.
+
+## Phase C2
+
+Brief: the coordinator's scratchpad `impl21-c2.md`, plus its correction: `.env.example` is
+retired, and all 984 unit tests were green at `c18dd10`. It covers the admin side: `/profiles`,
+the nine missing functions of `profile-admin-service.ts`, the `/profiles` halves of AC-33,
+AC-34, AC-35, AC-37 and AC-43, the hand proofs of AC-22 and AC-26, C1's Finding 3 (the AC-36
+port flake) and C1's Deviation 8 (one bucket lock and one retention sweep).
+**Status: complete.** Nothing is committed. `feature_list.json`, `Samples/`,
+`tests/support/feature-scope.ts` and `.env` are untouched, and no `.env` value was read. I ran
+no full `test:db`, no full `test:e2e` and no `init`. Port 3000 is free.
+
+### Work log
+
+Finished and verified steps only, in the order they were done.
+
+1. **C1's Deviation 8: `sign-in-service.ts` now uses `auth-event-log.ts`.** It takes the bucket
+   lock (`lockBucket`), the bucket's events (`bucketEvents`), the event plus retention sweep
+   (`recordEvent`) and the transaction limits (`AUTH_TRANSACTION_OPTIONS`) from there. Its own
+   copies are gone.
+   - `recordEvent` gained an optional last argument, the account key. When it is omitted, the
+     insert's data object is exactly what it was before, so the request and setup services
+     send the same statement they always sent.
+   - **AC-10's statement sequence did not change.** To prove it, I wrote a scratch probe that
+     captures `attemptSignIn`'s statement texts with the parameters removed, the way 020
+     AC-3 does. It covers five cases: an unknown username, a wrong PIN, a malformed attempt from
+     a known device, a malformed attempt from a new device, and a success. I copied the probe
+     into `src/server/auth/`, ran it once before the change and once after, and deleted it each
+     time. The two outputs are byte-identical: both hash to sha256 `0e0466a0…`.
+   - Then, one file at a time: `sign-in-service.db` **14/14** (85 s),
+     `profile-request-service.db` **11/11** (39 s), `setup-service.db` **37/37** (53 s). Every
+     assertion in them is unchanged.
+2. **`profile-admin-service.ts`: the nine functions.** Each one's first statement is
+   `assertRole(actor, "ADMIN")`. Everything that leaves the module goes through one mapper,
+   `toEntry`, which reduces the hash and its key to two booleans. Details:
+   - `listProfiles` lists every profile, `PENDING` first and then oldest first. It reads the lock
+     rows in one query and counts the 30-day failures in one `groupBy`.
+   - `approveProfile` and `rejectProfile` lock the target row. Approval checks that the username
+     is free, and the unique index's violation is mapped to `USERNAME_TAKEN_MESSAGE`. Approval
+     zeroes the username's lock row.
+   - `changeProfileRole` and `deactivateProfile` lock every `ACTIVE` `ADMIN` row `FOR UPDATE`,
+     in id order, and then the target. They refuse with `LAST_ADMIN_MESSAGE` when no other
+     `ACTIVE` `ADMIN` holding a username and a PIN would remain (S10).
+   - `clearAccountLock` applies `CLEARED`, which ends the lock and keeps the level.
+     `createProfile` draws the PIN with `generatePin` and returns it once.
+   - `pinFailureSummary` and `resumeNewDeviceSignIn` are AC-26's. The resume takes the
+     `pin:new-devices` bucket lock and writes one `BUDGET_RESET`.
+   - A new helper, `settleLock`, reads a lock row with `FOR UPDATE`, the lock a sign-in attempt
+     holds, and applies the outcome. `resetProfilePin` now uses it and `lockProfile` too. Its
+     behaviour is unchanged: `pin-session.db` passed **10/10** after the change (15 s).
+3. **The page, the actions and the protected path.**
+   - `src/app/profiles/page.tsx` declares `force-dynamic` and has no `loading.tsx` above it. It
+     calls `requireAdminPage("profiles")` and renders `IdentityHeader` with the `<h1>`
+     `Profiles`.
+   - It renders the failure summary (`pin-failures`), and the paused notice with the resume
+     control while new devices are paused.
+   - It shows `NO_PENDING_PROFILES` when nothing is waiting.
+   - It renders one `<li>` per profile carrying the name, the username (the requested one while
+     `PENDING`), the role, the status label and the creation date. Each row also has
+     `failures-<id>`, `lock-<id>` (only while locked) and `needs-reset-<id>`.
+   - Below the list is the create form.
+   - `actions.ts` holds the eight actions. Each one takes the actor from `getCurrentUser()`, calls
+     one service, and redirects a refused session where the page would send it. A domain error
+     becomes the form's message. On success the action runs `revalidatePath("/profiles")`.
+   - The six client components live under `src/components/profiles/`.
+   - `PROTECTED_PATHS` gains `"/profiles"`, and the matcher gains `"/profiles/:path*"`.
+   - Checks: `tsc` 0, lint 0, `test:unit` **986/986**.
+4. **Contract tests.**
+   - 010 AC-20's census in `stock-takes-contract.test.ts` now names `src/app/profiles/page.tsx`.
+     Its comment's "(and `/profiles` later)" is now past tense.
+   - 021 AC-43's list in `pin-auth-contract.test.ts` has four pages, and its title says "four".
+   - New in the same file:
+     - an AC-22 block with three tests: the path and the matcher; the page's
+       `requireAdminPage("profiles")`, which comes before `listProfiles(`; and all ten exported
+       functions, whose first statement is `assertRole(actor, "ADMIN")`;
+     - an AC-37 test: the page imports and renders `IdentityHeader` with `user.name`, has no
+       `<header>` of its own, and never renders the username.
+   - The two files: **66/66**.
+5. **`profile-admin-service.db.test.ts`: 33/33 on its first run** (78 s). It covers:
+   - AC-21 (7 tests, 10 repetitions of the concurrent approvals);
+   - AC-22 (the ten functions against a staff actor and against no actor, with a snapshot of
+     the three tables before and after, the ordering, and the page rendered for staff and for
+     an ADMIN);
+   - AC-23 (6 tests: 10 repetitions of mutual demotion and 5 of mutual deactivation, each from
+     a fresh database);
+   - AC-25 (4 tests), AC-26 (9 tests), and AC-32, AC-33 and AC-34 (1 test each).
+
+   The page is rendered with `renderToStaticMarkup`, as the setup test renders its page. The
+   header's sign-out action is mocked, as `src/app/analysis/page.test.ts` mocks it.
+6. **`src/app/profiles/actions.test.ts`: 7/7** (no database). Each action calls exactly its one
+   service, with the session's profile as the actor even when the form carries forged `actor`
+   and `userId` fields. A service's `ForbiddenError` redirects to
+   `/stock-entry?denied=profiles`, and its `UnauthorizedError` to `/sign-in?reason=inactive`.
+   Domain errors become messages. Only a success revalidates. A length other than 4 or 6 is
+   refused before any service is called. The new PIN is in the returned state and on no
+   console.
+7. **`src/lib/profile-display.ts`** (`yardDate`, `yardDateTime`, in `Europe/Dublin`), with its
+   unit test: **2/2**.
+8. **C1's Finding 3.** `sign-in.spec.ts` AC-36 now reads only the path, the query and the
+   fragment, as C1's `/sign-in/create` test does. The origin's port is the server's, not the
+   page's. Nothing else in the test changed.
+9. **`pin-header.spec.ts`:** `/profiles` joins AC-37's list, and the title says "four pages".
+10. **`tests/e2e/pin-profiles.spec.ts`** (14 tests):
+    - AC-22: signed out, staff, and ADMIN with its ordering and no `€`;
+    - AC-21: an edited approval that then signs in, and a taken username;
+    - AC-24 and AC-25: the PIN is shown once, is absent from a later GET, from every column
+      and from the browser console, and signs in;
+    - AC-26: the summary and the lock, with its clear control;
+    - AC-23: demote, promote and deactivate, driven from `/profiles` against a second signed-in
+      context;
+    - AC-32, AC-35 at 390 and at 320 px, and AC-40.
+
+    Dev census before any e2e run:
+    `{"users":33,"admins":8,"pending":0,"setupClaims":0,"requestNewDevices":0,"pinNewDevices":0,"authEvents":0,"accountLocks":0}`.
+    - **Run 1: 13 passed, 1 failed.** AC-24's reset showed `PIN_FORMAT_MESSAGE` instead of a
+      PIN. I read the failing state from the Playwright trace: the pressed button's
+      `name=length` value never reached the action, because a form action dispatched by React
+      is handed the form's own fields only. **This was a real bug**, and I fixed the component:
+      one form per length, each with a hidden `length`.
+    - **Run 2: 13 passed, 1 failed.** The same test could not read the streamed action body
+      afterwards (`Network.getResponseBody`: no data). The spec now fetches that one POST
+      through `page.route` and hands it on whole, so the body can be read.
+    - **Run 3: 14 passed, 0 failed** (1.1 m).
+11. **The other targeted specs.** `sign-in.spec.ts` alone passed with 0 failed. My output
+    filter cut the count line on that run, and the final run below shows 15. `pin-header`,
+    `role-access` and `route-protection` together: **21 passed**.
+12. **AC-22's hand proof** and **AC-26's hand observation**: see the two sections below.
+13. **The security mutations**: see the table below.
+14. **Final runs, all on the final source:**
+    - the four auth database files, one at a time: `sign-in-service` 14/14 (55 s),
+      `profile-request-service` 11/11 (22 s), `setup-service` 37/37 (32 s),
+      `profile-admin-service` 33/33 (61 s). None hit a connection error or a timeout, so none
+      was repeated.
+    - e2e: `sign-in.spec.ts` alone, **15 passed**. Then `pin-profiles` and `pin-header`,
+      **18 passed**. Each run rebuilt first, so the build on disk is the final source.
+    - `typecheck` 0, `lint` 0, `test:unit` **997/997**, `prisma validate` valid.
+    - The dev census was identical before and after every e2e run.
+
+### AC-22: the hand proof (003 AC-16)
+
+- I made a byte copy of `src/lib/auth-config.ts` and recorded its sha256 (`7245749e…`). Then I
+  removed `"/profiles"` and its comment from `PROTECTED_PATHS`. The matcher was unchanged.
+- I ran `npm run test:e2e -- tests/e2e/pin-profiles.spec.ts -g "AC-22"`. It rebuilt first
+  ("Compiled successfully").
+- **Observed:**
+  - A YARD_STAFF `GET /profiles` still answered **`307` to `/stock-entry?denied=profiles`**,
+    and its body named no profile. That test passed.
+  - Signed out, the answer was **`307` to `/sign-in?reason=inactive`**, not to
+    `?callbackUrl=%2Fprofiles`. That is the one red test: the middleware no longer turned the
+    request away, so the page's guard refused it instead.
+  - An ADMIN still got `200`.
+- I restored the file with `cp -p`, and `sha256sum -c` reported `src/lib/auth-config.ts: OK`.
+  The e2e runs that followed rebuilt from the restored file.
+
+### AC-26: the hand observation of the paused rendering
+
+No other e2e run was active. I wrote a scratch spec that prints counts and yes/no facts only,
+copied it into `tests/e2e/`, ran it once and deleted it. It did the following:
+- created a fresh ADMIN;
+- wrote ten `PIN_FAILURE` events straight into `pin:new-devices` in the development database;
+- signed the ADMIN in from a known device and opened `/profiles`;
+- pressed the control;
+- deleted every `pin:new-devices` event written since it started, and removed the ADMIN.
+
+| Moment | new-device failures | new-device resets | all `AuthEvent`s |
+|---|---|---|---|
+| before | 0 | 0 | 0 |
+| after writing the ten | 10 | 0 | 10 |
+| after pressing the control | 10 | 1 | 11 |
+| after deleting (11 rows) | 0 | 0 | 0 |
+
+**What the page showed before the press:**
+- `pin-failures` read exactly `PIN_FAILURES_SUMMARY(10, 0, 10)`;
+- `NEW_DEVICES_PAUSED_MESSAGE` was visible;
+- the `RESUME_NEW_DEVICES_LABEL` control was visible.
+
+**After the press:** neither the message nor the control was rendered (count 0 each), and the
+summary still read `PIN_FAILURES_SUMMARY(10, 0, 10)`. No event was deleted by the press. The
+dev census was identical before and after.
+
+### Security mutations
+
+I made byte copies of `profile-admin-service.ts` (`c1d0cc6c…`), `src/app/profiles/page.tsx`
+(`64d1ddfe…`) and `src/app/profiles/actions.ts` (`1fd77473…`). A script applied each mutation to
+the working files from those copies. I ran the named tests, then restored the files with `cp -p`.
+After every restore, `sha256sum -c` reported `OK` for all three.
+
+| # | Mutation | What went red |
+|---|---|---|
+| M1 | a YARD_STAFF actor reaches an admin function: `approveProfile` loses its `assertRole` | db AC-22 "each of the ten functions…" (`approveProfile: expected null to be an instance of ForbiddenError`); unit AC-22 first-statement check |
+| M2 | `/profiles` is reachable by a YARD_STAFF session with `PROTECTED_PATHS` intact: the page calls `requireUserPage()` | unit AC-22 page-guard check; the db render for staff (no redirect digest); e2e staff test, **`500` instead of `307`**. The services still refused, so no profile was rendered |
+| M3a | approval grants a held username, first layer: the free-username check is removed | **stays green.** The unique index refuses the write, and the violation is mapped to `USERNAME_TAKEN_MESSAGE`. This layer is the backstop |
+| M3b | the same, with the index violation's mapping also removed | db AC-21 "held by an ACTIVE or a DEACTIVATED…": a `PrismaClientKnownRequestError`, not a `ConflictError`. The database never lets two rows hold one username, so "grants" cannot be reached. What the mutation reaches is the wrong answer |
+| M4 | two concurrent approvals of one username both succeed: a taken username, at the check or at the index, is answered with the unchanged entry | db AC-21 concurrency: `repetition 0: … to have a length of 1 but got 2` |
+| M5a | the last ADMIN can be demoted: no `assertAnotherAdminRemains` in `changeProfileRole` | db AC-23: the "only ACTIVE ADMIN…" test and mutual demotion (2 fulfilled) |
+| M5b | the last ADMIN can deactivate itself: none in `deactivateProfile` | db AC-23: the "only ACTIVE ADMIN…" test and mutual deactivation (0 rejected) |
+| M5c | (extra) the ADMIN rows are read without `FOR UPDATE` | db AC-23: both concurrency tests, red in repetition 0 |
+| M6 | deactivation keeps the `pinHash` | db AC-23 "a deactivated profile loses…": the database's `User_pin_only_when_live` CHECK refused the write, so the hash cannot survive in a row either |
+| M7 | a reset or created PIN appears in a later `GET /profiles`: the action keeps it in server memory and the page renders it | e2e AC-24 and AC-25, each at its later-GET `not.toContain` |
+| M8 | `clearAccountLock` resets the level (`SUCCESS` instead of `CLEARED`) | db AC-26 "clearing a lock…": level 0, not 3 |
+
+### Files created
+- `src/app/profiles/page.tsx`: the admin section.
+- `src/app/profiles/actions.ts`: the eight server actions.
+- `src/app/profiles/form-state.ts`: the three form states. A new PIN lives only there.
+- `src/components/profiles/PendingProfileActions.tsx`, `ActiveProfileActions.tsx`,
+  `ClearLockForm.tsx`, `ResumeNewDevicesForm.tsx`, `CreateProfileAdminForm.tsx`,
+  `NewPinNotice.tsx` and `FormError.tsx`.
+- `src/lib/profile-display.ts`: dates and times in the yard's zone.
+- Tests:
+  - `src/server/auth/profile-admin-service.db.test.ts` (33);
+  - `src/app/profiles/actions.test.ts` (7);
+  - `src/lib/profile-display.test.ts` (2);
+  - `tests/e2e/pin-profiles.spec.ts` (14).
+
+### Files modified
+- `src/server/auth/profile-admin-service.ts`: the nine functions, the mapper, the admin-row
+  lock and `settleLock`; `resetProfilePin` uses the shared helpers.
+- `src/server/auth/auth-event-log.ts`: `recordEvent` takes an optional account key, and there is
+  a new `recordBudgetReset`. The header comment is rewritten.
+- `src/server/auth/sign-in-service.ts`: moved onto `auth-event-log.ts` (Deviation 8).
+- `src/lib/auth-config.ts` gains `"/profiles"`, and `src/middleware.ts` gains `"/profiles/:path*"`.
+- `tests/unit/pin-auth-contract.test.ts`: AC-43 now lists four pages, and there are new AC-22
+  and AC-37 blocks.
+- `tests/unit/stock-takes-contract.test.ts`: 010 AC-20's census names `/profiles`.
+- `tests/e2e/sign-in.spec.ts`: AC-36 reads the path, the query and the fragment.
+- `tests/e2e/pin-header.spec.ts`: `/profiles` is the fourth page.
+- `progress/current.md` (plan and log), and this section.
+
+### Acceptance criteria (C2 halves)
+| AC | Where it is satisfied | Test that proves it |
+|----|----|----|
+| AC-21 | `profile-admin-service.ts:333` (approve), `:382` (reject); `PendingProfileActions.tsx` | db: 7 AC-21 tests (`…db.test.ts:377`–`:498`); unit: `actions.test.ts` AC-21/AC-23 messages; e2e: `pin-profiles.spec.ts:230`, `:256` |
+| AC-22 | `auth-config.ts:24`, `middleware.ts:44`; `page.tsx:121`; `assertRole` first in all ten functions; `listProfiles` `:276` | db `:258`, `:300`, `:346`, `:355`, `:889`; unit: `pin-auth-contract` AC-22 (3), `actions.test.ts` (5); e2e `:153`, `:162`, `:180`; plus the hand proof above |
+| AC-23 | `:407` (role), `:478` (deactivate), `lockActiveAdmins` `:230`, `assertAnotherAdminRemains` `:238` | db `:519`–`:618` (6); e2e `:427` |
+| AC-24 (C2 half) | `resetProfilePin` `:440`; `ActiveProfileActions.tsx`; `NewPinNotice.tsx` | e2e `:281` (the POST's body, `new-pin`, a later GET, every column, the console, and a sign-in); `pin-session.db` (Phase B, re-run 10/10) |
+| AC-25 | `createProfile` `:532`; `CreateProfileAdminForm.tsx` | db `:641`–`:711` (4); e2e `:330` |
+| AC-26 | `clearAccountLock` `:510`, `pinFailureSummary` `:576`, `resumeNewDeviceSignIn` `:620`; `page.tsx:79`, `:94`, `:133` | db `:730`–`:875` (9, the exact `{3,1,2,false}` among them); e2e `:365`, `:394`; plus the hand observation above |
+| AC-32 (`/profiles` half) | `toEntry`'s `credentialNeedsReset`; `page.tsx:85` | db `:910`; e2e `:479` |
+| AC-33 (`/profiles` half) | nothing in the admin section logs; a new PIN leaves only in an action's state | db `:932` (approval, rejection, creation, reset and every other function); unit `actions.test.ts` (no console); e2e `:281` |
+| AC-34 (`/profiles` half) | no money is read anywhere in the section | db `:988` (`deepKeys` of all ten functions' returns; no `€` and no stored hash in the render); e2e `:180` (no `€`) |
+| AC-35 (`/profiles` half) | every control is `min-h-11`; the rows wrap at any character | e2e `:502` at 390 × 844 and 320 × 640: no sideways scroll, and at least 18 action controls measured at 44 px or more |
+| AC-37 (`/profiles` half) | `page.tsx:127` | `pin-header.spec.ts` (four pages at 390 and 320 px); db `:355`; unit `pin-auth-contract` AC-37 |
+| AC-43 (`/profiles` half) | `page.tsx:47`; no `loading.tsx` at or above it | unit: `stock-takes-contract` 010 AC-20 census; `pin-auth-contract` AC-43 (four pages); `stock-entry-contract` 010 AC-2 (derived, unchanged) |
+| C1 Finding 3 | `sign-in.spec.ts` AC-36 | `sign-in.spec.ts` 15/15 |
+| C1 Deviation 8 | `sign-in-service.ts:95`, `:168`–`:169` | the probe, byte-identical before and after; `sign-in-service.db` 14/14, `profile-request-service.db` 11/11, `setup-service.db` 37/37, all unchanged |
+
+### Verification output
+
+```
+$ npm run typecheck                                              -> exit 0
+$ npm run lint                                                   -> exit 0
+$ npm run test:unit                    Test Files 71 passed (71)   Tests 997 passed (997)
+$ npx prisma validate                  The schema at prisma\schema.prisma is valid
+$ npm run test:db -- src/server/auth/sign-in-service.db.test.ts          Tests 14 passed (14)  55 s
+$ npm run test:db -- src/server/auth/profile-request-service.db.test.ts  Tests 11 passed (11)  22 s
+$ npm run test:db -- src/server/auth/setup-service.db.test.ts            Tests 37 passed (37)  32 s
+$ npm run test:db -- src/server/auth/profile-admin-service.db.test.ts    Tests 33 passed (33)  61 s
+$ npm run test:db -- src/server/auth/pin-session.db.test.ts              Tests 10 passed (10)  15 s
+$ npm run test:e2e -- tests/e2e/sign-in.spec.ts                                   15 passed (53.7s)
+$ npm run test:e2e -- tests/e2e/pin-profiles.spec.ts tests/e2e/pin-header.spec.ts 18 passed (58.4s)
+$ npm run test:e2e -- tests/e2e/pin-header.spec.ts tests/e2e/role-access.spec.ts tests/e2e/route-protection.spec.ts
+                                                                                  21 passed (25.0s)
+dev database census, before and after every e2e run (identical):
+  {"users":33,"admins":8,"pending":0,"setupClaims":0,"requestNewDevices":0,"pinNewDevices":0,"authEvents":0,"accountLocks":0}
+```
+
+No `init` was run: the coordinator runs the gate. Unit count against `c18dd10`'s 984: plus 7
+(`actions.test.ts`), plus 2 (`profile-display.test.ts`), plus 4 (`pin-auth-contract`: three
+AC-22 and one AC-37). That makes 997.
+
+### Findings: for the coordinator
+
+1. **The `/analysis` link to `/profiles` is not added, because it would turn a shipped
+   assertion red.** 021 *Out of scope* → *Navigation* says `/profiles` is reached "by its URL
+   and by one link in the header of `/analysis`". But 011 AC-16's e2e test
+   (`analysis-figures.spec.ts:627`, "EVERY link on the screen carries the current period and
+   grouping") asserts that every `a[href]` on `/analysis` carries both `period` and `breakdown`.
+   A plain link to `/profiles` fails that. No numbered criterion requires the link, so I did
+   not satisfy it another way: I added no link carrying unused parameters, and no link
+   disguised as a form. It needs a ruling: amend 011 AC-16's rule, or accept a link that
+   carries both parameters, or drop the sentence. Until then, `/profiles` is reached by its URL
+   only.
+2. **The shared header's sign-out control is about 38 px tall** (`px-3 py-2 text-sm`, from #3's
+   `SignOutForm`). AC-35 says "every action control on `/profiles`". I measured the controls of
+   the section's eight actions: in the rows my test created, and in the create form. I did not
+   measure the header's sign-out, which is the same control on every signed-in page. If it
+   counts, it needs a change to #3's component, which would affect every page. I did not make
+   that change.
+3. **Two layers that cannot be mutated to "succeed".** "Approval grants a held username" (M3)
+   and "deactivation keeps the `pinHash`" (M6) are refused by the database itself: the unique
+   index, and the `User_pin_only_when_live` CHECK. The mutations reach a wrong answer or an
+   error, never the forbidden state. Removing the application's free-username check alone
+   (M3a) stays green, because the index's violation is mapped to the same message. The mapping
+   is what M3b removes.
+
+### Deviations from the spec
+1. **Three service sentences are not in `auth-messages.ts`.** `NOT_PENDING_MESSAGE`,
+   `ONLY_ACTIVE_PROFILE_CHANGE` and `ROLE_REQUIRED_MESSAGE` are exported from
+   `profile-admin-service.ts`, and the tests import them. AC-21 and AC-23 require a
+   `ConflictError` with no named message there, AC-39 lists that module's exports exactly, and
+   a bad role only reaches the service through a forged form. This is the same choice Phase B
+   made for the reset script's own sentences.
+2. **`unknownUsernames` counts a failure with no account key.** AC-26 says "the ones that named
+   no profile's username". A malformed attempt's event has no key, so it named none. A
+   deactivated profile's username is still a profile's username. Both readings are pinned in
+   their own test (db `:799`). The AC-26 scenario test uses keys only, so it holds under either
+   reading.
+3. **`resumeNewDeviceSignIn` writes nothing while new devices are not paused.** A reset then
+   would only hand the internet a fresh ten guesses, which is what a second press of a stale
+   control would do. The paused case is exactly AC-26's, and db `:840` pins the no-op.
+4. **A `BUDGET_RESET` runs no retention sweep.** AC-26 says the resume "deletes no event", and
+   AC-14 says writing an event deletes those past retention. I read AC-26's words as governing
+   this write, because an admin's reset is not an attempt, and attempts are what keep the table
+   bounded. The attempt writes still sweep through `recordEvent`. This is
+   `auth-event-log.ts:85`, with its reason in the comment.
+5. **Which statuses each action accepts.** Deactivation needs an `ACTIVE` profile, so a request
+   is rejected, not deactivated. A role change on a non-`ACTIVE` profile is AC-23's
+   `ConflictError`. Clearing a lock accepts any profile with a username, and does nothing
+   without one.
+6. **UI choices the spec leaves open.**
+   - The role change is one button naming the other role (`Make ADMIN`, `Make YARD_STAFF`).
+   - The reset is two buttons, 4 and 6 digits, each in its own form (work log 10).
+   - Deactivation, which nothing can undo, sits behind a native disclosure: a second,
+     deliberate tap that works without JavaScript.
+   - The create form draws the PIN on the server and has no PIN field, because a PIN an
+     administrator typed is one somebody else knows.
+7. **The e2e requests are written directly**, in the shape `requestProfile` writes, so that no
+   request budget is spent (AC-40). C1's `pin-create.spec.ts` covers the request form end to
+   end.
+8. **AC-24's "response to the reset POST" is read through `page.route`.** The browser keeps no
+   copy of a streamed action body. The route fetches the one POST and hands it on unchanged.
+9. **Modules beyond the contract table:** `src/lib/profile-display.ts`, the seven components and
+   `form-state.ts`, and in the service the exported sentences and the `PinFailureSummary` type.
+
+### Notes for the reviewer
+- **No PIN, digest, hash, key or code was printed or written.** The census script and the hand
+  observation printed counts and yes/no facts only, and I read no `.env` value. To read run 1's
+  failing state, I unzipped that run's Playwright trace into the scratchpad and grepped it. I
+  printed only the counts of one element id and of one message constant, then deleted it. Each
+  later run cleared `test-results/`, which now holds nothing.
+- **Why the concurrency holds.** Two `changeProfileRole` or `deactivateProfile` calls queue on
+  the first `ADMIN` row lock, because both lock in id order. When the second resumes, Postgres
+  re-reads each row it locks at READ COMMITTED. The row the first call demoted or deactivated no
+  longer matches, and is not returned. M5c, which removes `FOR UPDATE`, is red in repetition 0.
+- **The e2e spec touches only the rows it creates.** The development database's 33 profiles are
+  listed and never pressed. The last-admin rule is proved only where the test builds the whole
+  population, as the brief requires.
+- **The build on disk is the final source.** The last two e2e runs rebuilt after every
+  mutation had been restored.
+- **Timing.** The admin database file takes about 60 to 78 s; its longest test is 10 mutual
+  demotions from fresh databases, about 10 s. `pin-profiles.spec.ts` takes about a minute
+  alone.
+
+### After the rulings
+
+Brief: the coordinator's message carrying the rulings in `specs/features/021-pin_auth.md` →
+*Three findings by Phase C2, ruled by the coordinator*, in AC-22's last sentence and in the note
+under 011 AC-16. I carried out C2-1 and C2-2. C2-3 was accepted as described, and there was
+nothing to do for it. **Status: complete.** Nothing is committed, and I did not edit either
+spec file, which carry the coordinator's uncommitted rulings. I ran no full suite and no `init`.
+Port 3000 is free.
+
+#### Work log
+
+Finished and verified steps only, in the order they were done.
+
+1. **C2-1: the link.** `src/app/analysis/page.tsx` passes one `Link` to `IdentityHeader` as its
+   child (`:205`). It has `href="/profiles"`, `data-testid="profiles-link"`, no query
+   parameter, and `min-h-11`. The page comment records the one exception to "every link carries
+   the reading state".
+2. **The 011 AC-16 test**, amended exactly as the note under AC-16 says
+   (`analysis-figures.spec.ts:637`–`:651`). It collects every `a[href]` as before, then:
+   - asserts that exactly one of them is `"/profiles"`;
+   - asserts that exactly one `header a[href="/profiles"]` exists;
+   - runs both of its existing loops over every other link, unchanged. Each must carry both
+     parameters, and each link that is not a jump must carry the current period.
+
+   The title and every other expectation are unchanged.
+3. **AC-22's link assertion** (`pin-profiles.spec.ts:228`). As an ADMIN on `/analysis`, the only
+   link whose path is `/profiles` is exactly `"/profiles"`, with no query. It is in the
+   header, exactly once. Clicking it lands on `/profiles`, whose `<h1>` is `Profiles`.
+4. **C2-2: the sign-out control.** `src/components/SignOutForm.tsx` gains `inline-flex
+   min-h-11 items-center`. Its horizontal padding and text are unchanged, so it is no wider.
+   AC-35 on `/profiles` now includes the header among the scopes it measures
+   (`pin-profiles.spec.ts:549`), so the sign-out is measured at 390 and at 320 px. Its floor of
+   measured controls rose from 18 to 19.
+5. `typecheck` 0, `lint` 0, `test:unit` **997/997**.
+6. **Targeted e2e on the new source, with the dev census taken before and after each run:**
+   - `pin-profiles` and `pin-header`: **19 passed**. That is 15 plus 4: AC-37 still shows no
+     sideways scroll on the four pages at 390 and 320 px.
+   - Every spec in the second project that measures or overflows the header, plus
+     `analysis-figures`, run with `--project=chromium-stock-entry --no-deps`:
+     - `analysis-figures` and `analysis-access`;
+     - `stock-entry-access`, `stock-entry-calendar` and `stock-entry-start`;
+     - `stock-takes-calendar` and `stock-takes-count`.
+
+     Result: **88 passed, 0 failed** (2.5 min). **No shipped assertion changed**: every overflow
+     and header check passed unmodified with the taller sign-out.
+   - `route-protection`, `pin-create` and `item-master-access` also measure `scrollWidth`, but
+     on pages that render no identity header, so they were not affected and I did not run them.
+7. **The two mutations** (table below). Each was restored, and `sha256sum -c` reported `OK`.
+8. **Final rebuild on the restored source.** `pin-profiles` and `pin-header`: **19 passed**
+   (1.0 min). The dev census was identical before and after every run:
+   `{"users":33,"admins":8,"pending":0,"setupClaims":0,"requestNewDevices":0,"pinNewDevices":0,"authEvents":0,"accountLocks":0}`.
+   `test-results/` is empty, and nothing is listening on port 3000.
+
+#### Mutations
+
+I made byte copies of `src/app/analysis/page.tsx` (`3f8d5f8b…`) and
+`src/components/SignOutForm.tsx` (`d079e291…`). I applied each mutation from the copies,
+rebuilt, ran the named test, and restored the file with `cp -p`. After each restore,
+`sha256sum -c` reported both files `OK`.
+
+| # | Mutation | What went red |
+|---|---|---|
+| M9 | a second parameter-less link, `<Link href="/profiles">`, in `/analysis`'s body | `analysis-figures.spec.ts:627`, 011 AC-16 "EVERY link…": `Expected length: 1, Received length: 2` at the `/profiles` count |
+| M10 | the sign-out control without `min-h-11` (its old class) | `pin-profiles.spec.ts` AC-35 at **both** 390 and 320 px: `sign-out … Expected: >= 44, Received: 38` |
+
+#### Files modified (this step)
+- `src/app/analysis/page.tsx`: the header link and its comment.
+- `src/components/SignOutForm.tsx`: 44 px tall, and its comment.
+- `tests/e2e/analysis-figures.spec.ts`: 011 AC-16's test, amended as its note says.
+- `tests/e2e/pin-profiles.spec.ts`: AC-22's link test, and the header measured in AC-35.
+- `progress/current.md` and this section.
+
+#### Notes for the reviewer
+- **AC-40's diff rule and `analysis-figures.spec.ts`.** That file exists at #21's base commit,
+  and it is not one of the five files AC-40's rule exempts. The amendment adds `expect(` lines
+  to it that none of AC-40's five substitutions covers. The C2-1 ruling and the note under 011
+  AC-16 license it. The reviewer's `git diff` of `tests/e2e` will show it, and it should be read
+  against that ruling, not as a breach of AC-40.
+- **What the sign-out change touches.** It changes height only. On every page with the header,
+  the sign-out button is now 44 px tall instead of 38 px. None of the 88 + 19 header and
+  overflow tests that ran needed a change.

@@ -634,11 +634,19 @@ test("AC-16: EVERY link on the screen carries the current period and grouping", 
   // into a count and the sentence that leads to the item names. `analysisHref` writes both
   // parameters whenever it is given them - including the default grouping - precisely so
   // that this can be asserted as one rule rather than as a list of exceptions.
-  const hrefs = await page.evaluate(() =>
+  const allHrefs = await page.evaluate(() =>
     Array.from(document.querySelectorAll("a[href]")).map((anchor) =>
       anchor.getAttribute("href"),
     ),
   );
+
+  // ONE EXCEPTION, AND IT IS COUNTED (amended by 021 C2-1; see the note under AC-16): the
+  // header's link to `/profiles` leaves the analysis view, so it carries no query parameter.
+  // Exactly one such link exists, in the header; a second one would be a link that drops the
+  // reading state, and turns this red.
+  expect(allHrefs.filter((href) => href === "/profiles")).toHaveLength(1);
+  await expect(page.locator('header a[href="/profiles"]')).toHaveCount(1);
+  const hrefs = allHrefs.filter((href) => href !== "/profiles");
 
   expect(hrefs.length).toBeGreaterThan(4);
   for (const href of hrefs) {

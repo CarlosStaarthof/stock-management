@@ -7,13 +7,15 @@ import {
 import { db } from "@/server/db";
 
 /**
- * The budget bookkeeping the profile-request and setup services share (021 S8, AC-14,
- * AC-20, AC-28). Each is one bucket's events, read under that bucket's transaction-scoped
- * advisory lock, so concurrent attempts on one bucket queue instead of all reading "nine".
+ * The budget bookkeeping every attempt shares (021 S8, AC-14, AC-20, AC-26, AC-28): sign-in,
+ * profile requests, first-run setup and the admin section's resume. Each is one bucket's
+ * events, read under that bucket's transaction-scoped advisory lock, so concurrent attempts
+ * on one bucket queue instead of all reading "nine".
  *
- * The lock key has the same form `attemptSignIn` uses, so one bucket has one lock whoever
- * takes it. Nothing here reads a `User` row, and no event carries a typed value: an event
- * is a kind, a bucket and a time (AC-14).
+ * ONE SOURCE for the lock key and the retention sweep: a bucket has one lock whoever takes
+ * it, and every event written by an attempt runs the same sweep. Nothing here reads a
+ * `User` row, and no event carries a typed value: an event is a kind, a bucket, a time and,
+ * for a PIN failure at a well-formed username, that username's account key (AC-14).
  */
 
 export type Transaction = Parameters<Parameters<typeof db.$transaction>[0]>[0];
@@ -49,14 +51,20 @@ export async function bucketEvents(
 /**
  * One event in `bucket`, then every event past retention and every lock row whose lock has
  * ended and which has not changed in as long — the rule AC-14 states for writing an event.
+ *
+ * `accountKey` is given by a PIN failure only: the key of a well-formed username, or `null`
+ * for a malformed attempt. Omitted, the column is not named in the insert at all, so the
+ * request and setup services send exactly the statement they always sent.
  */
 export async function recordEvent(
   tx: Transaction,
   kind: CountedEventKind,
   bucket: string,
   now: Date,
+  accountKey?: string | null,
 ): Promise<void> {
-  await tx.authEvent.create({ data: { kind, bucket, at: now }, select: { id: true } });
+  const data = accountKey === undefined ? { kind, bucket, at: now } : { kind, bucket, accountKey, at: now };
+  await tx.authEvent.create({ data, select: { id: true } });
 
   const cutoff = new Date(now.getTime() - EVENT_RETENTION_DAYS * MS_PER_DAY);
   await tx.authEvent.deleteMany({ where: { at: { lt: cutoff } } });
@@ -66,6 +74,16 @@ export async function recordEvent(
       OR: [{ lockedUntil: null }, { lockedUntil: { lte: now } }],
     },
   });
+}
+
+/**
+ * Lifts the pause on `bucket` (AC-26): one `BUDGET_RESET` event, after which the events
+ * before it no longer count (`decideAttempt`). It deletes no event — the failures stay
+ * visible on `/profiles` — so it runs no retention sweep either: an admin's reset is not an
+ * attempt, and it is the attempts that keep the table bounded.
+ */
+export async function recordBudgetReset(tx: Transaction, bucket: string, now: Date): Promise<void> {
+  await tx.authEvent.create({ data: { kind: "BUDGET_RESET", bucket, at: now }, select: { id: true } });
 }
 
 /** Prisma's unique-constraint violation, recognised without importing its types. */

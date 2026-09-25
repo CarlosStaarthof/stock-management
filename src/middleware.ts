@@ -41,5 +41,6 @@ export const config = {
     "/stock-takes/:path*",
     "/analysis/:path*",
     "/item-master/:path*",
+    "/profiles/:path*",
   ],
 };
