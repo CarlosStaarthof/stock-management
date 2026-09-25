@@ -252,7 +252,164 @@ bash ./init.sh                               ->  init exit=0   (23.2 min)
 ```
 
 A first attempt earlier the same day never ran: the coordinator invoked `bash` from PowerShell,
-where it resolves to the Windows WSL launcher (`C:\Windows\System32ash.exe`, no distribution
+where it resolves to the Windows WSL launcher (`C:\Windows\System32\bash.exe`, no distribution
 installed). That run died in 12 seconds with `execvpe(/bin/bash) failed` before any check. It was a
 tooling error, not a result, and it's recorded here so the two runs aren't confused.
 
+## Phase A
+
+**Scope:** the pure and cryptographic modules only: `credential-rules.ts`, `account-lock.ts`,
+`attempt-budget.ts`, `src/lib/auth-messages.ts`, and the nine new functions in `password.ts`, each
+with unit tests. **Status:** complete for the implementer. It is purely additive: over the three tracked
+files it changes, `git diff --stat HEAD -- src` shows 884 insertions and 2 deletions, and the two deleted
+lines are the old `import` lines of `password.test.ts`. The other seven files are new. `hashPassword`, `verifyPassword`, `INVALID_CREDENTIALS_MESSAGE`,
+`INACTIVE_ACCOUNT_MESSAGE` and `ACCESS_DENIED_MESSAGE` are unchanged, and `auth-actions.ts` and
+`sign-in/page.tsx` still use them. Nothing under `prisma/`, `auth-config.ts`, `middleware.ts`, pages,
+components, `tests/e2e/`, `tests/support/` or `feature_list.json` was touched (#21 was already
+`in_progress`). Per the brief I ran no `init`, e2e or `test:db`.
+
+### Files created
+- `src/server/auth/credential-rules.ts`: `PIN_LENGTHS`, `PinLength`, `parsePin`, `isTrivialPin` (a rule,
+  not a list), `generatePin` (`crypto.randomInt`, redraws trivial), `parseUsername`, `parseProfileName`,
+  `SETUP_CODE_MIN_LENGTH`.
+- `src/server/auth/account-lock.ts`: the three constants, `lockDurationMinutes`, `applyOutcome`, `isLocked`,
+  plus the types `AccountLockState` and `LockOutcome`. It is pure.
+- `src/server/auth/attempt-budget.ts`: the seven constants, `decideAttempt`, `bucketFor`, plus the types
+  `AttemptEvent`, `AttemptEventKind`, `CountedEventKind` and `BudgetDecision`. It is pure.
+- `src/server/auth/credential-rules.test.ts` (20 tests), `account-lock.test.ts` (10), `attempt-budget.test.ts`
+  (11), `src/lib/auth-messages.test.ts` (7).
+
+### Files modified
+- `src/server/auth/password.ts`: added `pinDigest`, `hashPin`, `verifyPin`, `currentPinKeyId`, `accountKey`,
+  `signDeviceToken`, `verifyDeviceToken`, `setupCodeConfigured`, `setupCodeMatches`, and the error class
+  `CredentialSecretError`. It reads `process.env.PIN_PEPPER`, `.SETUP_CODE` and `.AUTH_SECRET` inside
+  functions only, never at import. Nothing was removed.
+- `src/server/auth/password.test.ts`: the five 003 tests are unchanged. 29 tests were added, for 34 in total.
+- `src/lib/auth-messages.ts`: added every AC-39 message and label and the three length constants. It still
+  imports nothing. The email-era messages stay until Phase B.
+
+### Acceptance criteria
+| AC | Phase A's part: where, and the test that proves it | Left to |
+|----|------|------|
+| AC-5 | All of it. `password.ts` `pinDigest`/`hashPin`/`verifyPin`/`currentPinKeyId`/`accountKey`. `password.test.ts`: "PIN hashing (021 S3, S4)", "the lock key (021 S5)", and six "with PIN_PEPPER {unset, empty, blank, 31 bytes, 16 bytes, not base64}" tests. Each checks that all five functions throw, that the message names `PIN_PEPPER`, and that it contains no 6-character window of the value. | none |
+| AC-7 | All of it. `credential-rules.ts`. `credential-rules.test.ts`: 24 plus 20 trivial PINs are built from the rule at runtime, 1,000 random non-trivial PINs are drawn, 2,000 draws per length cover all ten digits per position, and `randomInt` is spied through `vi.mock("node:crypto")`, which delegates to the real function. | none |
+| AC-11 | All of it. `account-lock.ts`. `account-lock.test.ts`: durations for k = 1 to 12, four failures then the fifth, the next lock after each lock ends, the ±1 ms boundary, SUCCESS, and CLEARED at level 3 then 120 min. | none |
+| AC-13 | All of it, with `bucketFor`'s argument read as the **verified** device id (Deviation 1). `attempt-budget.test.ts`: the constants, 9 allow and 10 refuse, the exactly-24-h boundary, reset later than all ten, events before the latest reset, other kinds ignored, and the null, expired, malformed, tampered and forged tokens through `bucketFor(kind, verifyDeviceToken(t))`. | none |
+| AC-16 | The token half. `password.test.ts` "the device token": a 180-day expiry to the second, renewal keeps the id, every single-character change at every position gives `null`, so does another `AUTH_SECRET`, the id survives a replaced or unset `PIN_PEPPER`, and it never throws (including a 1 MB string). | B: the cookie attributes, both transports, sign-out |
+| AC-28 | The comparison half. `password.test.ts` "the setup code": true only for the exact code; false for empty, last character removed, one character appended, one letter's case changed; never throws at lengths 0 to 294 and 1 MB or for non-strings; the source has exactly two `createHash("sha256")` and the constant-time call on `(given, expected)`. | C: `completeSetup`, budget, events, e2e |
+| AC-10 | The unit half: `verifyPin(pin, null)` (or a non-bcrypt value) makes **exactly one** bcrypt comparison, against one per-process hash of random bytes, and answers `false`. Test "AC-10: with no usable hash…", with bcrypt spied via `vi.doMock`. | B: the statement sequence, the call counts through `attemptSignIn`, e2e |
+| AC-27 | The unit half of `setupCodeConfigured`: unset, empty and 15 characters are false; 16 is true; an unconfigured code matches nothing. | C: `setupAvailable`, `/setup` 404 |
+| AC-39 | The module half: imports nothing; every listed string export is present, non-empty and distinct; the three constants; `USERNAME_TAKEN_MESSAGE` and `PIN_FAILURES_SUMMARY` contain their arguments; the length messages contain the lengths; four distinct status labels. | B: stop exporting the two email-era messages. The literal scan is blocked (Finding 1). |
+| AC-42 | The unit half: `password.ts` loads with all three secrets unset, and reads each on call (test "AC-42: the module loads…"). The other three modules read no environment variable at all. | Gate: build and init with an unresolvable database |
+| AC-6 | Not asserted by a test in A. Grep evidence below: under `src/`, `scripts/` and `prisma/`, only `password.ts` names `bcryptjs`, `createHmac` or `timingSafeEqual`, and under `src/server/auth/**` plus `auth-config.ts` the only `process.env.<NAME>` reads are the three secrets, all in `password.ts`. | B/C: the `hashing-boundary.test.ts` amendments (they name `hashPin`/`verifyPin` and `scripts/pin-reset.ts`) |
+| All others | none | B or C, per the brief's phase table |
+
+Evidence for AC-6 and AC-8 in the new files, from `grep` over the ten Phase A files and the repository:
+```
+4/6-digit string literals in the ten files:                  (none)
+/setup_?code\w*\s*[:=]\s*["'`]/i in the ten files:           src/lib/auth-messages.ts:99 SETUP_CODE_INCORRECT_MESSAGE  (Finding 2)
+files naming createHmac|timingSafeEqual (src scripts prisma): src/server/auth/password.ts
+files naming bcryptjs (src scripts prisma):                   src/server/auth/password.ts
+process.env.<NAME> under src/server/auth + auth-config.ts:    password.ts:64 PIN_PEPPER, :190 AUTH_SECRET, :249 SETUP_CODE
+console.|logWarn|logError in the five modules:               (none)
+```
+
+### Verification output
+Baseline before Phase A (Phase 0's record): 59 files / 853 tests.
+```
+npm run typecheck   exit=0
+npm run lint        exit=0
+npm run test:unit   run 1: exit=0  Test Files 63 passed (63)  Tests 930 passed (930)  66.05s
+npm run test:unit   run 2: exit=0  Test Files 63 passed (63)  Tests 930 passed (930)  45.72s
+five files, verbose: auth-messages 7, account-lock 10, attempt-budget 11, credential-rules 20, password 34 = 82
+```
++4 files and +77 tests. That is 82 in the five files minus the 5 pre-existing password tests.
+
+**Mutations.** There were eleven. Each was applied alone and its own test file was run. Each file was then
+restored by byte copy from `scratchpad/pa/orig/`, and `sha256sum -c` passed for all five modules afterwards.
+
+| # | Mutation | Red tests (all others green) |
+|---|---|---|
+| M1 | account-lock: the lock doesn't double (`* 2 ** (level - 1)` changed to `* 1`) | 3: durations; next lock at the next duration; clear at level 3 then 120 min |
+| M2 | account-lock: CLEARED zeroes the level | 1: clear at level 3 then 120 min |
+| M3 | password: the setup-code compare isn't constant-time (`candidate === configured`) | 1: the AC-28 source test. The behaviour tests stay green, which is why the source assertion exists |
+| M4 | password: `verifyPin(pin, null)` skips the bcrypt | 1: AC-10's one-comparison test |
+| M5 | password: the device-token MAC isn't checked (length only) | 2: single character changed; another `AUTH_SECRET` |
+| M6 | password: the pepper minimum is 1 byte | 2: `PIN_PEPPER` 31 bytes and 16 bytes |
+| M7 | credential-rules: a trivial PIN is accepted by `parsePin` | 1: the 24 + 20 trivial PINs test |
+| M8 | credential-rules: the username is lower-cased before it's checked | 1: the refusals, via the Kelvin sign |
+| M9 | attempt-budget: `BUDGET_RESET` is ignored | 3: the reset tests |
+| M10 | attempt-budget: an event exactly 24 h old still counts (`>` changed to `>=`) | 2: the exactly-24-h test; same instant as the reset |
+| M11 | auth-messages: the module imports something | 1: "it imports nothing" |
+
+Restored sha256: account-lock `e5273fbd…`, password `7a132547…`, credential-rules `83dc2092…`,
+attempt-budget `ce450ea6…`, auth-messages `d56ccbec…`. All matched the pre-mutation copies.
+
+### Deviations from the spec
+1. **`bucketFor(kind, deviceId)` takes the verified device id, not the token.** The table says
+   `attempt-budget.ts` is **pure**, and AC-6 makes `password.ts` the only reader of `AUTH_SECRET`, so
+   `bucketFor` can't verify a token itself. The caller passes `verifyDeviceToken(token)`, which is `null`
+   for a missing, expired, malformed or forged token. AC-13's token cases are proven through that
+   composition. `bucketFor` also sends any non-null string that isn't a 32-hex id to the new-device
+   bucket, so a bucket name only ever takes a documented form. `kind` is an `AuthEventKind` value, and
+   `"SETUP_FAILURE"` always gives `"setup"`.
+2. **`parseProfileName` refuses more than AC-7 names.** It refuses line break, carriage return, tab, `<` and `>`,
+   and also every other C0 control character, DEL, U+0085, U+2028 and U+2029. Postgres refuses U+0000 in a
+   text column, so a public form would answer 500. The Unicode separators are line breaks by another name, and
+   the rule exists to protect #9's audit lines. `NAME_CHARACTERS_MESSAGE` says "another control character". The
+   test is titled "AC-7 (hardening…)". Code points are counted, so an astral character counts once.
+3. **One runtime export beyond the table: `CredentialSecretError`** (with `variable`: `PIN_PEPPER` |
+   `AUTH_SECRET`). Step 1 of sign-in (`UNAVAILABLE`) and `setupAvailable` must tell "pepper unusable" apart from a
+   bug. The table gives no predicate, so a caller catches this class around `currentPinKeyId()`. Also exported are
+   the types `PinCredential`, `CredentialSecret`, `PinLength` and the lock and budget types listed above.
+4. **`verifyPin(pin, pinHash: string | null)`.** `null`, or anything not shaped like a bcrypt hash, is compared
+   against a hash of 32 random bytes. That hash is made lazily, once per process, and `false` is returned. The
+   dummy has to live in `password.ts` because it is the one file allowed to import bcrypt. Phase B's service
+   therefore calls `verifyPin` exactly once in every evaluated case.
+5. **Interpretations the spec left open.** The pepper is used as its **decoded bytes**. It is trimmed, must match
+   the standard or URL-safe base64 alphabet, and must decode to at least 32 bytes, so the same key gives the same
+   digests in either encoding. `accountKey` lower-cases but doesn't trim, because callers pass a parsed username.
+   `SETUP_CODE` is trimmed and its length counted in code points; the candidate is compared exactly, untrimmed.
+   The device token is `v1.<32-hex id>.<expiry in Unix seconds, no leading zero>.<64-hex MAC>`, with the MAC under
+   `HMAC(AUTH_SECRET, "macroads:device-token:v1")`. It's compared as text, so every character is significant.
+   Comparing decoded base64 would ignore a last character's padding bits. `applyOutcome(FAILURE)` on a locked
+   state changes nothing. `lockDurationMinutes(k < 1 or non-integer)` throws `RangeError`, a programming error.
+6. **Wording.** The spec names every message but quotes none, so all the text in `auth-messages.ts` is mine. Every
+   message describes rules rather than illustrating them, and none contains a PIN or a code.
+
+### Findings: where the spec is wrong or conflicts with itself
+1. **AC-39's literal scan conflicts with AC-40.** Five e2e specs spell `ACCESS_DENIED_MESSAGE`'s 36-character text
+   inside `toHaveText(…)`: `analysis-access.spec.ts:225`, `item-master-access.spec.ts:150`,
+   `role-access.spec.ts:57`, `stock-entry-access.spec.ts:159` and `stock-entry-submit.spec.ts:168`. AC-39 forbids
+   that. AC-40 allows only three mechanical substitutions in those specs, and "literal becomes an import" isn't
+   one. One criterion must give way. I didn't write the scan: it would be red today, and the fix lies in files
+   Phase A may not touch.
+2. **AC-8's setup-code scan conflicts with AC-39.** AC-39 requires `SETUP_CODE_INCORRECT_MESSAGE`, which is a
+   non-empty string literal assigned to a name matching `/setup_?code/i`, and AC-8's wording forbids exactly that.
+   The AC-8 scan must exempt message constants, for example names ending `_MESSAGE`, or match only names that hold
+   a code.
+3. **AC-13 against the table's "pure".** `bucketFor(kind, device)` over tokens can't be pure while `password.ts`
+   alone reads `AUTH_SECRET`. This is resolved by Deviation 1.
+4. **A trivial PIN at sign-in.** `parsePin` refuses trivial PINs (AC-7). If Phase B's step 3 uses `parsePin`, a
+   trivial PIN becomes "malformed": one device-bucket failure, no account key, no bcrypt. That's safe, because no
+   stored PIN can be trivial, but AC-10 (f) doesn't list it, so Phase B should choose deliberately.
+5. **`AUTH_SECRET` has no reader to move.** Today no file in AC-6's set reads `process.env.AUTH_SECRET`, because
+   Auth.js reads it itself. `password.ts` is now its only reader in that set. The only other occurrence under `src/`
+   is `src/app/api/users/route.test.ts`, which is outside AC-6's set.
+
+### Notes for the reviewer
+- **No PIN or setup-code value anywhere.** Every PIN is from `generatePin`, `randomInt`, or built by rule. Every
+  code, pepper and secret is `randomBytes`. Full-width and Arabic-Indic digits are built with
+  `String.fromCharCode`.
+- **Real secrets are never read.** No test depends on the environment: every test that needs a secret sets
+  its own random value with `vi.stubEnv` (or unsets it), and a file-level `afterEach(vi.unstubAllEnvs)`
+  removes them. None of the five test files contains the text `process.env` (grep, exit 1), so none counts
+  as a reader for AC-6.
+- **Traps for Phases B and C.** AC-6 scans `src/`, tests included. So the AC-28 source test assembles the
+  constant-time function's name from parts, and the AC-10 spy uses `vi.doMock` with the library name assembled
+  from parts. Neither the current `hashing-boundary.test.ts` nor a stricter detector sees a test importing or
+  calling them.
+- **Nothing logs.** Nothing in Phase A logs, and no error message carries a value.
+- **Cost.** `password.test.ts` takes about 4 s: bcrypt at cost 10 in pure JS.
+- **Before my session.** `progress/impl_pin_auth.md` had a one-line change that isn't mine (a path escape fixed in
+  the Phase 0 gate note). I only appended this section.

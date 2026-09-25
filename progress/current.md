@@ -848,3 +848,37 @@ recorded before and after.
   Five files' test titles identical (sha256) and counts unchanged. No temp repos left in $TEMP.
   Scratch/probe commits unreachable (0 refs, no reflog). Report: `progress/impl_pin_auth.md`
   -> "## Phase 0". Coordinator still owes AC-47's init run and the `test(#21): ` commit.
+
+## Feature 21 `pin_auth` — Phase A (pure + crypto modules), implementer, started 2026-09-25
+
+Brief: leader's scratchpad `impl21-a.md`. #21 already `in_progress`. Purely additive: the email
+sign-in keeps working. No `prisma/`, `auth-config.ts`, `middleware.ts`, page, component or
+`tests/e2e/` edit; no `init`, e2e or `test:db`. Report: `progress/impl_pin_auth.md` -> `## Phase A`.
+
+### Files I expect to touch
+- `src/lib/auth-messages.ts` — ADD every AC-39 message/label + the three length constants; keep
+  the two email-era messages (Phase B removes them).
+- `src/server/auth/credential-rules.ts` (new) + `.test.ts` — AC-7.
+- `src/server/auth/account-lock.ts` (new) + `.test.ts` — AC-11.
+- `src/server/auth/attempt-budget.ts` (new) + `.test.ts` — AC-13.
+- `src/server/auth/password.ts` — ADD the nine PIN/device/setup functions; keep hashPassword /
+  verifyPassword. `password.test.ts` gains AC-5, AC-16 token half, AC-28 comparison half.
+- `src/lib/auth-messages.test.ts` (new) — AC-39's module half.
+
+### Approach
+- Secrets read lazily per call as `process.env.<NAME>` in password.ts only; tests set synthetic
+  values with `vi.stubEnv` (no `process.env.X` text in tests). Pepper: base64 alphabet, >= 32
+  decoded bytes, else a named error whose message names the variable and no part of the value.
+- `verifyPin(pin, null)` compares against a once-per-process bcrypt of random bytes, so the
+  service always pays exactly one bcrypt.
+- Device token `v1.<32 hex id>.<exp s>.<hex mac>` under a key derived from AUTH_SECRET; the MAC
+  compared as a string so every character is significant.
+- `bucketFor(kind, deviceId)` takes the VERIFIED id (the module is pure; password.ts is the only
+  AUTH_SECRET reader); token cases tested through `bucketFor(kind, verifyDeviceToken(t))`.
+- Tests: no PIN/setup-code literal; test sources build the two crypto-call names from parts so
+  AC-6's future detector sees one file.
+
+### Log
+- Five modules + tests written; the five files 82 tests green after two test-defect fixes (fresh-module error class; over-broad source regex). typecheck 0, lint 0.
+- 11 mutations (M1-M11) each red in its own file, restored by byte copy; sha256sum -c OK x5.
+- Report written: progress/impl_pin_auth.md -> ## Phase A. typecheck 0, lint 0, test:unit x2 = 63 files / 930 tests. Phase A complete for the implementer; Findings 1-2 (AC-39 vs AC-40, AC-8 vs AC-39) need the leader.
