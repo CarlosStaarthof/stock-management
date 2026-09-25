@@ -2,6 +2,8 @@ import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
+import { filesTouchedBy } from "../support/feature-scope";
+
 /**
  * The parts of spec 008 that are facts about the repository's own files rather than about
  * its runtime behaviour — the half of AC-18, AC-28, AC-29 and AC-31 that AC-32 lists among
@@ -170,11 +172,9 @@ describe("AC-16, AC-27: one writer, typed errors, and one place they become stat
   });
 
   it("AC-27: src/app/api/error-response.ts is unchanged by this feature", () => {
-    const changed = spawnSync("git", ["status", "--porcelain", "--", "src/app/api/error-response.ts"], {
-      encoding: "utf8",
-    });
-
-    expect((changed.stdout ?? "").trim()).toBe("");
+    // "By this feature": #8's commits, plus the working tree while #8 is `in_progress`
+    // (021 Phase 0). A later feature's edit to the file is not #8's.
+    expect(filesTouchedBy(8, ["src/app/api/error-response.ts"])).toEqual([]);
   });
 });
 
@@ -261,31 +261,21 @@ describe("AC-29, AC-31: no rounding, no price, no migration", () => {
   });
 
   it("AC-29: prisma/ is byte-identical — this feature adds no migration and no table", () => {
-    const changed = spawnSync("git", ["status", "--porcelain", "--", "prisma"], {
-      encoding: "utf8",
-    });
-
-    expect((changed.stdout ?? "").trim()).toBe("");
+    // #8's own work (021 Phase 0): a later feature's migration is not #8's.
+    expect(filesTouchedBy(8, ["prisma"])).toEqual([]);
   });
 
   it("AC-29: TRUNCATED_TABLES is unchanged, because #8 adds no table", () => {
-    const changed = spawnSync("git", ["status", "--porcelain", "--", "src/server/test-db.ts"], {
-      encoding: "utf8",
-    });
-
-    expect((changed.stdout ?? "").trim()).toBe("");
+    // #8's own work (021 Phase 0): a later feature that adds a table extends the list, and
+    // that edit is not #8's.
+    expect(filesTouchedBy(8, ["src/server/test-db.ts"])).toEqual([]);
   });
 });
 
 describe("AC-1, AC-32: the endpoint is outside the matcher, and opens no connection", () => {
   it("AC-1: the middleware gains no /api entry and no new pattern", () => {
-    const changed = spawnSync(
-      "git",
-      ["status", "--porcelain", "--", "src/lib/auth-config.ts", "src/middleware.ts"],
-      { encoding: "utf8" },
-    );
-
-    expect((changed.stdout ?? "").trim()).toBe("");
+    // #8's own work (021 Phase 0); a later feature may protect a new route there.
+    expect(filesTouchedBy(8, ["src/lib/auth-config.ts", "src/middleware.ts"])).toEqual([]);
     // A signed-out POST must reach the handler and get a JSON 401, because a 307 to an
     // HTML sign-in form is not something a `fetch` in a save loop can use.
     expect(read("src/middleware.ts")).not.toContain("/api");

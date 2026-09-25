@@ -2,6 +2,8 @@ import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
+import { filesTouchedBy, workingTreeChanges } from "../support/feature-scope";
+
 /**
  * The parts of spec 011 that are facts about the repository's own files rather than about
  * its runtime behaviour — the scan halves AC-23 lists among the checks that survive with
@@ -364,12 +366,11 @@ describe("011 AC-22: the strings are single-sourced, and the fence stays green",
 
 describe("011 AC-25: what this feature is allowed to touch", () => {
   it("AC-25: the schema, the migrations and the truncate list are untouched", () => {
-    const changed = spawnSync(
-      "git",
-      [
-        "status",
-        "--porcelain",
-        "--",
+    // #11's own work, through the one helper (021 Phase 0): #11's commits, plus the working
+    // tree only while #11 is `in_progress`. A later feature that legitimately edits one of
+    // these paths is not #11, so it cannot turn this red.
+    expect(
+      filesTouchedBy(11, [
         "prisma/schema.prisma",
         "prisma/migrations",
         "src/server/test-db.ts",
@@ -396,12 +397,13 @@ describe("011 AC-25: what this feature is allowed to touch", () => {
         "src/components/stock-entry",
         "src/components/stock-takes",
         "src/components/item-master",
-        "Samples",
-      ],
-      { encoding: "utf8" },
-    );
+      ]),
+    ).toEqual([]);
 
-    expect((changed.stdout ?? "").trim()).toBe("");
+    // `Samples` LEFT THE LIST ABOVE, and is not dropped: no feature may ever change it
+    // (CLAUDE.md, docs/conventions.md -> Forbidden), so it is a global invariant, strict
+    // against the working tree in every session, whoever is working.
+    expect(workingTreeChanges(["Samples"])).toEqual([]);
   });
 
   it("AC-25: no new model, and no value or total column anywhere in the schema", () => {
@@ -419,16 +421,10 @@ describe("011 AC-25: what this feature is allowed to touch", () => {
     // rendering path into a screen that needs none of them - and #10's finding stands: a
     // screen that needs JavaScript is a screen that breaks.
     //
-    // ASSERTED AS AN ABSENCE, which is the direction that survives the commit (010's
-    // seventh amendment): "this file was never touched" stays true forever, while "this
-    // file was changed" passes only during the session that writes it.
-    const changed = spawnSync(
-      "git",
-      ["status", "--porcelain", "--", "package.json", "package-lock.json"],
-      { encoding: "utf8" },
-    );
-
-    expect((changed.stdout ?? "").trim()).toBe("");
+    // ASSERTED AGAINST #11'S OWN WORK (021 Phase 0): #11's commits touched neither file, and
+    // while #11 is `in_progress` neither does the working tree. A later feature that adds a
+    // script to package.json is not #11, and does not turn this red.
+    expect(filesTouchedBy(11, ["package.json", "package-lock.json"])).toEqual([]);
 
     // Non-vacuity: the dependency list really was read, and the chart's own module really
     // does build the geometry this feature renders.

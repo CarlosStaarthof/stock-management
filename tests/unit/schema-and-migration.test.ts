@@ -2,6 +2,8 @@ import { spawnSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
+import { filesTouchedBy } from "../support/feature-scope";
+
 /**
  * The schema and the migration history as facts about files, checkable with no database.
  *
@@ -348,13 +350,10 @@ describe("the second migration, create_stock_domain", () => {
     const lock = readFileSync(`${MIGRATIONS_DIR}/migration_lock.toml`, "utf8");
     expect(lock).toMatch(/provider\s*=\s*"postgresql"/);
 
-    const status = spawnSync(
-      "git",
-      ["status", "--porcelain", "--", `${MIGRATIONS_DIR}/migration_lock.toml`],
-      { encoding: "utf8" },
-    );
-
-    expect((status.stdout ?? "").trim()).toBe("");
+    // "Unmodified" by #4, whose migration it is: #4's commits, plus the working tree while
+    // #4 is `in_progress` (021 Phase 0). A later migration leaves the lock alone while the
+    // provider stays the same, and the provider is checked above whoever is working.
+    expect(filesTouchedBy(4, [`${MIGRATIONS_DIR}/migration_lock.toml`])).toEqual([]);
   });
 
   it("004 AC-23: the migration is additive - no DROP, no TRUNCATE, nothing aimed at User or Role", () => {

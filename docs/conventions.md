@@ -93,13 +93,26 @@ it("AC-3: rejects a second count for the same location and period", async () => 
 
 - Arrange / Act / Assert, separated by blank lines.
 - No shared mutable state between tests. Each test seeds what it needs.
-- **An assertion whose subject is the working tree expires at the commit.** Asserting a file
-  is *unchanged* (`expect(porcelain).toBe("")`) stays true forever and is fine. Asserting a
-  file *was changed* — an equality on `git status --porcelain`, a line count from
-  `git diff` — passes only during the session that writes it, then fails forever in a feature
-  nobody is working on. Spell it as a **fixed commit range** instead:
-  `git diff --name-only <the feature's base commit>..HEAD -- <paths>`. Same claim, and it
-  survives the commit. See 010's seventh post-approval amendment.
+- **A git assertion says whose work it is about, through `tests/support/feature-scope.ts`.**
+  No test runs `git status` or `git diff` itself to make one. There are three kinds:
+  - *A path no feature may change* — a global invariant with a written "never" behind it,
+    today only `Samples/` (`CLAUDE.md`, *Forbidden* below):
+    `expect(workingTreeChanges(["Samples"])).toEqual([])`. Checked in every session,
+    whoever is working.
+  - *A path feature N did not touch*: `expect(filesTouchedBy(N, paths)).toEqual([])`.
+  - *What feature N changed*: an equality on `filesTouchedBy(N, paths)` or
+    `changedLinesBy(N, paths)`.
+
+  The helper reads N's own commits (see *Commits*), plus the working tree while N is
+  `in_progress`. **Neither the working tree nor a commit range ending at the branch tip may
+  carry a claim about one feature's work.** The working tree does not record whose change it
+  holds: a later feature's legitimate edit turns an earlier feature's "untouched" check red,
+  and a claim that something *was* changed empties out at the commit. A range that ends at
+  the tip keeps taking in every later feature's commits to the same paths: 010's
+  `playwright.config.ts` check had already absorbed #11's edit, and its `CalendarGrid.tsx`
+  check would have turned red at #21's commit. A range from a feature's first commit to its
+  last fails too, because a feature's commits are not contiguous (`fix(#8)` landed after #10).
+  See 021's Phase 0 amendment.
 
 ## Commits
 
@@ -111,9 +124,28 @@ it("AC-3: rejects a second count for the same location and period", async () => 
 Feature: #<id> <feature_name>
 ```
 
-Types: `feat`, `fix`, `refactor`, `test`, `docs`, `chore`, `harness`.
+Types: `spec`, `feat`, `fix`, `refactor`, `test`, `docs`, `chore`, `harness`.
 
 One feature per commit series. Never mix a refactor into a feature commit.
+
+**The scope says which feature a commit is for, and tests depend on it.** Every commit made
+for a feature is scoped `(#<id>)`: `spec(#N)` approves or amends its spec, `feat(#N)` builds
+it, `fix(#N)` repairs it later, and any other type takes the same scope (`test(#N)`,
+`refactor(#N)`). A commit made for no feature takes a word scope (`fix(app)`,
+`harness(repo)`) and belongs to no feature. `tests/support/feature-scope.ts` decides whose a
+commit is from **the subject line alone** — lower-case type, `(#N)`, a colon and a space. It
+never reads the body, the author, the date or the `Feature:` trailer above.
+
+- **A missing or malformed scope** (`fix(app)` for #8's work, `fix(#08)`, `fix #8:`) makes the
+  commit no feature's. Every "N did not touch this" check ignores it: a false green, never a
+  false red, which only review catches — or the working-tree half, if the gate runs while
+  the edit is uncommitted and N is `in_progress`.
+- **A wrong number** (`fix(#10)` for #8's work) makes the commit #10's for good, because
+  history on `main` is not rewritten. If it touched a path #10's checks protect, they turn red
+  for a change #10 did not make. The remedy is an attribution correction added to the helper,
+  keyed by the commit's SHA, carrying its reason and reviewed on its own — never an edit to
+  the assertion.
+- **A revert** (`Revert "fix(#8): …"`) belongs to no feature, and the reverted commit stays #8's.
 
 ## Forbidden
 

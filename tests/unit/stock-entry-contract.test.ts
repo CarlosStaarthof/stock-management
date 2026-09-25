@@ -2,6 +2,8 @@ import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
+import { filesTouchedBy } from "../support/feature-scope";
+
 /**
  * The parts of spec 007 that are facts about the repository's own files rather than about
  * its runtime behaviour. They need no database and no browser, which is why AC-29 lists
@@ -140,22 +142,17 @@ describe("AC-3: the refusal is the server's answer and stays one", () => {
     expect(existsSync("src/app/(public)/loading.tsx")).toBe(true);
     expect(read("src/app/(public)/loading.tsx")).toContain('data-testid="loading"');
 
-    const changed = spawnSync("git", ["status", "--porcelain", "--", "src/app/(public)/loading.tsx"], {
-      encoding: "utf8",
-    });
-    expect((changed.stdout ?? "").trim()).toBe("");
+    // "Unchanged" by #7 (021 Phase 0): the file is #7's to protect, not a global invariant.
+    // What it must still DO is held by the two checks above and by the census, whoever is
+    // working; a later feature restyling the public fallback is not #7's edit.
+    expect(filesTouchedBy(7, ["src/app/(public)/loading.tsx"])).toEqual([]);
   });
 });
 
 describe("AC-1: the section needs no new route protection", () => {
   it("AC-1: auth-config.ts and middleware.ts are byte-identical to their shipped state", () => {
-    const changed = spawnSync(
-      "git",
-      ["status", "--porcelain", "--", "src/lib/auth-config.ts", "src/middleware.ts"],
-      { encoding: "utf8" },
-    );
-
-    expect((changed.stdout ?? "").trim()).toBe("");
+    // #7's own work (021 Phase 0): a later feature that protects a new route edits both.
+    expect(filesTouchedBy(7, ["src/lib/auth-config.ts", "src/middleware.ts"])).toEqual([]);
   });
 
   it("AC-1: /stock-entry is already protected, and every sub-path with it", () => {
@@ -708,11 +705,9 @@ describe("AC-30: the e2e suite keeps 006 AC-35's shape", () => {
 
 describe("AC-32: nothing here touches the schema or the workbook", () => {
   it("AC-32: prisma/ is byte-identical — this feature adds no migration", () => {
-    const changed = spawnSync("git", ["status", "--porcelain", "--", "prisma"], {
-      encoding: "utf8",
-    });
-
-    expect((changed.stdout ?? "").trim()).toBe("");
+    // "This feature": #7's commits, plus the working tree while #7 is `in_progress`
+    // (021 Phase 0). A later feature's migration is not #7's.
+    expect(filesTouchedBy(7, ["prisma"])).toEqual([]);
     expect(existsSync("prisma/migrations/migration_lock.toml")).toBe(true);
   });
 

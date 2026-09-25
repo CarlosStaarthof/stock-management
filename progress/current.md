@@ -805,3 +805,46 @@ Red proof: build with HEAD layout -> `-g "#418"` red; static test red on HEAD la
       15 s default; whole run slow, 65 s); runs 2 and 3 green, 58 files / 838 tests.
       Not mine to fix; noted for the leader. Dev DB census 4/4/2/10/19/140/129/152/0/0.
 - [x] Report: `progress/impl_hydration_418.md` -> "Final pass (review recommendations)".
+
+## Feature 21 `pin_auth` — Phase 0 only (AC-44..AC-47), implementer, started 2026-09-25
+
+Brief: leader's scratchpad `impl21-p0.md`. #21 already `in_progress`. No other #21 change; no
+`init`, e2e or `test:db` (coordinator runs the gate). Report: `progress/impl_pin_auth.md`.
+
+### Files I expect to touch
+- `tests/support/feature-scope.ts` (new) — the one helper: `isAttributedTo`, `featureStatus`,
+  `commitsOf`, `filesTouchedBy`, `changedLinesBy`, `workingTreeChanges`; read-only git
+  (`--no-optional-locks --literal-pathspecs`, `log --full-history`), fails closed.
+- `tests/unit/feature-scope.test.ts` (new) — AC-44 on throwaway temp repos (a)-(h), index and
+  refs unchanged across every call; AC-45's scan (porcelain arguments, the two banned strings).
+- The five test files of the Phase 0 table: rows 1-10, 12-16 converted; row 11 byte-identical.
+- `docs/conventions.md` — *Tests* bullet replaced, *Commits* scope rules (AC-47).
+
+### Approach
+Per-commit `git show --no-renames` (files / zero-context patch, hunk-state parser so content lines
+starting `++`/`--` survive and headers do not); working tree via `status --porcelain=v1 -z
+--no-renames --untracked-files=all` and `diff HEAD` + untracked file lines. AC-46 proofs in a
+detached `git worktree` under the scratchpad (scratch commit of Phase 0 on HEAD), node_modules
+junction removed on its own before `git worktree remove`; main's HEAD / for-each-ref / status
+recorded before and after.
+
+### Log
+- Helper `tests/support/feature-scope.ts` + `tests/unit/feature-scope.test.ts` written; rows 1-10,
+  12-16 converted, row 11 byte-identical (sed range cmp vs byte copy); conventions updated.
+  typecheck 0, lint 0; five files 135/135; feature-scope 15/15.
+- AC-46: main state recorded (`scratchpad/p0/main-before.txt`); worktree `scratchpad/p0/wt`
+  detached, scratch commit 3f609b4 `test(#21): phase 0 scratch, worktree only`; node_modules
+  junction inside it (git sees it as an ignored dir -- tested first on a scratch repo).
+  Remove the junction ON ITS OWN (`cmd /c rmdir`) before `git worktree remove`.
+- AC-46 first attempt: converted rows behaved exactly per the table, but 7 schema-and-migration
+  CONTENT tests failed in every run incl. R0 -- and on the clean worktree with no probe. Cause:
+  the worktree was checked out CRLF (system core.autocrlf=true); main is LF. NOT MINE: that
+  test's schema parser is not CRLF-tolerant (a fresh Windows clone would fail it too). Noted for
+  the leader. Junction removed alone, worktree removed; re-creating it with
+  `-c core.autocrlf=false` so it matches main. First logs kept: `p0/*-crlf-checkout*`.
+- AC-46 LF worktree (START cea3752): R0-R5 exactly per table, 0 other failures. Running R6-R11.
+- AC-46 R6-R11 exactly per table; 8 helper mutations all red (M8 via index bytes); worktree torn down, main before/after identical. Running test:unit x2.
+- test:unit x2 green: 59 files / 853 tests (was 58/838; +feature-scope's 15). typecheck 0, lint 0.
+  Five files' test titles identical (sha256) and counts unchanged. No temp repos left in $TEMP.
+  Scratch/probe commits unreachable (0 refs, no reflog). Report: `progress/impl_pin_auth.md`
+  -> "## Phase 0". Coordinator still owes AC-47's init run and the `test(#21): ` commit.

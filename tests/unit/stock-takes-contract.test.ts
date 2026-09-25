@@ -2,6 +2,8 @@ import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
+import { changedLinesBy, filesTouchedBy } from "../support/feature-scope";
+
 /**
  * The parts of spec 010 that are facts about the repository's own files rather than about
  * its runtime behaviour. They need no database and no browser, which is why AC-20 lists
@@ -98,13 +100,9 @@ describe("AC-4: there is no second calendar query", () => {
   it("AC-4: count-service.ts is byte-identical to its shipped state", () => {
     // `listCalendarMonth` is called identically by both pages; the yard scope is a pure
     // filter over its result, so there is no `where` clause that could disagree with #7's.
-    const changed = spawnSync(
-      "git",
-      ["status", "--porcelain", "--", "src/server/counts/count-service.ts"],
-      { encoding: "utf8" },
-    );
-
-    expect((changed.stdout ?? "").trim()).toBe("");
+    // #10's own work (021 Phase 0): #10's commits, plus the working tree while #10 is
+    // `in_progress`.
+    expect(filesTouchedBy(10, ["src/server/counts/count-service.ts"])).toEqual([]);
   });
 
   it("AC-4: listCalendarMonth is the only function that returns a CalendarMonth", () => {
@@ -220,12 +218,9 @@ describe("AC-12, AC-18: money-free, and single-sourced", () => {
 
 describe("AC-22: nothing this feature does not own has been touched", () => {
   it("AC-22: the schema, the migrations and TRUNCATED_TABLES are unchanged", () => {
-    const changed = spawnSync(
-      "git",
-      [
-        "status",
-        "--porcelain",
-        "--",
+    // #10's own work (021 Phase 0). A later feature's migration, table or route is not #10's.
+    expect(
+      filesTouchedBy(10, [
         "prisma/schema.prisma",
         "prisma/migrations",
         "src/server/test-db.ts",
@@ -240,11 +235,8 @@ describe("AC-22: nothing this feature does not own has been touched", () => {
         "src/server/counts/count-entry-service.ts",
         "src/server/counts/count-lifecycle-service.ts",
         "src/server/counts/count-summary-service.ts",
-      ],
-      { encoding: "utf8" },
-    );
-
-    expect((changed.stdout ?? "").trim()).toBe("");
+      ]),
+    ).toEqual([]);
   });
 
   it("AC-22: TRUNCATED_TABLES still holds exactly its eight entries", () => {
@@ -338,13 +330,8 @@ describe("AC-3, AC-10: the pages read, and they never touch a decimal as a numbe
 
 describe("AC-4: one calendar, rendered at two addresses", () => {
   it("AC-4: /stock-entry/page.tsx is byte-identical, so #7's rendering cannot have moved", () => {
-    const changed = spawnSync(
-      "git",
-      ["status", "--porcelain", "--", "src/app/stock-entry/page.tsx"],
-      { encoding: "utf8" },
-    );
-
-    expect((changed.stdout ?? "").trim()).toBe("");
+    // Moved by #10, that is (021 Phase 0): a later feature's edit to the header is not #10's.
+    expect(filesTouchedBy(10, ["src/app/stock-entry/page.tsx"])).toEqual([]);
   });
 
   it("AC-4: CalendarGrid gains exactly two optional props, and their defaults are #7's", () => {
@@ -500,23 +487,19 @@ describe("AC-20: the checks that survive with no database", () => {
 });
 
 /**
- * `ee448cb` is `spec(#10): approve stock_takes_history` - the commit this feature was built
- * on, and the base of the two assertions below.
+ * BOTH ASSERTIONS BELOW MAKE A PRESENCE CLAIM about #10's own work: "exactly one file in #7's
+ * trees changed", "playwright.config.ts changed by exactly four lines". They read #10's own
+ * commits through the one helper (021 Phase 0), plus the working tree while #10 is
+ * `in_progress`.
  *
- * THE RANGE IS FIXED ON PURPOSE. Both assertions make a PRESENCE claim: "exactly one file in
- * #7's trees changed", "playwright.config.ts changed by exactly four lines". Read against the
- * WORKING TREE (`git status --porcelain`, a bare `git diff`) a presence claim passes only
- * during the session that writes it and then fails forever - these two went red the moment
- * `b468f60 feat(#10)` was committed, in a feature nobody was working on. Read against
- * `ee448cb..HEAD` the same claim is true before that commit and after it, and it survives
- * #11, #12 and #16 landing on top.
- *
- * Do not "tidy" this back to the working tree, and do not move the base forward: a later base
- * would stop the range from containing #10's own edit, and the claim would silently empty out
- * into a comparison of nothing against nothing. See 010's seventh post-approval amendment and
- * `docs/conventions.md` -> Tests.
+ * Not the working tree alone: it empties at the commit, and these two went red the moment
+ * `b468f60 feat(#10)` was committed, in a feature nobody was working on. And not a range from
+ * #10's spec approval to the tip of the branch, which is what replaced it: that range keeps
+ * absorbing every later feature's edits to the same paths. It had already taken in #11's
+ * rewrite of the two route patterns, and #21's edits to `src/app/stock-entry` and the
+ * middleware would have turned the first assertion red for work that is not #10's. See 010's
+ * seventh post-approval amendment, 021's Phase 0 amendment and `docs/conventions.md` -> Tests.
  */
-const SPEC_APPROVAL_COMMIT = "ee448cb";
 
 describe("AC-22: the one shipped source file this feature edits", () => {
   it("AC-22: CalendarGrid.tsx is the only changed file in #7's trees", () => {
@@ -525,47 +508,24 @@ describe("AC-22: the one shipped source file this feature edits", () => {
     // optional props landed. The replacement is stricter, not looser - it names the ONE
     // file that may differ and still requires every other file in both trees to be
     // untouched, so a second edit anywhere in them turns it red.
-    const changed = spawnSync(
-      "git",
-      [
-        "diff",
-        "--name-only",
-        `${SPEC_APPROVAL_COMMIT}..HEAD`,
-        "--",
-        "src/app/stock-entry",
-        "src/components/stock-entry",
-        "src/lib/count-messages.ts",
-        "src/server/counts/count-service.ts",
-        "src/server/counts/count-entry-service.ts",
-        "src/server/counts/count-lifecycle-service.ts",
-        "src/server/counts/count-summary-service.ts",
-        "src/lib/auth-config.ts",
-        "src/middleware.ts",
-      ],
-      { encoding: "utf8" },
-    );
-
-    // `--name-only` prints bare paths, where `--porcelain` printed a two-character status
-    // column ahead of each one - hence no `.slice(3)` below.
-    const files = (changed.stdout ?? "")
-      .split("\n")
-      .map((line) => line.trim())
-      .filter((line) => line.length > 0);
+    const files = filesTouchedBy(10, [
+      "src/app/stock-entry",
+      "src/components/stock-entry",
+      "src/lib/count-messages.ts",
+      "src/server/counts/count-service.ts",
+      "src/server/counts/count-entry-service.ts",
+      "src/server/counts/count-lifecycle-service.ts",
+      "src/server/counts/count-summary-service.ts",
+      "src/lib/auth-config.ts",
+      "src/middleware.ts",
+    ]);
 
     expect(files).toEqual([GRID]);
   });
 
   it("AC-21, AC-22: playwright.config.ts changed by exactly its two route patterns", () => {
-    const diff = spawnSync(
-      "git",
-      ["diff", "--unified=0", `${SPEC_APPROVAL_COMMIT}..HEAD`, "--", "playwright.config.ts"],
-      { encoding: "utf8" },
-    );
-
-    const changedLines = (diff.stdout ?? "")
-      .split("\n")
-      .filter((line) => /^[+-][^+-]/.test(line))
-      .map((line) => line.trim());
+    // Each line keeps its `+` or `-`; the pattern below is unanchored, as it was.
+    const changedLines = changedLinesBy(10, ["playwright.config.ts"]);
 
     expect(changedLines).toHaveLength(4);
     for (const line of changedLines) {
