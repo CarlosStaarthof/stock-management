@@ -6,6 +6,8 @@ import {
   formatPriceExact,
   multiplyDecimal,
   roundHalfUp,
+  scaleToInteger,
+  subtractDecimals,
   sumDecimals,
 } from "@/lib/money";
 
@@ -183,19 +185,24 @@ describe("AC-24: no JavaScript number touches money in this module", () => {
     expect(code).not.toMatch(/\bMath\.round\b/);
   });
 
-  it("AC-24: there is exactly ONE multiplication, and TypeScript proves both sides are bigint", () => {
-    // `*` is not banned outright - it is banned on a price, a quantity or a value. The
-    // module contains one, between two `bigint` digit strings; mixing a `bigint` with a
-    // `number` is a compile error, so `npm run typecheck` is what proves the operands.
+  it("AC-24, 011 AC-10: every multiplication is between bigints, and the list is exact", () => {
+    // `*` is not banned outright - it is banned on a price, a quantity or a value. Each
+    // one below is between `bigint` operands; mixing a `bigint` with a `number` is a
+    // compile error, so `npm run typecheck` is what proves them.
     // The OPERATOR, not the character: `(\d*)` inside the decimal pattern is not one.
     const multiplications = code.split("\n").filter((line) => /\s\*\s/.test(line));
 
     // No exponentiation either, which is why `powerOfTen` builds a literal.
     expect(code).not.toMatch(/\*\*/);
 
+    // AMENDED BY 011 AC-10, as an exact list and never as a relaxed pattern: the third is
+    // `scaleToInteger`'s decimal -> coordinate step, which exists so that the trend chart
+    // needs no `Number(` and 011 AC-10 can refuse the usual chart exemption. A fourth
+    // multiplication turns this red.
     expect(multiplications.map((line) => line.trim())).toEqual([
       "return value.digits * powerOfTen(scale - value.scale);",
       "digits: first.digits * second.digits,",
+      "const scaled = top * span;",
     ]);
     expect(code).toMatch(/digits:\s*bigint/);
   });
@@ -256,5 +263,109 @@ describe("compareDecimals", () => {
     expect(code).not.toMatch(/\bparseFloat\b/);
     expect(code).not.toMatch(/\btoFixed\b/);
     expect(code).not.toMatch(/\bMath\.round\b/);
+  });
+});
+
+/* =====================================================================================
+ * Feature #11 — 011 AC-10. No database, no browser: this is the arithmetic the chart and
+ * the two variances are made of, and every figure below is in the criterion.
+ * ===================================================================================== */
+
+describe("subtractDecimals", () => {
+  it("011 AC-10: the four differences the criterion names, exactly", () => {
+    expect(subtractDecimals("8896.637232378368", "8748.7")).toBe("147.937232378368");
+    expect(subtractDecimals("100", "150")).toBe("-50");
+    expect(subtractDecimals("9.50", "9.5")).toBe("0");
+    expect(subtractDecimals("0", "0.0001")).toBe("-0.0001");
+  });
+
+  it("011 AC-10: a zero difference has no sign and no trailing noise", () => {
+    // `-0.00` on a month-on-month variance is a figure nobody wants to read, and
+    // `"0.0000"` is the same fact spelled four ways.
+    expect(subtractDecimals("1.0000", "1")).toBe("0");
+    expect(subtractDecimals("-5", "-5")).toBe("0");
+    expect(subtractDecimals("0", "0")).toBe("0");
+  });
+
+  it("011 AC-10: it is exact past the range a double can hold", () => {
+    // The whole reason this module is string arithmetic: as doubles these two differ by 0.
+    expect(subtractDecimals("9007199254740993", "9007199254740992")).toBe("1");
+    expect(subtractDecimals("0.30000000000000004", "0.3")).toBe("0.00000000000000004");
+  });
+
+  it("011 AC-10: it subtracts negatives and mixed signs the way arithmetic does", () => {
+    expect(subtractDecimals("-100", "-150")).toBe("50");
+    expect(subtractDecimals("-100", "150")).toBe("-250");
+    expect(subtractDecimals("100", "-150")).toBe("250");
+  });
+
+  it("011 AC-21: a string it cannot read counts as zero rather than throwing", () => {
+    // A service must raise only typed domain errors, and a `RangeError` escaping from a
+    // formatter would be neither typed nor catchable by a screen.
+    expect(subtractDecimals("banana", "5")).toBe("-5");
+    expect(subtractDecimals("5", "banana")).toBe("5");
+  });
+});
+
+describe("scaleToInteger", () => {
+  it("011 AC-10: the eight values the criterion names, exactly", () => {
+    expect(scaleToInteger("50", "100", 160)).toBe("80");
+    expect(scaleToInteger("100", "100", 160)).toBe("160");
+    expect(scaleToInteger("0", "100", 160)).toBe("0");
+    expect(scaleToInteger("1", "3", 160)).toBe("53");
+    expect(scaleToInteger("2", "3", 160)).toBe("107");
+    expect(scaleToInteger("0", "0", 160)).toBe("0");
+    expect(scaleToInteger("200", "100", 160)).toBe("160");
+    expect(scaleToInteger("0.0001", "1000000", 160)).toBe("0");
+  });
+
+  it("011 AC-10: it rounds HALF AWAY FROM ZERO, not toward it", () => {
+    // 53.33 down and 106.67 up are the two thirds above; these are the exact halves.
+    expect(scaleToInteger("1", "2", 1)).toBe("1");
+    expect(scaleToInteger("1", "4", 2)).toBe("1");
+    expect(scaleToInteger("3", "4", 2)).toBe("2");
+  });
+
+  it("011 AC-14: it never draws outside the box, in either direction", () => {
+    expect(scaleToInteger("-50", "100", 160)).toBe("0");
+    expect(scaleToInteger("100", "-100", 160)).toBe("0");
+    expect(scaleToInteger("1000000", "1", 160)).toBe("160");
+    expect(scaleToInteger("50", "100", 0)).toBe("0");
+    expect(scaleToInteger("50", "100", -10)).toBe("0");
+  });
+
+  it("011 AC-10: it is exact at a scale and a size no double survives", () => {
+    // A real total: the AC-7 fixture's, against itself, is the full plot height.
+    expect(scaleToInteger("8896.637232378368", "8896.637232378368", 160)).toBe("160");
+    // And exactly half of it, which a float would land one unit either side of.
+    expect(scaleToInteger("4448.318616189184", "8896.637232378368", 160)).toBe("80");
+    expect(scaleToInteger("1", "9007199254740993", 160)).toBe("0");
+  });
+
+  it("011 AC-21: a string it cannot read is no bar rather than a throw", () => {
+    expect(scaleToInteger("banana", "100", 160)).toBe("0");
+    expect(scaleToInteger("50", "banana", 160)).toBe("0");
+  });
+
+  it("011 AC-10: the whole module still uses no JavaScript number", () => {
+    // The scan that lets 011 AC-10 refuse the usual chart exemption: the decimal ->
+    // coordinate step is `bigint` here, so `src/lib/analysis-chart.ts` needs no `Number(`.
+    const code = readFileSync("src/lib/money.ts", "utf8")
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/\/\/.*$/gm, "");
+
+    expect(code).toContain("export function scaleToInteger");
+    expect(code).toContain("export function subtractDecimals");
+    expect(code).not.toMatch(/\bNumber\s*\(/);
+    expect(code).not.toMatch(/\bparseFloat\b/);
+    expect(code).not.toMatch(/\btoFixed\b/);
+    expect(code).not.toMatch(/\bMath\.round\b/);
+  });
+
+  it("011 AC-26: money.ts still names the price column nowhere", () => {
+    // 006 AC-31 holds the whole of `src/lib/**` at zero files naming it, and 011 AC-26
+    // keeps it there - which is why the two new functions take `value`, `max`, `range`,
+    // `left` and `right`.
+    expect(readFileSync("src/lib/money.ts", "utf8")).not.toContain("unitPrice");
   });
 });

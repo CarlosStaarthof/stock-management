@@ -234,3 +234,105 @@ export function compareDecimals(left: string, right: string): -1 | 0 | 1 {
   if (signedFirst < signedSecond) return -1;
   return signedFirst > signedSecond ? 1 : 0;
 }
+
+/* ===================================================================================
+ * Feature #11 — the difference, and the step from a decimal to a coordinate.
+ *
+ * Both are here rather than in the analysis modules for the reason `compareDecimals` is:
+ * the digits-and-scale machinery above is already exact at any size, and a second copy of
+ * it would be a second thing to keep right.
+ *
+ * `scaleToInteger` IS THE REASON THE CHART NEEDS NO `Number(` (011 AC-10). A bar's height
+ * is a euro figure mapped onto a viewBox, which is the one place in a chart a JavaScript
+ * float normally creeps in; here the mapping is `bigint` division with an exact remainder
+ * test, so 011's scan of `src/lib/analysis-chart.ts` and `src/server/reporting/**` can
+ * refuse `Number(`, `parseFloat`, `toFixed` and `Math.round` outright rather than granting
+ * the usual chart exemption.
+ *
+ * The parameters keep neutral names — `left`, `right`, `value`, `max`, `range` — for the
+ * reason the header gives: 006 AC-31 holds `src/lib/**` at zero files naming the price
+ * column, and 011 AC-26 keeps it there.
+ * =================================================================================== */
+
+/**
+ * `left − right`, exact to the last digit, with no rounding anywhere (011 AC-10).
+ *
+ * `subtractDecimals("8896.637232378368", "8748.7")` is `"147.937232378368"`;
+ * `("100", "150")` is `"-50"`; `("9.50", "9.5")` is `"0"` — a zero difference has no sign
+ * and no trailing noise, because `-0.00` on a variance is a figure nobody wants to read.
+ *
+ * A string this function cannot read counts as zero rather than throwing, exactly as
+ * `multiplyDecimal` and `sumDecimals` treat one: every value that reaches it is a figure
+ * this module itself produced from a `Decimal` column, so an unreadable one is a bug, and
+ * a `RangeError` escaping a formatter would be neither typed nor catchable by a screen
+ * (011 AC-21).
+ */
+export function subtractDecimals(left: string, right: string): string {
+  const first = scaledDigitsOf(left);
+  const second = scaledDigitsOf(right);
+
+  const scale = Math.max(first?.scale ?? 0, second?.scale ?? 0);
+  const signed = (value: ScaledDigits | null): bigint => {
+    if (value === null) return 0n;
+    return value.negative ? -atScale(value, scale) : atScale(value, scale);
+  };
+
+  const difference = signed(first) - signed(second);
+
+  return render(
+    {
+      negative: difference < 0n,
+      digits: difference < 0n ? -difference : difference,
+      scale,
+    },
+    true,
+  );
+}
+
+/**
+ * `value / max × range`, as an integer STRING, half away from zero, clamped to `[0, range]`.
+ *
+ * This is the decimal → coordinate step of the trend chart (011 AC-10, AC-14), and it is
+ * `bigint` throughout: `scaleToInteger("50", "100", 160)` is `"80"`,
+ * `("1", "3", 160)` is `"53"` and `("2", "3", 160)` is `"107"` — the two thirds round in
+ * opposite directions and neither passes through a float.
+ *
+ * THREE EDGES, ANSWERED RATHER THAN GUARDED AGAINST BY THE CALLER:
+ *
+ *   * `max` of `"0"` — every period is zero — gives `"0"` for every point. A ratio with no
+ *     denominator is not an error here; it is a flat chart, and #11 draws it as thirteen
+ *     minimum-height bars because a COMPLETE period holding nothing is a real fact.
+ *   * a `value` above `max`, or below zero, is CLAMPED into the box rather than allowed to
+ *     draw outside it. A bar taller than the plot is a rendering bug a reader cannot see.
+ *   * `("0.0001", "1000000", 160)` is `"0"` — a figure too small to be a pixel is no
+ *     pixels, and the caller, not this function, decides whether a visible period still
+ *     deserves a minimum bar.
+ *
+ * `range` is an integer count of viewBox units, which is a dimension and never a quantity
+ * or a price, so it is the one plain `number` on this path.
+ */
+export function scaleToInteger(value: string, max: string, range: number): string {
+  const numerator = scaledDigitsOf(value);
+  const denominator = scaledDigitsOf(max);
+  if (numerator === null || denominator === null) return "0";
+
+  const span = BigInt(range);
+  if (span <= 0n) return "0";
+
+  // A negative figure and a non-positive maximum both leave the box; neither is drawable.
+  const scale = Math.max(numerator.scale, denominator.scale);
+  const top = numerator.negative ? -atScale(numerator, scale) : atScale(numerator, scale);
+  const bottom = denominator.negative ? -atScale(denominator, scale) : atScale(denominator, scale);
+  if (top <= 0n || bottom <= 0n) return "0";
+  if (top >= bottom) return span.toString();
+
+  const scaled = top * span;
+  const quotient = scaled / bottom;
+  const remainder = scaled % bottom;
+  // `remainder + remainder >= bottom` rather than `2n * remainder`, for the reason
+  // `roundHalfUp` gives: the doubling is an addition, so the rounding needs no second
+  // multiplication and a scan can say how many this module performs.
+  const rounded = remainder + remainder >= bottom ? quotient + 1n : quotient;
+
+  return (rounded > span ? span : rounded).toString();
+}

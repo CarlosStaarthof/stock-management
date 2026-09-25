@@ -12,7 +12,10 @@ import { strokesToPath } from "@/lib/signature-path";
  * and a `StockCount` is keyed by `(locationId, periodYear, periodMonth)`, so it cannot
  * carry a per-run random suffix in a name the way an `Item` can. The reservation is a
  * RANGE OF YEARS instead: nothing below `RESERVED_FLOOR` is ever written or deleted, and
- * each spec file owns exactly one year inside it.
+ * each spec file owns one year inside it — or, since 011 AC-24, TWO ADJACENT ones where a
+ * criterion needs them: year on year is `(y - 1, m)`, so a fixture for it cannot be built
+ * inside a single year. What has never changed is that a file deletes only the years it
+ * owns.
  *
  * THE DELETE IS SCOPED TO THE FILE'S OWN YEAR, NEVER THE WHOLE RANGE. `playwright.config.ts`
  * runs three files at once, so a range delete would remove a sibling file's rows mid-run
@@ -25,7 +28,7 @@ import { strokesToPath } from "@/lib/signature-path";
 /** Nothing at or above this year is a real count. Nothing below it is ever touched. */
 export const RESERVED_FLOOR = 2090;
 
-/** One year per spec file, so two files can never collide on a yard and a month. */
+/** One or two years per spec file, and no year in two files (011 AC-24). */
 export const RESERVED_YEAR = {
   access: 2091,
   calendar: 2092,
@@ -52,6 +55,15 @@ export const RESERVED_YEAR = {
   // still deletes only its own.
   takesCalendar: 2101,
   takesCount: 2102,
+  // #11's two specs, three years between them (011 AC-24). FOURTEEN files, FIFTEEN years.
+  //
+  // `analysis-figures.spec.ts` owns TWO ADJACENT YEARS, deliberately and for the first
+  // time: year on year is `(y - 1, m)`, so the fixture for it needs a period in each of
+  // two consecutive years, and there is no free adjacent pair at or below 2100. It deletes
+  // BOTH of its own in `beforeAll` and `afterAll`, never the range, for the reason above.
+  analysisAccess: 2103,
+  analysisPrior: 2104,
+  analysisFigures: 2105,
 } as const;
 
 export function assertReserved(year: number): void {

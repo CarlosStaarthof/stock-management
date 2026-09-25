@@ -1295,3 +1295,86 @@ by construction; the constant and the guard beside them were untouched, and `typ
 `lint` are clean. Disclosed rather than absorbed.
 
 **Closed 2026-09-14 after user sign-off. M3 begins with #11 `analysis`.**
+
+## 2026-09-25 — feature #11 `analysis`
+
+The one screen in the product that shows money, for `ADMIN` only. Spec: 27 criteria, approved
+at `c9b980c`. Implementation: `progress/impl_analysis.md` (Phase A, Phase B, two repair passes).
+Review: `progress/review_analysis.md`. **CHANGES_REQUESTED on the first pass, APPROVED on the
+second.**
+
+### What shipped
+
+Per-yard values and total stock for any period, month-on-month and year-on-year variance joined
+on **period** (never date arithmetic), a server-rendered SVG trend chart, and breakdowns by type
+and by supplier. No client component: every control is a link, and the chart is markup.
+
+The rules it was built on, each enforced by a test that has been watched failing:
+- **Only `APPROVED` counts contribute a euro.** A `SUBMITTED` count could be valued and
+  deliberately isn't, because a total that falls when a count is reopened is a total nobody can
+  quote.
+- **A missing month is a gap, never a zero.** A period that is complete and holds nothing
+  renders `€0.00`, and that is a different fact. Every total cell for an incomplete period reads
+  `Incomplete`. The chart draws no bar for a gap and a minimum-height bar for a true zero.
+- **Prices come from the count's frozen snapshot, never the price list.** Asserted as an
+  **absence**: the reporting code can't reach the price list. It is also proven at runtime, with
+  prices added, edited and back-dated after approval while every figure stays unchanged.
+- **Unpriced held lines are counted beside the figure they shorten.** This is the workbook's
+  EUR 486, counted and never valued, made visible.
+- **No `Number(` anywhere on the path, chart included.** Coordinates are `bigint`.
+
+### The review found two guarantees that looked tested and weren't
+
+**B1.** The "no stock takes yet" screen was asserted by a browser branch that could never run:
+the same file approves counts first. A `€0.00` on that screen would have passed the whole gate.
+It is now proven by a server render of the page that the gate runs, watched red with a `€`
+planted. Its phone-width measurement is recorded as **unreachable** in the shared test database,
+and the cost is stated: it is the screen the owner sees first in production.
+
+**B2.** "Prices only from the snapshot" had a path the scan couldn't see. The reviewer planted a
+fallback to `item.prices` when a snapshot is missing, which is exactly the workbook's column-E
+defect. **40 static tests stayed green, and so did `tsc`.** Two scan clauses and a bounded
+allow-list entry now catch it, and so does the database test. It is guarded twice,
+independently.
+
+### The strict tests exposed older problems, and each was fixed and reviewed
+
+Closing #11 needed two consecutive clean full e2e runs. Getting there surfaced defects that
+predated it:
+- **A React 19 hydration defect** regenerated about 3% of pages. The root cause was found in an
+  instrumented production build and fixed at application level (`395972a`).
+- **#9's "staff never approves" e2e was hollow.** It passed with the role check removed. It is
+  now a real guard (`395972a`).
+- **Timing flaws in #6's and #8's tests** (`85057a4`, `66ff57a`), and in five of #10's
+  assertions (`d722275`).
+- **The harness:** one failure had been silently skipping 136 tests, and the database probe gave
+  false negatives (`f17c600`, `94a33cb`).
+- **Neon:** the test branch's credentials had changed mid-session. The coordinator's
+  connection-exhaustion theory was **wrong**, and measurement disproved it.
+
+### Verification at close
+
+Full gate, database checks **executed**: unit 838, e2e 195/195 (both phases), database 397, 0
+connection failures. Two consecutive full e2e runs, **195/195 each**, with the machine held awake
+after an earlier run was invalidated by sleep: Chrome reported `ERR_NETWORK_IO_SUSPENDED`, and
+no money assertion failed. The no-database `init` ends `[OK] Environment ready (database checks
+skipped)`.
+
+### Coordinator errors, recorded
+
+- Two overstatements in spec amendments, each caught by a reviewer: "all totals read
+  Incomplete" before the trend table was changed, and a probe-arithmetic sentence.
+- A connection-exhaustion diagnosis that measurement disproved.
+- **The token-accounting tool double-counted input by ~1.7–2x** from 2026-09-14. Transcripts log
+  each response once per content block. Every figure was recomputed on 2026-09-24.
+
+### Cost (corrected counting: each API response counted once)
+
+| | Input | Output |
+|---|---:|---:|
+| #11 itself: spec, two phases, two reviews, repairs | 97.5M | 0.67M |
+| Older defects #11's tests exposed, fixed and reviewed | 109.4M | 0.97M |
+
+More than half the effort went into problems that were already in the product.
+
+**Closed 2026-09-25 after owner sign-off.**

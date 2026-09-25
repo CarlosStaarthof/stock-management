@@ -610,18 +610,24 @@ describe("AC-30: the e2e suite keeps 006 AC-35's shape", () => {
     // to avoid. The assertion is strictly stricter than the one it replaces: it names both
     // prefixes, so a spec of either name landing in the wrong project turns it red.
     expect(config).toContain('dependencies: ["chromium"]');
-    expect(config).toMatch(/testIgnore: \/\(stock-entry\|stock-takes\)-\.\*\\.spec\\.ts\//);
-    expect(config).toMatch(/testMatch: \/\(stock-entry\|stock-takes\)-\.\*\\.spec\\.ts\//);
+    expect(config).toMatch(/testIgnore: \/\(stock-entry\|stock-takes\|analysis\)-\.\*\\.spec\\.ts\//);
+    expect(config).toMatch(/testMatch: \/\(stock-entry\|stock-takes\|analysis\)-\.\*\\.spec\\.ts\//);
 
     // And every spec that reserves a year really is matched by that pattern - the census
-    // below counts twelve of them, and a file the projects do not cover would run in the
+    // below counts fourteen of them, and a file the projects do not cover would run in the
     // wrong phase without anything noticing.
+    //
+    // 011 AC-24 WIDENS THE TWO PATTERNS AND NOTHING ELSE, for the second time and for the
+    // same reason 010 AC-21 gives: #11's two specs SEED COUNTS against the yard sheets, so
+    // they belong in the second project exactly as #7's, #8's, #9's and #10's do. Leaving
+    // them in the first would put a count-shaped fixture back beside the item-master specs,
+    // which is the collision this split exists to avoid.
     for (const spec of specsReservingAYear()) {
-      expect(/(stock-entry|stock-takes)-.*\.spec\.ts$/.test(spec), spec).toBe(true);
+      expect(/(stock-entry|stock-takes|analysis)-.*\.spec\.ts$/.test(spec), spec).toBe(true);
     }
   });
 
-  it("AC-30: every stock-entry spec owns one reserved year and deletes only that year", () => {
+  it("AC-30, 011 AC-24: no reserved year is named by two spec files", () => {
     const support = read("tests/e2e/support/stock-entry.ts");
 
     expect(support).toContain("export const RESERVED_FLOOR = 2090;");
@@ -630,33 +636,73 @@ describe("AC-30: the e2e suite keeps 006 AC-35's shape", () => {
     expect(support).toContain("where: { periodYear: year }");
     expect(support).not.toMatch(/periodYear:\s*\{\s*gte:/);
 
-    const specs = specsReservingAYear();
-    const years = new Set<string>();
-    for (const spec of specs) {
-      const match = /RESERVED_YEAR\.(\w+)/.exec(read(spec));
-      expect(match, spec).not.toBeNull();
-      years.add(match?.[1] ?? "");
+    // EVERY `RESERVED_YEAR.<key>` IN EACH FILE, not the first one (011 AC-24). The
+    // previous selection was a single `exec`, which could see only one key per file, and
+    // `tests/e2e/analysis-figures.spec.ts` owns TWO adjacent years — year on year is
+    // `(y - 1, m)`, so no single year can hold that fixture, and there is no free adjacent
+    // pair at or below 2100. A census that stopped at the first match would have reported
+    // fourteen files and fourteen years and been quietly wrong about the fifteenth.
+    const owner = new Map<string, string>();
+    const reserving = specsReservingAYear();
+    for (const spec of reserving) {
+      const keys = [...read(spec).matchAll(/RESERVED_YEAR\.(\w+)/g)].map((match) => match[1]);
+      expect(keys, spec).not.toHaveLength(0);
+
+      for (const key of new Set(keys)) {
+        // THE INVARIANT IS NO LONGER "ONE YEAR PER FILE" — it is that no year key is named
+        // by two different files. Two specs on the same year collide on
+        // `@@unique([locationId, periodYear, periodMonth])`, at `retries: 0`, mid-run, in
+        // whichever of the three workers lost. A file owning two years cannot collide with
+        // itself; a year owned by two files always can.
+        expect(owner.get(key) ?? spec, `${key} is named by ${owner.get(key) ?? ""} too`).toBe(
+          spec,
+        );
+        owner.set(key, spec);
+      }
     }
 
-    // One year per file, and no two files sharing one: two specs on the same year can
-    // collide on a yard and a month, which `@@unique([locationId, periodYear, periodMonth])`
-    // refuses — at `retries: 0`, mid-run, in whichever of the three workers lost.
-    //
-    // #7 shipped four, 008 AC-33 added three, 009 AC-32 three more, and 010 AC-21 adds
-    // `takesCalendar: 2101` and `takesCount: 2102`. TWELVE files, TWELVE distinct years.
-    // The number moves with them rather than being loosened into a `toBeGreaterThan`: the
-    // whole value of this assertion is that it is an equality, so a spec file that quietly
-    // reused a sibling's year turns it red.
-    expect(specs).toHaveLength(12);
-    expect(years.size).toBe(12);
+    // #7 shipped four, 008 AC-33 added three, 009 AC-32 three more, 010 AC-21 two, and
+    // 011 AC-24 adds `analysisAccess`, `analysisPrior` and `analysisFigures` across TWO
+    // files. FOURTEEN files, FIFTEEN distinct years — the first time those two numbers
+    // differ, and the reason they may. Both are derived from the tree above rather than
+    // copied from a spec, and both stay equalities rather than being loosened into a
+    // `toBeGreaterThan`: a spec file that quietly reused a sibling's year turns them red.
+    expect(reserving).toHaveLength(14);
+    expect(owner.size).toBe(15);
 
-    // Non-vacuity, and the reason the selection changed: the set really does reach past
-    // the prefix it used to match, so #10's two specs are inside this census rather than
-    // invisible to it.
-    expect(specs).toContain("tests/e2e/stock-takes-calendar.spec.ts");
-    expect(specs).toContain("tests/e2e/stock-takes-count.spec.ts");
-    expect(read("tests/e2e/support/stock-entry.ts")).toContain("takesCalendar: 2101");
-    expect(read("tests/e2e/support/stock-entry.ts")).toContain("takesCount: 2102");
+    // KEYS ARE NOT YEARS (review observation O10). Everything above counts year KEYS, so
+    // two keys holding the same number - `analysisPrior: 2104, analysisFigures: 2104` -
+    // would pass it and collide at run time exactly as two files on one key would. So the
+    // VALUES are read from the object itself, comments stripped so a year quoted in a note
+    // cannot count, and every value must be a distinct year: across the whole object, and
+    // across the fifteen keys the spec files actually name.
+    const declaration = /export const RESERVED_YEAR = \{([\s\S]*?)\n\}/.exec(support);
+    expect(declaration, "RESERVED_YEAR must be an object literal").not.toBeNull();
+    const entries = [
+      ...(declaration?.[1] ?? "")
+        .replace(/\/\*[\s\S]*?\*\//g, " ")
+        .replace(/\/\/[^\n]*/g, " ")
+        .matchAll(/(\w+):\s*(\d{4})\b/g),
+    ].map((match) => [match[1], Number.parseInt(match[2], 10)] as const);
+    const yearOf = new Map(entries);
+
+    expect(yearOf.size, "no key declared twice").toBe(entries.length);
+    expect(new Set(yearOf.values()).size, "no year held by two keys").toBe(yearOf.size);
+
+    const ownedYears = [...owner.keys()].map((key) => yearOf.get(key));
+    expect(ownedYears, "every key a spec names is declared").not.toContain(undefined);
+    expect(new Set(ownedYears).size).toBe(15);
+
+    // Non-vacuity: the selection really does reach past the prefix it used to match, and
+    // it really does see both of the keys the two-year file names.
+    expect(reserving).toContain("tests/e2e/stock-takes-calendar.spec.ts");
+    expect(reserving).toContain("tests/e2e/analysis-figures.spec.ts");
+    expect(owner.get("analysisPrior")).toBe("tests/e2e/analysis-figures.spec.ts");
+    expect(owner.get("analysisFigures")).toBe("tests/e2e/analysis-figures.spec.ts");
+    expect(support).toContain("takesCount: 2102");
+    expect(support).toContain("analysisAccess: 2103");
+    expect(support).toContain("analysisPrior: 2104");
+    expect(support).toContain("analysisFigures: 2105");
   });
 });
 

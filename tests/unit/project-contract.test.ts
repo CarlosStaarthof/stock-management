@@ -164,7 +164,36 @@ describe("the money boundary, and where the first monetary column may be named",
     "src/server/counts/count-summary-service.ts",
   ];
 
-  it("009 AC-26 amending 006 AC-31: exactly eleven modules may name unitPrice", () => {
+  /**
+   * AMENDED BY 011 AC-26, as an exact list and never as a directory exemption: Analysis is
+   * the feature that joins snapshots ACROSS periods, so it has to read the column it values
+   * history from. The alternative is to forbid the only module that can value history from
+   * naming the column it values it from. Its screens still name it NOWHERE - every euro
+   * crosses the boundary on a field the shape declares (`yardValue`, `totalStock`,
+   * `againstTotal`, `varianceAmount`, `amount`) - so the src/app and src/components list
+   * below stays at the three item-master files #6 put on it.
+   */
+  const ANALYSIS_SERVICE = "src/server/reporting/analysis-service.ts";
+
+  const SNAPSHOT_READERS = [...LIFECYCLE_MODULES, ANALYSIS_SERVICE].sort();
+
+  it("011 AC-26, bounded after review B2: the twelfth entry may name the snapshot and nothing else", () => {
+    // The list below admits FILES, and the scan it runs is the bare stem - which the price
+    // list's own column also answers to. The other eleven entries need that column; the
+    // twelfth needs only the snapshot, so its permission is bounded HERE, beside the list
+    // that grants it, instead of relying on 011 AC-8's scan to remember. Review mutation M6
+    // (a fallback to the list's column through the item's price relation) passed every
+    // scan and `tsc` until this assertion existed.
+    const named = [...readFileSync(ANALYSIS_SERVICE, "utf8").matchAll(/unitPrice\w*/g)].map(
+      (match) => match[0],
+    );
+
+    // Non-vacuity: the service really does read the snapshot, several times over.
+    expect(named.length).toBeGreaterThan(0);
+    expect(new Set(named)).toEqual(new Set(["unitPriceSnapshot"]));
+  });
+
+  it("011 AC-26 amending 009 AC-26: exactly twelve modules may name unitPrice", () => {
     const scanned = shippingModules();
 
     // The scan must have looked at something, or the assertion below is vacuous.
@@ -175,11 +204,13 @@ describe("the money boundary, and where the first monetary column may be named",
       .sort();
 
     // #6 is the first feature that legitimately RENDERS a price, so the permitted list
-    // grew from two to nine; #9 is the first that WRITES the snapshot, so it grows to
-    // eleven - and stays a list of FILES, never a directory exemption. The two
-    // presentation files on it sit behind a route no YARD_STAFF session can reach at all
-    // (006 AC-2), and the two #9 adds are services no session reaches directly. A twelfth
-    // module naming the column turns this red.
+    // grew from two to nine; #9 is the first that WRITES the snapshot, so it grew to
+    // eleven; #11 is the first that values HISTORY from it, so it grows to twelve - and it
+    // stays a list of FILES, never a directory exemption. The two presentation files on it
+    // sit behind a route no YARD_STAFF session can reach at all (006 AC-2), and the three
+    // service modules are ones no session reaches directly: `/analysis` is a 307 for every
+    // staff session before `getAnalysis` is called at all. A THIRTEENTH module naming the
+    // column turns this red.
     expect(offenders).toEqual([
       "src/app/item-master/actions.ts",
       "src/components/item-master/ItemTable.tsx",
@@ -192,8 +223,9 @@ describe("the money boundary, and where the first monetary column may be named",
       "src/server/items/price-selection.ts",
       "src/server/items/workbook-import-service.ts",
       "src/server/items/workbook-plan.ts",
+      "src/server/reporting/analysis-service.ts",
     ]);
-    expect(offenders).toHaveLength(11);
+    expect(offenders).toHaveLength(12);
   });
 
   it("006 AC-31: src/lib and scripts stay at ZERO files naming it", () => {
@@ -232,15 +264,22 @@ describe("the money boundary, and where the first monetary column may be named",
     ]);
   });
 
-  it("009 AC-26 replacing 006 AC-31: unitPriceSnapshot is named by exactly those two files", () => {
+  it("011 AC-26 amending 009 AC-26: unitPriceSnapshot is named by exactly those three files", () => {
     // 006 AC-31 held this at ZERO because the column had no legitimate reader yet. #9 is
-    // both its first writer and its first reader, so the assertion becomes an EXACT LIST
-    // rather than being deleted. A third module naming the snapshot turns this red.
+    // both its first writer and its first reader, so the assertion became an EXACT LIST
+    // rather than being deleted; #11 is the second reader - THE PRICE SNAPSHOT IS THE ONLY
+    // SOURCE OF A EURO IN THIS PRODUCT, AND ANALYSIS IS THE FEATURE THAT JOINS THEM ACROSS
+    // PERIODS - so the list grows to three. A FOURTH module naming the snapshot turns this
+    // red, and the addition is a FILE rather than `src/server/reporting/**`.
     const offenders = shippingModules()
       .filter((file) => /unitPriceSnapshot/.test(readFileSync(file, "utf8")))
       .sort();
 
-    expect(offenders).toEqual(LIFECYCLE_MODULES);
+    expect(offenders).toEqual(SNAPSHOT_READERS);
+    expect(offenders).toHaveLength(3);
+
+    // Non-vacuity, kept with the amendment: the scan must have read the tree.
+    expect(shippingModules()).toContain("src/server/reporting/analysis-service.ts");
   });
 
   it("009 AC-26: signatureSvg is named by the lifecycle service and by nothing else", () => {
