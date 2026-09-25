@@ -176,10 +176,9 @@ async function seed(spec: FixtureSpec): Promise<Fixture> {
     data: [
       {
         id: "fixture_user",
-        email: "analysis-fixture@macroads.test",
         name: "Fixture user",
-        // Not a real hash and never verified: no test here signs in.
-        passwordHash: "fixture-not-a-hash",
+        // No username and no PIN: no test here signs in.
+        status: "ACTIVE",
         role: "ADMIN",
       },
     ],

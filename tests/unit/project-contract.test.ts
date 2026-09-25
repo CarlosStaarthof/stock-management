@@ -32,7 +32,7 @@ describe("project contract", () => {
     expect(packageJson.engines?.node).toBe(">=20");
   });
 
-  it("AC-6 (002) narrowed by 003 AC-1, replaced by 004 AC-1: a generator, a postgresql datasource, and exactly the nine models and three enums of Part 3", () => {
+  it("AC-6 (002) narrowed by 003 AC-1, replaced by 004 AC-1: a generator, a postgresql datasource, and exactly the twelve models and five enums of Part 3 (021 AC-1)", () => {
     expect(schema).toMatch(/generator\s+\w+\s*\{/);
     expect(schema).toMatch(/datasource\s+\w+\s*\{/);
     expect(schema).toMatch(/provider\s*=\s*"postgresql"/);
@@ -53,7 +53,12 @@ describe("project contract", () => {
       "enum Role {",
       "enum CountStatus {",
       "enum UnitKind {",
+      "enum ProfileStatus {",
+      "enum AuthEventKind {",
       "model User {",
+      "model AccountLock {",
+      "model AuthEvent {",
+      "model SetupClaim {",
       "model Location {",
       "model Supplier {",
       "model ItemType {",

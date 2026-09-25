@@ -8,20 +8,25 @@ import { findActiveUserById } from "@/server/auth/user-service";
 /**
  * Who is making this request?
  *
- * The session token says only *which* user id signed in. The role, the name and the
- * right to be here are read from the `User` row on every request, so:
+ * The session token says only *which* user id signed in, and under which `sessionEpoch`.
+ * The role, the name and the right to be here are read from the `User` row on every
+ * request, so:
  *
  *  - deactivating a leaver locks them out on their very next request rather than when
- *    their token expires (AC-11), and
+ *    their token expires (003 AC-11), and a PIN reset — which increments the row's epoch —
+ *    ends every session obtained with the old PIN the same way (021 AC-17);
+ *  - a token with no epoch at all, which is every token minted before #21, is refused;
  *  - nothing a client can set — a query parameter, a header, a cookie, a form field —
  *    can influence the answer (AC-18).
  */
 export async function getCurrentUser(): Promise<SessionUser | null> {
   let userId: string | undefined;
+  let epoch: unknown;
 
   try {
     const session = await auth();
     userId = session?.user?.id;
+    epoch = session?.epoch;
   } catch (error) {
     // A missing or unusable AUTH_SECRET degrades to "not signed in", never to access
     // (AC-22). Fail closed, and say so.
@@ -32,8 +37,9 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
   }
 
   if (typeof userId !== "string" || userId === "") return null;
+  if (typeof epoch !== "number" || !Number.isInteger(epoch)) return null;
 
-  return findActiveUserById(userId);
+  return findActiveUserById(userId, epoch);
 }
 
 /** The current user, or `UnauthorizedError`. */

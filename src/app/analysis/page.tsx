@@ -2,9 +2,8 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { JSX } from "react";
 
-import { signOutAction } from "@/app/auth-actions";
 import { requireAdminPage } from "@/app/page-guards";
-import { SignOutForm } from "@/components/SignOutForm";
+import { IdentityHeader } from "@/components/IdentityHeader";
 import { BreakdownTable } from "@/components/analysis/BreakdownTable";
 import type { BreakdownColumn, BreakdownOption } from "@/components/analysis/BreakdownTable";
 import { PeriodGrid } from "@/components/analysis/PeriodGrid";
@@ -189,23 +188,16 @@ export default async function AnalysisPage({
 
   return (
     <main className="mx-auto flex w-full max-w-5xl flex-col gap-4 p-3 sm:p-6">
-      <header className="flex flex-col gap-2">
-        <h1 className="text-2xl font-semibold tracking-tight">{ANALYSIS_HEADING}</h1>
-        {/*
-          `break-words` IS THE WHOLE OF THE FIX, AND IT IS THE THIRD TIME THIS ELEMENT HAS
-          NEEDED IT (AC-20). An email is one unbreakable token; without this the document
-          — not this paragraph, the DOCUMENT — grows to the width of the address and the
-          phone scrolls sideways on every screen. Measured here before the change: an
-          address whose local part is a 61-character run with no hyphen in it gave
-          `scrollWidth` 478 against a 390 px viewport and against a 320 px one, while an
-          ordinary hyphenated fixture address fitted both exactly. #10 fixed
-          `/stock-takes`; `/stock-entry` is a recorded debt against 008 AC-30 and is NOT
-          touched here, because a feature does not reach into another screen.
-        */}
-        <p data-testid="signed-in-email" className="text-base break-words text-slate-700">
-          {user.email}
-        </p>
-      </header>
+      {/*
+        The shared identity header (021 AC-37). It wraps the display name at any character:
+        one unbreakable token wider than the viewport widens the DOCUMENT, not just the
+        paragraph, and the phone scrolls sideways on every screen. #11 measured that here
+        (AC-20) and fixed it on this page alone; #21 fixed it once, in the one header.
+      */}
+      <IdentityHeader
+        name={user.name}
+        heading={<h1 className="text-2xl font-semibold tracking-tight">{ANALYSIS_HEADING}</h1>}
+      />
 
       <h2 data-testid="period-heading" className="text-xl font-semibold tracking-tight">
         {analysis.periodLabel}
@@ -275,8 +267,6 @@ export default async function AnalysisPage({
           </Link>
         </div>
       )}
-
-      <SignOutForm action={signOutAction} />
     </main>
   );
 }

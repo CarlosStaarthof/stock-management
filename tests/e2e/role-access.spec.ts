@@ -1,9 +1,10 @@
 import { expect, test } from "@playwright/test";
 
+import { ACCESS_DENIED_MESSAGE } from "@/lib/auth-messages";
 import { assertNoMoneyKeys, deepKeys } from "@/lib/money-boundary";
 
 import { skipWithoutDatabase } from "./support/database";
-import { createTestUser, removeUser, signIn, storedPasswordHash } from "./support/users";
+import { createTestUser, removeUser, signIn, storedPinHash } from "./support/users";
 import type { TestUser } from "./support/users";
 
 /**
@@ -18,14 +19,14 @@ test.beforeEach(async ({}, testInfo) => {
 });
 
 test.afterAll(async () => {
-  for (const email of created.splice(0)) {
-    await removeUser(email);
+  for (const username of created.splice(0)) {
+    await removeUser(username);
   }
 });
 
 async function newUser(role: "YARD_STAFF" | "ADMIN"): Promise<TestUser> {
   const user = await createTestUser(role);
-  created.push(user.email);
+  created.push(user.username);
   return user;
 }
 
@@ -54,7 +55,7 @@ test("AC-15, AC-16: /analysis and /api/users refuse YARD_STAFF and admit ADMIN",
   await staffPage.goto("/analysis");
   expect(staffPage.url()).toContain("/stock-entry?denied=analysis");
   await expect(staffPage.getByTestId("access-denied")).toHaveText(
-    "You do not have access to that page.",
+    ACCESS_DENIED_MESSAGE,
   );
 
   const staffUsers = await staffPage.request.get("/api/users");
@@ -137,7 +138,7 @@ test("AC-20: the ADMIN listing of at least two accounts carries no password and 
   await signIn(page, admin);
 
   const response = await page.request.get("/api/users");
-  const body = (await response.json()) as { users: { email: string }[] };
+  const body = (await response.json()) as { users: { username: string }[] };
   const raw = await response.text();
 
   expect(response.status()).toBe(200);
@@ -145,7 +146,7 @@ test("AC-20: the ADMIN listing of at least two accounts carries no password and 
   expect(deepKeys(body).filter((key) => /password/i.test(key))).toEqual([]);
   assertNoMoneyKeys(body, "/api/users");
 
-  for (const email of [admin.email, staff.email]) {
-    expect(raw).not.toContain(await storedPasswordHash(email));
+  for (const username of [admin.username, staff.username]) {
+    expect(raw).not.toContain(await storedPinHash(username));
   }
 });

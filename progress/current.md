@@ -882,3 +882,124 @@ sign-in keeps working. No `prisma/`, `auth-config.ts`, `middleware.ts`, page, co
 - Five modules + tests written; the five files 82 tests green after two test-defect fixes (fresh-module error class; over-broad source regex). typecheck 0, lint 0.
 - 11 mutations (M1-M11) each red in its own file, restored by byte copy; sha256sum -c OK x5.
 - Report written: progress/impl_pin_auth.md -> ## Phase A. typecheck 0, lint 0, test:unit x2 = 63 files / 930 tests. Phase A complete for the implementer; Findings 1-2 (AC-39 vs AC-40, AC-8 vs AC-39) need the leader.
+
+## Feature 21 `pin_auth` — Phase B (the swap), implementer, started 2026-09-25
+
+Brief: leader's scratchpad `impl21-b.md`. #21 already `in_progress`. One pass: schema +
+migration, services, Auth.js, `/sign-in` + `PinPad`, `IdentityHeader`, every `email` reference,
+e2e helpers + the four permitted substitutions. No `init`. Report: `progress/impl_pin_auth.md`
+-> `## Phase B` (work log there, finished and verified steps only).
+
+### Files I expect to touch
+- `prisma/schema.prisma`, new `prisma/migrations/<ts>_pin_profiles/`, `specs/domain-model.md` Part 3,
+  `tests/unit/schema-and-migration.test.ts`, `tests/unit/project-contract.test.ts` (AC-1, AC-2).
+- `src/server/test-db.ts` + `test-db.test.ts`, `stock-takes-contract.test.ts` eight-entry check (AC-4).
+- `src/server/auth/`: new `sign-in-service.ts`, `operator-service.ts`, `profile-admin-service.ts`
+  (`resetProfilePin` only, for AC-17/AC-24); `user-service.ts`, `session-user.ts`, `session.ts`,
+  `next-auth.ts`; `src/lib/auth-config.ts` (epoch in the JWT); `src/types/next-auth.d.ts`.
+- `/sign-in` page, `auth-actions.ts`, form state, `src/components/PinPad.tsx`, `SignInForm.tsx`,
+  `src/components/IdentityHeader.tsx`; headers of `/stock-entry`, `/stock-takes`, `/analysis`,
+  `/stock-entry/new` (`counting-as`).
+- `src/lib/count-audit.ts`, `count-lifecycle-service.ts`, `types/stock-count.ts` (actorRef, S13).
+- `/api/session`, `/api/users` shapes. `src/lib/auth-messages.ts` loses the two email-era messages.
+- Every unit/db test fixture that built a `SessionUser`/`User` with email/hash (fixture only).
+- `tests/e2e/support/users.ts`, `support/stock-entry.ts`, the 19 specs (four substitutions only),
+  `sign-in.spec.ts` rewrite, `route-protection.spec.ts` phone test -> AC-35, new `pin-*.spec.ts`.
+
+### Approach
+- Outcome channel: `authorize` calls `attemptSignIn` only; a non-success throws a coded
+  `CredentialsSignin` subclass so the server action (raw mode rethrows) and the HTTP callback
+  (redirect `?code=`) both see one evaluation. Device cookie read from the request's cookie
+  header, set with `next/headers` `cookies()` on success in both transports.
+- Epoch: `authorize` returns `sessionEpoch`; the JWT carries `epoch`; `getCurrentUser` requires
+  `ACTIVE` + a username + `epoch === row.sessionEpoch`; no epoch claim -> refused.
+- Known phase-boundary problem: deleting `scripts/admin-create.ts` (it cannot compile once
+  `createUser` goes) turns two shipped unit tests red whose amendments (AC-6, AC-41) name
+  Phase C's `scripts/pin-reset.ts`. Decide once the core is green; report either way.
+
+### Log
+- Schema + `20260925120000_pin_profiles` written; applied to test DB then dev DB (`migrate deploy`).
+  Dev census before/after identical for stock tables; User 33/33 (33 active -> 33 ACTIVE, 8 ADMIN).
+  The brief said 4 leftover e2e users; there are 33 (all e2e domain). None deleted.
+- Services, Auth.js, `/sign-in` + PinPad, IdentityHeader, audit `actorRef`, every src email ref: done;
+  tsc 0, lint 0. Unit: only 020 AC-6 (finding B1) and the two reset-script tests (B4) red.
+- New db tests (AC-3, sign-in service, session/reset, AC-38) green; 004 AC-24 db census red (B2).
+- 4 security mutations red then restored (sha256 OK). e2e run 1: phase 1 79/79, phase 2 132/139,
+  the 7 = finding B3 (literal fixture names). Report: `progress/impl_pin_auth.md` -> `## Phase B`.
+- Full test:db attempt stalled on test-branch connectivity (infra); killed, re-probed, restarted.
+
+## Coordinator — Phase B interrupted; findings ruled; database-run collapse diagnosed, 2026-09-25
+
+- The Phase B implementer was killed by an API network error (`ENOTFOUND`) mid-task. Its log
+  (`progress/impl_pin_auth.md` → Phase B, work-log steps 1–11) matches the tree. Typecheck and
+  lint are clean; the three unit tests that fail are exactly B1 and B4.
+- **B1–B5 ruled** in `specs/features/021-pin_auth.md` → *Five findings by Phase B*: AC-1, AC-2
+  and AC-40 amended, 020 AC-6 and 004 AC-24 annotated, `feature_list.json` re-mirrored (only #21
+  changed). B4 moves AC-30 and AC-41's test-and-docs part into Phase B, so its gate can be
+  green before its commit.
+- **The collapsed full `test:db` runs (340 of 432 failing) are the network, not the code.** A
+  full re-run with nothing else running, sampling `pg_stat_activity` every 15 s, gave 428 of
+  432, with every Phase B file passing:
+  - one failure is B2;
+  - one is a dropped connection at the same second the sampler's own connection dropped;
+  - two are 30 s timeouts; both files then passed 57/57 on a re-run.
+
+  Postgres stayed idle throughout (at most 5 backends, no lock waits, no transaction older than
+  2 s), and the machine was fine. The link was not: `SELECT 1` ran at 78–102 ms median against a
+  22–37 ms best, and the Wi-Fi hop to the router alone measured 13 ms median and 38 ms at p90. A
+  suite of sequential round trips runs about 3× slower on that link, and 30 s timeouts begin to
+  fire. My first hypothesis, that the new sign-in tests slow what runs after them, was **wrong**:
+  the same slowdown appeared with those tests running last.
+- **Operating rule from this:** a full-suite failure made of connection errors or timeouts is
+  first checked against the link (`scratchpad/rtt.cjs`, `sampler.cjs`) before any code is
+  suspected. The gate is never "fixed" by raising a timeout or adding a retry.
+
+## Feature 21 `pin_auth` — Phase B continuation, after the rulings, implementer, started 2026-09-25
+
+Brief: leader's scratchpad `impl21-b2.md`. #21 stays `in_progress`. Report: appended to
+`progress/impl_pin_auth.md` -> `## Phase B` -> `### Continuation, after the rulings`.
+
+### Files I expect to touch
+- `src/server/test-db.test.ts` (B1, 020 AC-6 unit half amended by 021 AC-1).
+- `src/server/schema/columns.db.test.ts` (B2, 004 AC-24 re-spelled by 021 AC-2).
+- `tests/e2e/stock-entry-approve.spec.ts`, `stock-entry-start.spec.ts`, `stock-entry-submit.spec.ts`
+  (B3, AC-40's fifth substitution, eleven sites).
+- `src/server/auth/operator-service.ts` (+ `listProfilesForOperator`, `setCredentialsForOperator`),
+  new `scripts/pin-reset.ts`, `package.json` (`pin:reset`), new `src/server/auth/pin-reset.db.test.ts` (AC-30).
+- `tests/unit/no-default-password.test.ts`, `docs/operations.md` (AC-41's Phase B part).
+- Not touched: `.env.example`, `Samples/`, `feature_list.json`, `tests/support/feature-scope.ts`.
+
+### Approach
+- B1/B2: amend exactly per the rulings; prove B1 red on a byte copy (two breaches), sha256 restore.
+- B3: interpolate the denoted user's `name`; `stock-entry-start.spec.ts:336` stays negative.
+- AC-30: script spawned with `tsx` like 003's admin-create test; every exit covered; output scanned
+  for the NEW_PIN value, pinHash, pinKeyId, account key. Four breaches red, restored by sha256.
+- Targeted db runs only, one at a time; re-run once on a connection error/timeout.
+
+### Log
+- B3 applied: 11 sites, 5th substitution (template interpolation of the denoted user's `name`);
+  `stock-entry-start.spec.ts:336` stays `.not.toContain`. No `E2E Yard Staff`/`E2E Administrator` left in tests/e2e.
+- B1 done: `test-db.test.ts` AC-6 amended by 021 AC-1; red under `SetupClaim.id @default(1)` (noDefault = [AccountLock.accountKey])
+  and under `accountKey @default(cuid())` (11 cuids); schema restored, `sha256sum -c` OK (05da2fd1…); 8/8 green.
+- B2 edited: columns.db AC-24 re-spelled (first two rows, all finished, no count); pin-schema.db gains 021 AC-2 third-row pin. Not yet run.
+- AC-30 written: operator-service (+listProfilesForOperator, +setCredentialsForOperator), scripts/pin-reset.ts,
+  `pin:reset`, src/server/auth/pin-reset.db.test.ts. Not yet run.
+- AC-41 Phase B part written: no-default-password amended; docs/operations.md sections replaced.
+  Shaped to the widened detector: run-db-tests.mjs (runPepper()/runSetupCode()), pin-auth-contract:239 (built from parts).
+- Breach prints-pin: 2 red (both success runs, leak count 1), 19 green; restored, sha256 OK.
+- Breach no-epoch: 2 red (both success runs, epoch 0 not 1), 19 green; restored, sha256 OK.
+- Breach create-admin: 1 red (["--create-admin"], exit 0), 20 green; restored, sha256 OK.
+- Breach not-active: 3 red (PENDING, REJECTED, DEACTIVATED: ONLY_ACTIVE_PIN_RESET missing), 18 green; restored, sha256 OK.
+- Green after restore: pin-reset 21/21, columns 19/19, pin-schema 31/31 (incl. new 021 AC-2 third-row test), pin-session 10/10 (AC-34 check included). Unit 66 files/950 green; tsc 0; lint 0.
+- Build 75 s; e2e (3 files, --project=chromium-stock-entry; the config runs project chromium first as its dependency): 105 passed (79 chromium + 26 stock-entry), 0 failed, 0 skipped, 257 s. Port 3000 free after.
+- impl_pin_auth.md: 14 Resolved annotations added under stale Phase B sentences; Continuation section appended. Session complete; nothing committed.
+- **Phase B continuation returned** (`progress/impl_pin_auth.md` → *Continuation, after the
+  rulings*). Its first gate failed one unit test, and it was right to: the report quoted two old
+  code shapes verbatim, and `no-default-password`'s scan caught them in the tracked report. The
+  coordinator reworded the two sentences, disclosed in place, and left the scan unchanged.
+- **Two gaps from its notes, ruled for Phase C** (021 → *Two gaps found by Phase B's
+  continuation*):
+  - G1: both secret scans exempt a quoted identifier-shaped value. For AC-8 that is a defect;
+    AC-41 gains the value rule.
+  - G2: a `NEW_PIN` in `.env` would act as a default. AC-30 now requires the reads before the
+    Prisma client loads.

@@ -20,7 +20,7 @@ async function currentSession(): Promise<NextResponse> {
 
     return NextResponse.json({
       id: user.id,
-      email: user.email,
+      username: user.username,
       name: user.name,
       role: user.role,
       landingPath: landingPathForRole(user.role),

@@ -15,7 +15,7 @@
     "test:unit": "vitest run",
     "test:db": "node scripts/run-db-tests.mjs",
     "test:e2e": "node scripts/run-e2e.mjs",
-    "admin:create": "tsx scripts/admin-create.ts",
+    "pin:reset": "tsx scripts/pin-reset.ts",
     "seed:workbook": "tsx scripts/seed-workbook.ts",
     "postinstall": "prisma generate"
   },

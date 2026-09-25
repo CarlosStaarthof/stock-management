@@ -69,8 +69,8 @@ test.afterAll(async () => {
   if (!(await databaseIsReachable())) return;
 
   await clearReservedYear(YEAR);
-  for (const email of created.splice(0)) {
-    await removeUser(email);
+  for (const username of created.splice(0)) {
+    await removeUser(username);
   }
 
   expect(await realCountIds()).toEqual(realCountsBefore);
@@ -79,7 +79,7 @@ test.afterAll(async () => {
 
 async function newUser(role: "YARD_STAFF" | "ADMIN" = "YARD_STAFF"): Promise<TestUser> {
   const user = await createTestUser(role, `stock-entry-approve-${role.toLowerCase()}`);
-  created.push(user.email);
+  created.push(user.username);
   return user;
 }
 
@@ -257,10 +257,10 @@ test("AC-16, AC-20, AC-23: approval, the trail, and one version of the screen fo
 
   await expect(staffPage.getByTestId("count-status")).toHaveText("Approved");
   await expect(staffPage.getByTestId("signed-by")).toHaveText(
-    signedByMessage("E2E Yard Staff", signedAt),
+    signedByMessage(`${staff.name}`, signedAt),
   );
   await expect(staffPage.getByTestId("approved-by")).toHaveText(
-    approvedByMessage("E2E Administrator", approvedAtInstant),
+    approvedByMessage(`${admin.name}`, approvedAtInstant),
   );
   await expect(staffPage.getByTestId("signature")).toBeVisible();
 
@@ -294,11 +294,11 @@ test("AC-16, AC-20, AC-23: approval, the trail, and one version of the screen fo
     auditSentence({
       at: approvedAtInstant,
       event: "APPROVED",
-      actorName: "E2E Administrator",
-      actorEmail: admin.email,
+      actorName: `${admin.name}`,
+      actorRef: admin.username,
       reason: null,
     }),
-  ).toContain("Approved by E2E Administrator on ");
+  ).toContain(`Approved by ${admin.name} on `);
 
   await staffContext.close();
 });
@@ -391,7 +391,7 @@ test("AC-18: the reopen destroys the signature, says why, and demands a fresh on
   await staffPage.goto(`/stock-entry/counts/${countId}`);
 
   await expect(staffPage.getByTestId("reopen-notice")).toHaveText(
-    reopenedNotice("E2E Administrator", new Date().toISOString(), reason),
+    reopenedNotice(`${admin.name}`, new Date().toISOString(), reason),
   );
   await expect(staffPage.getByTestId("signature")).toHaveCount(0);
   expect(await staffPage.locator("main").innerHTML()).not.toContain("€");

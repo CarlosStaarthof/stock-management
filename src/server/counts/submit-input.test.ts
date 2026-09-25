@@ -96,7 +96,7 @@ describe("AC-18: parseReopenReason", () => {
       at: "2026-09-12T15:02:44.900Z",
       event: "REOPENED",
       actorName: "Ann Doyle",
-      actorEmail: "ann@macroads.ie",
+      actorRef: "ann@macroads.ie",
       reason,
     });
 
@@ -106,7 +106,7 @@ describe("AC-18: parseReopenReason", () => {
         at: "2026-09-12T15:02:44.900Z",
         event: "REOPENED",
         actorName: "Ann Doyle",
-        actorEmail: "ann@macroads.ie",
+        actorRef: "ann@macroads.ie",
         reason: "the MMA price was wrong: line 8 of the sheet",
       },
     ]);

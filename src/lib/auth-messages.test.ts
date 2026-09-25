@@ -6,10 +6,8 @@ import { describe, expect, it } from "vitest";
 import * as messages from "@/lib/auth-messages";
 
 /**
- * 021 AC-39's module half, with no database. The two halves not proved here: that the
- * module no longer exports the email-era messages (they are still rendered until the
- * email sign-in is replaced), and the scan of tests for message literals (see the Phase A
- * report).
+ * 021 AC-39's module half, with no database. The scan of tests for message literals is in
+ * tests/unit/pin-auth-contract.test.ts.
  */
 
 const STRING_EXPORTS = [
@@ -62,6 +60,11 @@ describe("the auth messages module (021 AC-39)", () => {
 
     const texts = STRING_EXPORTS.map((name) => exported[name]);
     expect(new Set(texts).size).toBe(texts.length);
+  });
+
+  it("AC-39: it no longer exports the two messages of the email sign-in", () => {
+    expect(Object.keys(exported)).not.toContain("INVALID_CREDENTIALS_MESSAGE");
+    expect(Object.keys(exported)).not.toContain("INACTIVE_ACCOUNT_MESSAGE");
   });
 
   it("AC-39: it exports the three length constants the rules import", () => {

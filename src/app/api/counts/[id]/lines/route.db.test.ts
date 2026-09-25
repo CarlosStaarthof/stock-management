@@ -50,7 +50,8 @@ beforeEach(async () => {
 
 /** Whoever the next request is from. Nothing a client sends can change this answer. */
 function signedInAs(actor: SessionUser | null): void {
-  authMock.mockResolvedValue(actor === null ? null : { user: { id: actor.id } });
+  // `epoch: 0` is what a freshly made profile's session carries (021 AC-17).
+  authMock.mockResolvedValue(actor === null ? null : { user: { id: actor.id }, epoch: 0 });
 }
 
 type Fixture = { countId: string; itemIds: string[]; staff: SessionUser; admin: SessionUser };

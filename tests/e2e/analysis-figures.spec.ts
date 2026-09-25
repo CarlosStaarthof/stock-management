@@ -118,7 +118,7 @@ test.beforeAll(async () => {
 
   const owner = await createTestUser("YARD_STAFF", "analysis-figures-owner");
   const approver = await createTestUser("ADMIN", "analysis-figures-approver");
-  created.push(owner.email, approver.email);
+  created.push(owner.username, approver.username);
 
   dublinItems = await pickSheetItems("DUBLIN", 6);
   clonmelItems = await pickSheetItems("CLONMEL", 4);
@@ -207,8 +207,8 @@ test.afterAll(async () => {
 
   await clearReservedYear(YEAR);
   await clearReservedYear(PRIOR_YEAR);
-  for (const email of created.splice(0)) {
-    await removeUser(email);
+  for (const username of created.splice(0)) {
+    await removeUser(username);
   }
 
   // 007 AC-30: this file reached nothing outside its own two years.
@@ -218,7 +218,7 @@ test.afterAll(async () => {
 
 async function newUser(label = "analysis-figures"): Promise<TestUser> {
   const user = await createTestUser("ADMIN", label);
-  created.push(user.email);
+  created.push(user.username);
   return user;
 }
 

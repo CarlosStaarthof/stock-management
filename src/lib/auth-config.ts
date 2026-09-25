@@ -45,12 +45,19 @@ export const baseAuthConfig = {
         token.sub = user.id ?? token.sub;
         // A hint for routing only. Nothing decides access from this value.
         token.role = "role" in user && typeof user.role === "string" ? user.role : token.role;
+        // The profile's `sessionEpoch` at sign-in (021). A PIN reset increments the row's,
+        // and `getCurrentUser` then refuses this token. A token minted without one is
+        // refused too.
+        token.epoch = typeof user.epoch === "number" ? user.epoch : undefined;
       }
       return token;
     },
     session({ session, token }) {
       if (typeof token.sub === "string") {
         session.user.id = token.sub;
+      }
+      if (typeof token.epoch === "number") {
+        session.epoch = token.epoch;
       }
       return session;
     },

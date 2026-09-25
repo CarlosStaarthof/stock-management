@@ -1,24 +1,29 @@
 import { spawnSync } from "node:child_process";
+import { randomBytes, randomInt } from "node:crypto";
 import { readFileSync, statSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 /**
- * Spec 003 AC-7: no default password exists anywhere in the repository.
+ * Spec 003 AC-7, amended by 021 AC-41: no default password, PIN, pepper or setup code
+ * exists anywhere in the repository.
  *
- * A password in git is a published password, so the first administrator is created by
- * `npm run admin:create` with the password supplied on the command line. That only holds
- * while nobody "helpfully" commits a value to make the command easier to run — which is
- * what this test prevents.
+ * A credential in git is a published credential. #3 made the operator supply the first
+ * password on the command line; #21 makes the operator supply a PIN to `npm run pin:reset`
+ * the same way, and each environment generate its own `PIN_PEPPER` and `SETUP_CODE`. That
+ * only holds while nobody "helpfully" commits a value to make a command easier to run —
+ * which is what this test prevents.
  *
- * The runtime half of AC-7 (the command refuses and creates no row) is
- * `src/server/auth/admin-create.db.test.ts`.
+ * The runtime half (the command refuses and changes no row) is
+ * `src/server/auth/pin-reset.db.test.ts`.
  */
 
-// The literal the documentation must show instead of a value.
-const PLACEHOLDER = "<choose-a-strong-password>";
+// The literal the documentation must show instead of a PIN (021 AC-41).
+const PLACEHOLDER = "<choose-a-pin>";
 
-// An assignment of a password-shaped variable to something that is not the placeholder.
-const ASSIGNS_A_PASSWORD = /\b(ADMIN_PASSWORD|DEFAULT_PASSWORD|SEED_PASSWORD)\s*[:=]\s*["'`]?([^\s"'`,)]+)/g;
+// An assignment of a credential-shaped variable to something that is not a placeholder.
+// #3's three password names stay; 021 AC-41 adds the PIN, the pepper and the setup code.
+const ASSIGNS_A_PASSWORD =
+  /\b(ADMIN_PASSWORD|DEFAULT_PASSWORD|SEED_PASSWORD|NEW_PIN|PIN_PEPPER|SETUP_CODE)\s*[:=]\s*["'`]?([^\s"'`,)]+)/g;
 
 const MAX_SCANNED_BYTES = 8 * 1024 * 1024;
 
@@ -56,7 +61,7 @@ function isNotAPassword(value: string): boolean {
 }
 
 describe("no default password", () => {
-  it("AC-7: no tracked file assigns a value to ADMIN_PASSWORD", () => {
+  it("AC-7, amended by 021 AC-41: no tracked file assigns a value to ADMIN_PASSWORD, NEW_PIN, PIN_PEPPER or SETUP_CODE", () => {
     const offenders: string[] = [];
 
     for (const file of repositoryFiles()) {
@@ -73,18 +78,29 @@ describe("no default password", () => {
     expect(offenders).toEqual([]);
   });
 
-  it("AC-7: the documented invocation shows the placeholder, not a value", () => {
+  it("AC-7, amended by 021 AC-41: the documented invocation shows the <choose-a-pin> placeholder, not a value", () => {
     const operations = readFileSync("docs/operations.md", "utf8");
 
-    expect(operations).toContain(`ADMIN_PASSWORD=${PLACEHOLDER} npm run admin:create`);
-    expect(operations).toContain("ADMIN_EMAIL=");
+    expect(operations).toContain(`NEW_PIN=${PLACEHOLDER}`);
+    expect(operations).toContain("npm run pin:reset -- --profile <id>");
   });
 
-  it("AC-7: the script has no fallback value to guess", () => {
-    const script = readFileSync("scripts/admin-create.ts", "utf8");
+  it("AC-7, amended by 021 AC-30: the reset script has no fallback value to guess", () => {
+    const script = readFileSync("scripts/pin-reset.ts", "utf8");
 
     // It reads the variable and defaults it to the empty string, which it then refuses.
-    expect(script).toContain('process.env.ADMIN_PASSWORD ?? ""');
-    expect(script).toContain("ADMIN_PASSWORD is not set");
+    expect(script).toContain('process.env.NEW_PIN ?? ""');
+    expect(script).toContain("NEW_PIN is not set");
+  });
+
+  it("021 AC-41: the detector is not vacuous: it catches a literal under each new name", () => {
+    // Built at runtime, so this file never holds an assignment of its own. A digit first,
+    // as a PIN has: a value shaped like an identifier is read as code by isNotAPassword.
+    for (const name of ["NEW_PIN", "PIN_PEPPER", "SETUP_CODE"]) {
+      const literal = `${randomInt(1, 10)}${randomBytes(6).toString("hex")}`;
+      const found = [...`${name}=${literal}`.matchAll(ASSIGNS_A_PASSWORD)];
+      expect(found, name).toHaveLength(1);
+      expect(isNotAPassword(found[0]?.[2] ?? ""), name).toBe(false);
+    }
   });
 });

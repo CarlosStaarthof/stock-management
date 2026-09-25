@@ -17,7 +17,7 @@ import { ForbiddenError } from "@/server/errors";
  */
 const STAFF: SessionUser = {
   id: "user_staff",
-  email: "jo@macroads.ie",
+  username: "jo.byrne",
   name: "Jo Byrne",
   role: "YARD_STAFF",
 };

@@ -4,28 +4,94 @@ Everything here is a command an operator types. Nothing here requires reading `.
 
 ---
 
-## Creating the first administrator
+## Profiles, usernames and PINs
 
-There is no seeded account and no default password, because a password in git is a
-published password. On a new database, run once:
+People sign in with a username and a PIN (spec 021). There is no seeded profile and no
+default PIN, because a credential in git is a published credential. `PIN_PEPPER` is
+required in every environment, and each environment generates its own.
+
+First-run setup: added with `/setup`.
+
+### The reset script
+
+`npm run pin:reset` repairs an existing profile. It never creates one, and it takes
+exactly two forms:
 
 ```
-ADMIN_EMAIL=you@macroads.ie ADMIN_PASSWORD=<choose-a-strong-password> npm run admin:create
+npm run pin:reset -- --list
+NEW_PIN=<choose-a-pin> npm run pin:reset -- --profile <id>
 ```
 
-- `<choose-a-strong-password>` is a placeholder. Substitute a password of at least
-  **12 characters**; there are no composition rules.
-- The command hashes the password through `src/server/auth/password.ts` (bcrypt, cost 10),
-  writes the user with `role = ADMIN` and `active = true`, and prints the email and the
-  role. It never prints, logs or stores the plaintext, and it never prints the hash.
-- Run again with the same email it refuses, exits non-zero, and changes nothing.
-- With `ADMIN_PASSWORD` unset or empty it refuses and exits non-zero. It does not prompt
-  and there is no fallback value.
-- `ADMIN_NAME` is optional and defaults to `Administrator`.
+- `--list` prints one line per profile: its id, its username (or `-`), its name, role and
+  status, its PIN state (`set`, `none`, or `reset needed` for a PIN made under another
+  `PIN_PEPPER`), and its lock state.
+- `--profile <id>` gives an `ACTIVE` profile the PIN in `NEW_PIN`, made under the current
+  `PIN_PEPPER`. It ends any lock on the profile's username, ends every session the profile
+  had, and prints the profile's id, username, name and role.
+- `<choose-a-pin>` is a placeholder. Substitute exactly 4 or 6 digits, not one digit
+  repeated and not digits counting up or down in order.
+- It never prints the PIN, a hash, a key id or an account key. With `NEW_PIN` unset or
+  empty it refuses and exits non-zero. It does not prompt, and there is no fallback value.
+- It refuses, exits non-zero and changes nothing for a profile that is not `ACTIVE`, for an
+  unknown id, when `PIN_PEPPER` is not set, and for any other argument.
 
-Every later account is created the same way until a feature owns a user-management screen
-(spec 003, *Open questions*). To lock out a leaver, set `active = false` on their row: the
-next request they make is refused, without waiting for their session to expire.
+### One time, on a database migrated from #3
+
+The migration keeps every account #3 created. Each becomes an `ACTIVE` profile with no
+username and no PIN, or `DEACTIVATED` if it had been switched off. Nobody can sign in
+until the operator gives an `ADMIN` profile a username and a PIN:
+
+```
+npm run pin:reset -- --list
+NEW_USERNAME=<choose-a-username> NEW_PIN=<choose-a-pin> npm run pin:reset -- --profile <id>
+```
+
+- Take `<id>` from the `--list` line of an `ADMIN` whose username is `-`.
+- `<choose-a-username>` is a placeholder: 3 to 32 characters, a letter a-z first, then
+  letters a-z, digits, `.`, `_` or `-`. It is stored in lower case and must not already
+  be taken.
+- Give `NEW_USERNAME` only to a profile with no username. For a profile that already has
+  one, the script refuses it: give only `NEW_PIN`.
+
+That administrator then signs in and manages everyone else.
+
+### Lockout recovery
+
+Five wrong PINs in a row lock that username for 15 minutes. Each further lock doubles, up
+to 24 hours, so a person locked out can always sign in again later without anyone's help.
+A lock refuses new sign-ins only: sessions already open carry on.
+
+To end a lock at once, give the profile a new PIN:
+
+```
+NEW_PIN=<choose-a-pin> npm run pin:reset -- --profile <id>
+```
+
+The reset ends the lock and zeroes the failure count. It keeps the lock level, so a reset
+in the middle of an attack gives an attacker five more guesses, not a fresh start. The
+person's next successful sign-in zeroes the level.
+
+### Recovery from a lost `PIN_PEPPER`
+
+A lost pepper cannot be recovered. Every PIN was made under it, so every PIN must be
+replaced:
+
+1. Set a **new** `PIN_PEPPER` in the environment, generated the same way as
+   `AUTH_SECRET`, and back it up outside the server as you back up `AUTH_SECRET`.
+2. From then on every sign-in answers "incorrect", nobody is locked by it, and
+   `--list` shows every PIN as `reset needed`. Every lock is forgotten, because each was
+   kept under the old pepper. Open sessions and known devices are unaffected: they are
+   signed with `AUTH_SECRET`.
+3. An `ADMIN` who still has a session open resets every profile's PIN from the admin
+   section and gives each person their new PIN. If no `ADMIN` has a session open, run
+   `NEW_PIN=<choose-a-pin> npm run pin:reset -- --profile <id>` for one `ADMIN`; that
+   administrator signs in and resets everyone else. Until the admin section is added with
+   `/profiles`, the reset script is the way to reset every profile.
+4. Profile requests made under the old pepper carry PINs that can never match. An `ADMIN`
+   approves and then resets them, or rejects them and asks for a new request.
+
+Nothing else is lost: counts, prices, profiles, roles and usernames live in the database.
+A leaked pepper is handled the same way: replace it, then reset everyone.
 
 ## Databases
 

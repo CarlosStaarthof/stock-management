@@ -66,9 +66,8 @@ async function seedOneCountWithAnItem(): Promise<{ stockCountId: string; itemId:
 
   const user = await db.user.create({
     data: {
-      email: `columns-${suffix}@macroads.example`,
       name: "Columns Fixture",
-      passwordHash: `not-a-real-hash-${suffix}`,
+      status: "ACTIVE",
     },
   });
 
@@ -98,16 +97,19 @@ beforeEach(async () => {
 });
 
 describe("the database the migrations produce", () => {
-  it("AC-24: both migrations are applied, in order, and none was rolled back", async () => {
+  // Re-spelled by 021 AC-2 as #4's own claim, as 004 AC-23's directory census was: the first
+  // two migrations are #3's and #4's, in that order, and every migration applied is finished
+  // and not rolled back, whatever later features add. It carries no row count, so it is
+  // never re-amended when a feature adds a migration; 021 pins its own third row itself.
+  it("AC-24, amended by 021 AC-2: the first two migrations are create_user then create_stock_domain, and every migration is finished and none rolled back", async () => {
     const rows = await db.$queryRaw<
       { migration_name: string; finished_at: Date | null; rolled_back_at: Date | null }[]
     >`SELECT migration_name, finished_at, rolled_back_at
       FROM _prisma_migrations
       ORDER BY started_at`;
 
-    expect(rows).toHaveLength(2);
-    expect(rows[0].migration_name).toMatch(/^\d{14}_create_user$/);
-    expect(rows[1].migration_name).toMatch(/^\d{14}_create_stock_domain$/);
+    expect(rows[0]?.migration_name).toMatch(/^\d{14}_create_user$/);
+    expect(rows[1]?.migration_name).toMatch(/^\d{14}_create_stock_domain$/);
 
     for (const row of rows) {
       expect(row.finished_at, `${row.migration_name} finished`).not.toBeNull();
@@ -115,7 +117,7 @@ describe("the database the migrations produce", () => {
     }
   });
 
-  it("AC-1: the public schema holds exactly the nine tables of Part 3", async () => {
+  it("AC-1, amended by 021 AC-1: the public schema holds exactly the twelve tables of Part 3", async () => {
     const rows = await db.$queryRaw<{ table_name: string }[]>`
       SELECT table_name FROM information_schema.tables
       WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
@@ -123,11 +125,14 @@ describe("the database the migrations produce", () => {
       ORDER BY table_name`;
 
     expect(rows.map((row) => row.table_name)).toEqual([
+      "AccountLock",
+      "AuthEvent",
       "Item",
       "ItemLocation",
       "ItemPrice",
       "ItemType",
       "Location",
+      "SetupClaim",
       "StockCount",
       "StockCountLine",
       "Supplier",
@@ -148,35 +153,43 @@ describe("the database the migrations produce", () => {
     expect(role.labels).toBe("{YARD_STAFF,ADMIN}");
   });
 
-  it("AC-5: User still has the same eight columns, types and nullabilities as #3 created", async () => {
+  it("AC-5, amended by 021 AC-1: User has #21's eleven columns, with Part 3's types and nullabilities", async () => {
     const columns = await columnsOf("User");
 
+    // Postgres order: #3's surviving columns, then the ones pin_profiles added.
     expect([...columns.keys()]).toEqual([
       "id",
-      "email",
       "name",
-      "passwordHash",
       "role",
-      "active",
       "createdAt",
       "updatedAt",
+      "status",
+      "username",
+      "requestedUsername",
+      "pinHash",
+      "pinKeyId",
+      "sessionEpoch",
     ]);
 
     const shape = [...columns.values()].map(
       (row) => `${row.column_name} ${row.data_type} ${row.is_nullable}`,
     );
 
-    // Captured from the test database BEFORE create_stock_domain was applied; see
-    // progress/impl_domain_schema.md. Three relation fields added no column.
+    // #4's three relation fields added no column (004 AC-5); #21's migration replaced
+    // email, passwordHash and active with the credential columns, each nullable because a
+    // request, a leaver and a profile migrated from #3 hold none (021 *Data touched*).
     expect(shape).toEqual([
       "id text NO",
-      "email text NO",
       "name text NO",
-      "passwordHash text NO",
       "role USER-DEFINED NO",
-      "active boolean NO",
       "createdAt timestamp without time zone NO",
       "updatedAt timestamp without time zone NO",
+      "status USER-DEFINED NO",
+      "username text YES",
+      "requestedUsername text YES",
+      "pinHash text YES",
+      "pinKeyId text YES",
+      "sessionEpoch integer NO",
     ]);
   });
 

@@ -4,9 +4,13 @@ import type { AuditEntry, AuditEvent } from "@/types/stock-count";
  * The audit trail, as one line of text per event, written and read by one module.
  *
  * ```
- * 2026-09-12T14:03:11.482Z SUBMITTED by Jo Byrne <jo@macroads.ie>
- * 2026-09-12T15:02:44.900Z REOPENED by Ann Doyle <ann@macroads.ie>: the MMA price was wrong
+ * 2026-09-12T14:03:11.482Z SUBMITTED by Jo Byrne <jo.byrne>
+ * 2026-09-12T15:02:44.900Z REOPENED by Ann Doyle <ann>: the MMA price was wrong
  * ```
+ *
+ * The bracketed reference is the actor's USERNAME (021 S13): display names are not
+ * unique, usernames are and are never reissued. Lines written before #21 carry an email
+ * address there instead; the grammar is unchanged, so they parse back verbatim (AC-38).
  *
  * WHY IT IS TEXT IN A COLUMN AND NOT A TABLE (009 Open question 6): `specs/domain-model.md`
  * Part 3 is the schema field for field and 004 AC-1 asserts it, so a `StockCountEvent`
@@ -33,12 +37,12 @@ export const AUDIT_EVENTS = [
 
 /**
  * One entry, as the exact line 009 AC-20 quotes. Without a reason the trailing colon is
- * absent — an empty reason is not a reason, and `…<ann@macroads.ie>: ` would parse back
+ * absent — an empty reason is not a reason, and `…<ann>: ` would parse back
  * as one.
  */
 export function auditLine(entry: AuditEntry): string {
   const reason = entry.reason === null || entry.reason === "" ? "" : `: ${entry.reason}`;
-  return `${entry.at} ${entry.event} by ${entry.actorName} <${entry.actorEmail}>${reason}`;
+  return `${entry.at} ${entry.event} by ${entry.actorName} <${entry.actorRef}>${reason}`;
 }
 
 /**
@@ -74,12 +78,12 @@ export function parseAuditLines(notes: string | null): AuditEntry[] {
     const matched = AUDIT_LINE.exec(line);
     if (matched === null) continue;
 
-    const [, at, event, actorName, actorEmail, reason] = matched;
+    const [, at, event, actorName, actorRef, reason] = matched;
     entries.push({
       at,
       event: event as AuditEvent,
       actorName,
-      actorEmail,
+      actorRef,
       reason: reason === undefined || reason === "" ? null : reason,
     });
   }

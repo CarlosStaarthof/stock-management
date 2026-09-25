@@ -71,8 +71,8 @@ test.afterAll(async () => {
   if (!(await databaseIsReachable())) return;
 
   await clearReservedYear(YEAR);
-  for (const email of created.splice(0)) {
-    await removeUser(email);
+  for (const username of created.splice(0)) {
+    await removeUser(username);
   }
 
   // AC-30: this file reached outside its reservation nowhere at all.
@@ -82,7 +82,7 @@ test.afterAll(async () => {
 
 async function newUser(role: "YARD_STAFF" | "ADMIN" = "YARD_STAFF"): Promise<TestUser> {
   const user = await createTestUser(role, `stock-entry-quantities-${role.toLowerCase()}`);
-  created.push(user.email);
+  created.push(user.username);
   return user;
 }
 

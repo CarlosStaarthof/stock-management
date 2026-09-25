@@ -472,7 +472,7 @@ describe("AC-20, AC-23: the lifecycle as sentences", () => {
       at: "2026-09-03T09:00:00.000Z",
       event: "REOPENED",
       actorName: "Ann Doyle",
-      actorEmail: "ann@macroads.ie",
+      actorRef: "ann@macroads.ie",
       reason: "the MMA price was wrong",
     };
 
@@ -486,7 +486,7 @@ describe("AC-20, AC-23: the lifecycle as sentences", () => {
       at: "2026-09-04T09:00:00.000Z",
       event: "SUBMITTED",
       actorName: "Jo Byrne",
-      actorEmail: "jo@macroads.ie",
+      actorRef: "jo@macroads.ie",
       reason: null,
     };
     expect(lifecycleSentences({ ...FACTS, audit: [reopened, resubmitted] }).reopened).toBeNull();
@@ -498,7 +498,7 @@ describe("AC-20, AC-23: the lifecycle as sentences", () => {
         at: "2026-09-12T14:03:11.482Z",
         event: "SUBMITTED",
         actorName: "Jo Byrne",
-        actorEmail: "jo@macroads.ie",
+        actorRef: "jo@macroads.ie",
         reason: null,
       }),
     ).toBe("Submitted by Jo Byrne on 12 September 2026.");
@@ -508,7 +508,7 @@ describe("AC-20, AC-23: the lifecycle as sentences", () => {
         at: "2026-09-12T15:02:44.900Z",
         event: "REOPENED",
         actorName: "Ann Doyle",
-        actorEmail: "ann@macroads.ie",
+        actorRef: "ann@macroads.ie",
         reason: "the MMA price was wrong",
       }),
     ).toBe("Reopened by Ann Doyle on 12 September 2026: the MMA price was wrong.");

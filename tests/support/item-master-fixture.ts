@@ -17,14 +17,14 @@ import type { SessionUser } from "@/server/auth/session-user";
 
 export const ADMIN: SessionUser = {
   id: "user_admin_fixture",
-  email: "admin@macroads.test",
+  username: "admin",
   name: "Fixture Administrator",
   role: "ADMIN",
 };
 
 export const STAFF: SessionUser = {
   id: "user_staff_fixture",
-  email: "staff@macroads.test",
+  username: "staff",
   name: "Fixture Yard Staff",
   role: "YARD_STAFF",
 };
@@ -112,10 +112,11 @@ export async function makeLink(
 export async function makeUser(role: "ADMIN" | "YARD_STAFF" = "ADMIN"): Promise<string> {
   const user = await db.user.create({
     data: {
-      email: `${role.toLowerCase()}-${Math.random().toString(36).slice(2, 10)}@macroads.test`,
+      username: `${role.toLowerCase()}-${Math.random().toString(36).slice(2, 10)}`,
       name: "Fixture user",
-      // Not a real hash and never verified: no test here signs in.
-      passwordHash: "fixture-not-a-hash",
+      // No PIN: no test here signs in. ACTIVE, because a profile with no status given is a
+      // request, and a request has no username (021 `User_pending_shape`).
+      status: "ACTIVE",
       role,
     },
     select: { id: true },

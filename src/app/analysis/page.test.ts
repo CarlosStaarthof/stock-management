@@ -81,7 +81,7 @@ const { default: AnalysisPage } = await import("./page");
 
 const ADMIN: SessionUser = {
   id: "admin-render-test",
-  email: "owner@macroads-render.invalid",
+  username: "owner",
   name: "Owner",
   role: "ADMIN",
 };
@@ -238,7 +238,7 @@ describe("011 AC-6: with no approved count anywhere, the page renders the empty 
 
     // Non-vacuity: this is the real page, signed in, and in the empty branch.
     expect(html).toContain(`<h1 class="text-2xl font-semibold tracking-tight">${ANALYSIS_HEADING}</h1>`);
-    expect(html).toContain(ADMIN.email);
+    expect(html).toContain(ADMIN.name);
     expect(html).toContain('data-testid="sign-out"');
 
     const empty = onlyElement(html, "no-approved-counts");

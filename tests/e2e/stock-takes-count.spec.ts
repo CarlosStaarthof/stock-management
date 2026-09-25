@@ -69,7 +69,7 @@ test.beforeAll(async () => {
 
   const owner = await createTestUser("YARD_STAFF", "stock-takes-count-owner");
   const approver = await createTestUser("ADMIN", "stock-takes-count-approver");
-  created.push(owner.email, approver.email);
+  created.push(owner.username, approver.username);
 
   // The draft: held, counted-as-zero and never-counted lines, and two awkward decimals.
   const draft = await seedCountWithLines({
@@ -119,8 +119,8 @@ test.afterAll(async () => {
   if (!(await databaseIsReachable())) return;
 
   await clearReservedYear(YEAR);
-  for (const email of created.splice(0)) {
-    await removeUser(email);
+  for (const username of created.splice(0)) {
+    await removeUser(username);
   }
 
   expect(await realCountIds()).toEqual(realCountsBefore);
@@ -129,7 +129,7 @@ test.afterAll(async () => {
 
 async function newUser(role: "YARD_STAFF" | "ADMIN" = "YARD_STAFF"): Promise<TestUser> {
   const user = await createTestUser(role, "stock-takes-count");
-  created.push(user.email);
+  created.push(user.username);
   return user;
 }
 

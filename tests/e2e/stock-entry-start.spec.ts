@@ -50,8 +50,8 @@ test.afterAll(async () => {
   if (!(await databaseIsReachable())) return;
 
   await clearReservedYear(YEAR);
-  for (const email of created.splice(0)) {
-    await removeUser(email);
+  for (const username of created.splice(0)) {
+    await removeUser(username);
   }
 
   expect(await realCountIds()).toEqual(realCountsBefore);
@@ -60,7 +60,7 @@ test.afterAll(async () => {
 
 async function newUser(role: "YARD_STAFF" | "ADMIN" = "YARD_STAFF"): Promise<TestUser> {
   const user = await createTestUser(role, `stock-entry-start-${role.toLowerCase()}`);
-  created.push(user.email);
+  created.push(user.username);
   return user;
 }
 
@@ -96,8 +96,8 @@ test("AC-5: who is counting is text, and there is no input that names a person",
   await signIn(page, staff);
   await page.goto("/stock-entry/new");
 
-  await expect(page.getByTestId("counting-as")).toContainText("Counting as E2E Yard Staff");
-  await expect(page.getByTestId("counting-as")).toContainText(staff.email);
+  await expect(page.getByTestId("counting-as")).toContainText(`Counting as ${staff.name}`);
+  await expect(page.getByTestId("counting-as")).toContainText(staff.name);
 
   const names = await page
     .locator("input, select, textarea")
@@ -206,7 +206,7 @@ test("AC-8, AC-24, AC-26: Start count writes one DRAFT and the page names what w
     `${YEAR_TEXT}-09-10`,
   );
   await expect(page.getByTestId("count-date")).toHaveText(`10 September ${YEAR_TEXT}`);
-  await expect(page.getByTestId("counting-as")).toHaveText("Counting as E2E Yard Staff");
+  await expect(page.getByTestId("counting-as")).toHaveText(`Counting as ${staff.name}`);
   await expect(page.getByTestId("count-status")).toHaveText("Draft");
 
   // `0 of <n> counted`, where n is the number of rows really rendered. The Dublin sheet
@@ -324,7 +324,7 @@ test("AC-4, AC-18: a cookie, a header, ?role=ADMIN and two forged form fields ch
   // AC-4: the created row belongs to the SIGNED-IN user, not to the id the form carried.
   expect(await createdByIdOf(countId)).toBe(staff.id);
   expect(await createdByIdOf(countId)).not.toBe(admin.id);
-  await expect(page.getByTestId("counting-as")).toHaveText("Counting as E2E Yard Staff");
+  await expect(page.getByTestId("counting-as")).toHaveText(`Counting as ${staff.name}`);
 
   // AC-18: and the shape is the staff shape — no ADMIN-only sentence, no money at all. The
   // assertion is on the RESPONSE BODY as well as on the control, because a UI assertion
@@ -333,7 +333,7 @@ test("AC-4, AC-18: a cookie, a header, ?role=ADMIN and two forged form fields ch
   const body = await page.content();
   expect(body).not.toContain("no price recorded");
   expect(body).not.toContain("€");
-  expect(body).not.toContain("E2E Administrator");
+  expect(body).not.toContain(`${admin.name}`);
   expect(body).not.toContain(admin.id);
 });
 
@@ -379,7 +379,7 @@ test("AC-11: coming back through the same flow arrives at the SAME count", async
   );
 
   await expect(page.getByTestId("existing-count-notice")).toContainText(
-    `Dublin already has a draft count for June ${YEAR_TEXT}, started by E2E Yard Staff on 10 June ${YEAR_TEXT}.`,
+    `Dublin already has a draft count for June ${YEAR_TEXT}, started by ${staff.name} on 10 June ${YEAR_TEXT}.`,
   );
   // No submit control AT ALL, so a second count cannot be attempted from the screen.
   await expect(page.getByTestId("start-count")).toHaveCount(0);

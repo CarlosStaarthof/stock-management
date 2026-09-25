@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 
+import { ACCESS_DENIED_MESSAGE } from "@/lib/auth-messages";
 import {
   COUNT_HAS_NO_ITEMS,
   COUNT_NO_LONGER_EXISTS,
@@ -68,8 +69,8 @@ test.afterAll(async () => {
   if (!(await databaseIsReachable())) return;
 
   await clearReservedYear(YEAR);
-  for (const email of created.splice(0)) {
-    await removeUser(email);
+  for (const username of created.splice(0)) {
+    await removeUser(username);
   }
 
   // AC-32: this file reached outside its reservation nowhere at all, and the seeded master
@@ -80,7 +81,7 @@ test.afterAll(async () => {
 
 async function newUser(role: "YARD_STAFF" | "ADMIN" = "YARD_STAFF"): Promise<TestUser> {
   const user = await createTestUser(role, `stock-entry-submit-${role.toLowerCase()}`);
-  created.push(user.email);
+  created.push(user.username);
   return user;
 }
 
@@ -165,7 +166,7 @@ test("AC-1: the three routes are closed to a signed-out request, and two of them
   // And the calendar says why, in #3's words.
   await page.goto("/stock-entry?denied=count-summary");
   await expect(page.getByTestId("access-denied")).toHaveText(
-    "You do not have access to that page.",
+    ACCESS_DENIED_MESSAGE,
   );
 
   // Signed in as ADMIN: all three are 200.
@@ -340,7 +341,7 @@ test("AC-29: the two states of /submit that are not a pad — away, and empty", 
   await expect(page.getByTestId("count-status")).toHaveText("Submitted");
   await expect(page.getByTestId("signature-pad")).toHaveCount(0);
   await expect(page.getByRole("button", { name: SIGN_AND_SUBMIT })).toHaveCount(0);
-  await expect(page.getByTestId("signed-by")).toContainText("Signed by E2E Yard Staff on ");
+  await expect(page.getByTestId("signed-by")).toContainText(`Signed by ${staff.name} on `);
   await expect(page.getByTestId("signature")).toBeVisible();
   await expect(page.getByTestId("uncounted-list")).toHaveCount(0);
   expect(await page.locator("main").innerHTML()).not.toContain("€");

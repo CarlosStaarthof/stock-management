@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 
+import { ACCESS_DENIED_MESSAGE } from "@/lib/auth-messages";
 import {
   BREAKDOWN_LABEL,
   INCOMPLETE_TOTAL,
@@ -78,7 +79,7 @@ test.beforeAll(async () => {
 
   const owner = await createTestUser("YARD_STAFF", "analysis-access-owner");
   const approver = await createTestUser("ADMIN", "analysis-access-approver");
-  created.push(owner.email, approver.email);
+  created.push(owner.username, approver.username);
 
   const dublinItems = await pickSheetItems("DUBLIN", 4);
   const clonmelItems = await pickSheetItems("CLONMEL", 3);
@@ -127,8 +128,8 @@ test.afterAll(async () => {
   if (!(await databaseIsReachable())) return;
 
   await clearReservedYear(YEAR);
-  for (const email of created.splice(0)) {
-    await removeUser(email);
+  for (const username of created.splice(0)) {
+    await removeUser(username);
   }
 
   // 007 AC-30: this file reached nothing outside its own reservation.
@@ -141,7 +142,7 @@ async function newUser(
   label = "analysis-access",
 ): Promise<TestUser> {
   const user = await createTestUser(role, label);
-  created.push(user.email);
+  created.push(user.username);
   return user;
 }
 
@@ -222,7 +223,7 @@ test("AC-1, AC-2: a YARD_STAFF GET is refused by the service and sends no part o
   await page.goto("/analysis");
   expect(page.url()).toContain("/stock-entry?denied=analysis");
   await expect(page.getByTestId("access-denied")).toHaveText(
-    "You do not have access to that page.",
+    ACCESS_DENIED_MESSAGE,
   );
 });
 
@@ -238,7 +239,7 @@ test("AC-1: an ADMIN gets 200, the heading, the identity header and the period h
   // #3's heading, VERBATIM: `tests/e2e/role-access.spec.ts` asserts this exact string and
   // must pass unmodified.
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Analysis");
-  await expect(page.getByTestId("signed-in-email")).toHaveText(admin.email);
+  await expect(page.getByTestId("signed-in-name")).toHaveText(admin.name);
   await expect(page.getByTestId("sign-out")).toBeVisible();
 
   const heading = page.getByTestId("period-heading");

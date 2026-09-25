@@ -2,8 +2,8 @@ import { randomBytes } from "node:crypto";
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { Role } from "@/server/auth/roles";
 import { resetTestDb } from "@/server/test-db";
-import { createUser, setUserActive } from "@/server/auth/user-service";
 import { db } from "@/server/db";
 import { ForbiddenError, UnauthorizedError } from "@/server/errors";
 
@@ -22,17 +22,34 @@ vi.mock("@/server/auth/next-auth", () => ({ auth: authMock }));
 
 const { getCurrentUser, requireRole, requireUser } = await import("@/server/auth/session");
 
-function newPassword(): string {
-  return `Pw-${randomBytes(12).toString("hex")}`;
+function newUsername(prefix: string): string {
+  return `${prefix}-${randomBytes(6).toString("hex")}`;
 }
 
-function newEmail(prefix: string): string {
-  return `${prefix}-${randomBytes(6).toString("hex")}@macroads.example`;
+/**
+ * An ACTIVE profile holding a username, written straight to the table (021 replaced
+ * `createUser`). No PIN: nothing here signs in, and `getCurrentUser` never reads one.
+ */
+async function createUser(input: {
+  username: string;
+  name: string;
+  role?: Role;
+}): Promise<{ id: string }> {
+  return db.user.create({
+    data: { ...input, status: "ACTIVE" },
+    select: { id: true },
+  });
 }
 
-/** What Auth.js hands back for a signed-in user: an id, and a role hint we do not trust. */
-function sessionFor(id: string, roleHint = "YARD_STAFF"): { user: { id: string; role: string } } {
-  return { user: { id, role: roleHint } };
+/**
+ * What Auth.js hands back for a signed-in user: an id, a role hint we do not trust, and the
+ * epoch the session was minted under (021), which a fresh profile holds at 0.
+ */
+function sessionFor(
+  id: string,
+  roleHint = "YARD_STAFF",
+): { user: { id: string; role: string }; epoch: number } {
+  return { user: { id, role: roleHint }, epoch: 0 };
 }
 
 beforeEach(async () => {
@@ -48,20 +65,19 @@ describe("getCurrentUser", () => {
   });
 
   it("AC-9: returns the stored user for a session carrying their id", async () => {
-    const email = newEmail("staff");
-    const created = await createUser({ email, name: "Yard Staff", password: newPassword() });
+    const username = newUsername("staff");
+    const created = await createUser({ username, name: "Yard Staff" });
     authMock.mockResolvedValue(sessionFor(created.id));
 
     const user = await getCurrentUser();
 
-    expect(user).toEqual({ id: created.id, email, name: "Yard Staff", role: "YARD_STAFF" });
+    expect(user).toEqual({ id: created.id, username, name: "Yard Staff", role: "YARD_STAFF" });
   });
 
   it("AC-18: the role comes from the stored row, not from the session token", async () => {
     const created = await createUser({
-      email: newEmail("staff"),
+      username: newUsername("staff"),
       name: "Yard Staff",
-      password: newPassword(),
     });
     // The token claims ADMIN. The row says YARD_STAFF. The row wins.
     authMock.mockResolvedValue(sessionFor(created.id, "ADMIN"));
@@ -73,13 +89,13 @@ describe("getCurrentUser", () => {
   });
 
   it("AC-11: deactivation takes effect on the next call, with the session untouched", async () => {
-    const email = newEmail("staff");
-    const created = await createUser({ email, name: "Yard Staff", password: newPassword() });
+    const username = newUsername("staff");
+    const created = await createUser({ username, name: "Yard Staff" });
     authMock.mockResolvedValue(sessionFor(created.id));
 
     expect(await getCurrentUser()).not.toBeNull();
 
-    await setUserActive(email, false);
+    await db.user.update({ where: { username }, data: { status: "DEACTIVATED" } });
 
     // Same stubbed session, same token, next request: refused.
     expect(await getCurrentUser()).toBeNull();
@@ -88,9 +104,8 @@ describe("getCurrentUser", () => {
 
   it("AC-11: a session for a user whose row has been deleted is refused", async () => {
     const created = await createUser({
-      email: newEmail("gone"),
+      username: newUsername("gone"),
       name: "Departed",
-      password: newPassword(),
     });
     authMock.mockResolvedValue(sessionFor(created.id));
 
@@ -109,25 +124,23 @@ describe("getCurrentUser", () => {
 
 describe("requireRole", () => {
   it("AC-16: returns the user when the session role matches", async () => {
-    const email = newEmail("admin");
+    const username = newUsername("admin");
     const created = await createUser({
-      email,
+      username,
       name: "Administrator",
-      password: newPassword(),
       role: "ADMIN",
     });
     authMock.mockResolvedValue(sessionFor(created.id, "ADMIN"));
 
     const user = await requireRole("ADMIN");
 
-    expect(user).toEqual({ id: created.id, email, name: "Administrator", role: "ADMIN" });
+    expect(user).toEqual({ id: created.id, username, name: "Administrator", role: "ADMIN" });
   });
 
   it("AC-16: raises ForbiddenError naming the required role when the session role does not match", async () => {
     const created = await createUser({
-      email: newEmail("staff"),
+      username: newUsername("staff"),
       name: "Yard Staff",
-      password: newPassword(),
     });
     authMock.mockResolvedValue(sessionFor(created.id));
 

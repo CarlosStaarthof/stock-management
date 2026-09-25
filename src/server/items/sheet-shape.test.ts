@@ -13,7 +13,7 @@ import { currentPriceOf, sheetEntriesForRole } from "@/server/items/sheet-shape"
  */
 const ADMIN: SessionUser = {
   id: "user_admin",
-  email: "admin@macroads.test",
+  username: "admin",
   name: "Fixture Administrator",
   role: "ADMIN",
 };

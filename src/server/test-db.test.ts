@@ -17,12 +17,18 @@ type DbGlobal = { macroadsPrismaClient?: unknown };
 const MODULE_SOURCE = readFileSync("src/server/test-db.ts", "utf8");
 const SCHEMA_SOURCE = readFileSync("prisma/schema.prisma", "utf8");
 
-/** The eight tables of spec 020's "Data touched" table, quoted from the spec. */
+/**
+ * The eight tables of spec 020's "Data touched" table, quoted from the spec, and the three
+ * #21 added (021 AC-4).
+ */
 const EXPECTED_TRUNCATED = [
+  "AccountLock",
+  "AuthEvent",
   "Item",
   "ItemLocation",
   "ItemPrice",
   "ItemType",
+  "SetupClaim",
   "StockCount",
   "StockCountLine",
   "Supplier",
@@ -44,7 +50,7 @@ describe("the contract, unchanged", () => {
 });
 
 describe("the truncate list", () => {
-  it("AC-2: TRUNCATED_TABLES equals the eight emptied tables as a set", () => {
+  it("AC-2, amended by 021 AC-4: TRUNCATED_TABLES equals the eleven emptied tables as a set", () => {
     expect([...TRUNCATED_TABLES].sort()).toEqual([...EXPECTED_TRUNCATED].sort());
   });
 
@@ -66,14 +72,34 @@ describe("the truncate list", () => {
 describe("RESTART IDENTITY would reset nothing", () => {
   // The other half of AC-6 — that the schema owns zero sequences in `pg_class` — is in
   // src/server/test-db.db.test.ts. This half needs no database at all.
-  const idLines = SCHEMA_SOURCE.split("\n").filter((line) => /(?<!@)@id\b/.test(line));
-
-  it("AC-6: prisma/schema.prisma declares nine ids, every one of them @default(cuid())", () => {
-    expect(idLines).toHaveLength(9);
-
-    for (const line of idLines) {
-      expect(line, line.trim()).toContain("@default(cuid())");
+  //
+  // 021 AC-1 amends the unit half: #21 adds two ids that are not cuids and have no default.
+  // `AccountLock.accountKey` is the HMAC of a typed username, computed by the application
+  // (021 S5), and `SetupClaim.id` is the `Int` that is always 1 (021 S9). An `@id` with no
+  // default creates no sequence, so the claim this half supports is unchanged.
+  const idDeclarations: { owner: string; line: string }[] = [];
+  let model = "";
+  for (const line of SCHEMA_SOURCE.split("\n")) {
+    const opened = /^model\s+(\w+)\s*\{/.exec(line);
+    if (opened !== null) model = opened[1];
+    else if (/^\}/.test(line)) model = "";
+    else if (/(?<!@)@id\b/.test(line)) {
+      idDeclarations.push({ owner: `${model}.${line.trim().split(/\s+/)[0]}`, line: line.trim() });
     }
+  }
+
+  it("AC-6, amended by 021 AC-1: prisma/schema.prisma declares twelve ids, ten of them @default(cuid()) and exactly AccountLock.accountKey and SetupClaim.id with no @default", () => {
+    // The count is what stops the line filter from silently matching nothing.
+    expect(idDeclarations).toHaveLength(12);
+
+    const cuids = idDeclarations.filter(({ line }) => line.includes("@default(cuid())"));
+    expect(cuids, cuids.map(({ owner }) => owner).join(", ")).toHaveLength(10);
+
+    const noDefault = idDeclarations
+      .filter(({ line }) => !line.includes("@default"))
+      .map(({ owner }) => owner)
+      .sort();
+    expect(noDefault).toEqual(["AccountLock.accountKey", "SetupClaim.id"]);
   });
 
   it("AC-6: no id anywhere in the schema is an autoincrement", () => {

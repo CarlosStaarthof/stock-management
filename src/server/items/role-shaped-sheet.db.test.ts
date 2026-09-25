@@ -147,11 +147,11 @@ describe("listSheet is role-shaped", () => {
 
     // Nothing a client sets reaches this decision: there is no query string, header or
     // cookie in the argument list at all. The nearest thing a request could influence is
-    // the user's own name and email, and neither is consulted.
+    // the user's own name and username, and neither is consulted.
     const impostor: SessionUser = {
       ...STAFF,
       name: "ADMIN",
-      email: "admin@macroads.test",
+      username: "admin",
     };
 
     for (const entry of await listSheet(impostor, "DUBLIN")) {

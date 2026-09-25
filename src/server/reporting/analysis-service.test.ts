@@ -19,14 +19,14 @@ import { DEFAULT_BREAKDOWN } from "@/server/reporting/analysis-input";
 
 const STAFF: SessionUser = {
   id: "user_staff",
-  email: "staff@macroads.test",
+  username: "staff",
   name: "Fixture Yard Staff",
   role: "YARD_STAFF",
 };
 
 const ADMIN: SessionUser = {
   id: "user_admin",
-  email: "admin@macroads.test",
+  username: "admin",
   name: "Fixture Administrator",
   role: "ADMIN",
 };
@@ -65,7 +65,7 @@ describe("011 AC-2: the admin shape is never built for a staff actor", () => {
     const forAdmin = vi.fn(() => "admin");
     const forStaff = vi.fn(() => "staff");
 
-    expect(analysisForRole({ ...ADMIN, email: "staff@macroads.test" }, forStaff, forAdmin)).toBe(
+    expect(analysisForRole({ ...ADMIN, username: "staff" }, forStaff, forAdmin)).toBe(
       "admin",
     );
     expect(analysisForRole({ ...STAFF, id: ADMIN.id }, forStaff, forAdmin)).toBe("staff");

@@ -8,18 +8,8 @@
  */
 
 // ---------------------------------------------------------------------------------------
-// Email and password (#3). Still rendered by the current sign-in; #21's Phase B removes
-// both when the email sign-in goes.
+// Role refusal (#3, unchanged by #21).
 // ---------------------------------------------------------------------------------------
-
-/**
- * Shown for a wrong password, an unknown email AND a deactivated account. One message,
- * because three messages tell an attacker which emails have accounts (AC-10).
- */
-export const INVALID_CREDENTIALS_MESSAGE = "Invalid email or password.";
-
-export const INACTIVE_ACCOUNT_MESSAGE =
-  "Your account is no longer active. Contact an administrator.";
 
 export const ACCESS_DENIED_MESSAGE = "You do not have access to that page.";
 

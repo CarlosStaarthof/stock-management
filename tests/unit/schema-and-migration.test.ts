@@ -71,9 +71,13 @@ const EXPECTED_MODELS = [
   "ItemLocation",
   "StockCount",
   "StockCountLine",
+  // 021 AC-1: the owner's decisions D1-D12 add three models.
+  "AccountLock",
+  "AuthEvent",
+  "SetupClaim",
 ];
 
-const EXPECTED_ENUMS = ["Role", "CountStatus", "UnitKind"];
+const EXPECTED_ENUMS = ["Role", "CountStatus", "UnitKind", "ProfileStatus", "AuthEventKind"];
 
 /** Deferred to M7 by Part 3. Not one field of these may appear (spec 004 scope boundary). */
 const M7_DECLARATIONS = [
@@ -106,7 +110,21 @@ function relationFieldsOf(model: string): string[] {
 // specs/domain-model.md Part 3 with nothing added: no createdAt / updatedAt anywhere but
 // User (from #3) and ItemPrice, and no audit column.
 const EXPECTED_SCALARS: Record<string, string[]> = {
-  User: ["id", "email", "name", "passwordHash", "role", "active", "createdAt", "updatedAt"],
+  // 021 AC-1 reshaped #3's User: username and PIN replace email and password, and
+  // `status` replaces `active`.
+  User: [
+    "id",
+    "username",
+    "requestedUsername",
+    "name",
+    "role",
+    "status",
+    "pinHash",
+    "pinKeyId",
+    "sessionEpoch",
+    "createdAt",
+    "updatedAt",
+  ],
   Location: ["id", "code", "name", "active", "sortOrder"],
   Supplier: ["id", "name", "active"],
   ItemType: ["id", "code", "name", "sortOrder"],
@@ -148,10 +166,13 @@ const EXPECTED_SCALARS: Record<string, string[]> = {
     "unitPriceSnapshot",
     "note",
   ],
+  AccountLock: ["accountKey", "consecutiveFailures", "level", "lockedUntil", "updatedAt"],
+  AuthEvent: ["id", "kind", "bucket", "accountKey", "at"],
+  SetupClaim: ["id", "userId", "claimedAt"],
 };
 
 const EXPECTED_RELATIONS: Record<string, string[]> = {
-  User: ["stockCountsCreated", "stockCountsApproved", "stockCountsSigned"],
+  User: ["setupClaim", "stockCountsCreated", "stockCountsApproved", "stockCountsSigned"],
   Location: ["itemLinks", "stockCounts"],
   Supplier: ["items"],
   ItemType: ["items"],
@@ -160,6 +181,9 @@ const EXPECTED_RELATIONS: Record<string, string[]> = {
   ItemLocation: ["item", "location"],
   StockCount: ["location", "createdBy", "approvedBy", "signedBy", "lines"],
   StockCountLine: ["stockCount", "item"],
+  AccountLock: [],
+  AuthEvent: [],
+  SetupClaim: ["user"],
 };
 
 const migrationDirectories = existsSync(MIGRATIONS_DIR)
@@ -202,7 +226,7 @@ function declaredColumns(sql: string): string[] {
 }
 
 describe("prisma schema declarations", () => {
-  it("004 AC-1: declares exactly nine models and exactly three enums, compared as sets", () => {
+  it("004 AC-1, amended by 021 AC-1: declares exactly twelve models and exactly five enums, compared as sets", () => {
     // Equality, not a count: a model swapped for another would pass a count.
     expect([...declarations("model")].sort()).toEqual([...EXPECTED_MODELS].sort());
     expect([...declarations("enum")].sort()).toEqual([...EXPECTED_ENUMS].sort());
@@ -250,19 +274,24 @@ describe("prisma schema declarations", () => {
     }
   });
 
-  it("003 AC-2 / 004 AC-5: User keeps its eight scalar fields and gains exactly three relations", () => {
+  it("021 AC-1 (superseding 003 AC-2) / 004 AC-5: User has Part 3's eleven scalar fields and #4's three relations", () => {
     expect(scalarFieldsOf("User")).toEqual([
       "id",
-      "email",
+      "username",
+      "requestedUsername",
       "name",
-      "passwordHash",
       "role",
-      "active",
+      "status",
+      "pinHash",
+      "pinKeyId",
+      "sessionEpoch",
       "createdAt",
       "updatedAt",
     ]);
 
+    // #4's three, after the back-relation of 021's SetupClaim.
     expect(relationFieldsOf("User")).toEqual([
+      "setupClaim",
       "stockCountsCreated",
       "stockCountsApproved",
       "stockCountsSigned",
@@ -279,12 +308,12 @@ describe("prisma schema declarations", () => {
     expect(body).toMatch(/stockCountsSigned\s+StockCount\[\]\s+@relation\("StockCountSignedBy"\)/);
   });
 
-  it("003 AC-2: email is unique, role defaults to YARD_STAFF, active defaults to true", () => {
+  it("021 AC-1 (superseding 003 AC-2): username is optional and unique, role defaults to YARD_STAFF, status to PENDING", () => {
     const body = blockBody("model", "User").join("\n");
 
-    expect(body).toMatch(/email\s+String\s+@unique/);
+    expect(body).toMatch(/username\s+String\?\s+@unique/);
     expect(body).toMatch(/role\s+Role\s+@default\(YARD_STAFF\)/);
-    expect(body).toMatch(/active\s+Boolean\s+@default\(true\)/);
+    expect(body).toMatch(/status\s+ProfileStatus\s+@default\(PENDING\)/);
     expect(body).toMatch(/createdAt\s+DateTime\s+@default\(now\(\)\)/);
     expect(body).toMatch(/updatedAt\s+DateTime\s+@updatedAt/);
     expect(body).toMatch(/id\s+String\s+@id\s+@default\(cuid\(\)\)/);
@@ -340,8 +369,17 @@ describe("the first migration, create_user", () => {
 });
 
 describe("the second migration, create_stock_domain", () => {
-  it("004 AC-23: prisma/migrations holds exactly two directories, in order", () => {
-    expect(migrationDirectories).toHaveLength(2);
+  it("004 AC-23, re-spelled by 021 AC-2: #4 added exactly one migration directory, create_stock_domain, second after create_user", () => {
+    // Re-spelled by 021 AC-2 as #4's own claim: the files #4's commits added under
+    // prisma/migrations lie in exactly one directory, create_stock_domain. A later
+    // feature's migration is asserted by that feature's own criterion, so this is never
+    // re-amended when one is added: a hand-maintained count is the list that went stale.
+    const directories = [
+      ...new Set(filesTouchedBy(4, [MIGRATIONS_DIR]).map((file) => file.split("/")[2])),
+    ];
+    expect(directories).toHaveLength(1);
+    expect(directories[0]).toMatch(/^\d{14}_create_stock_domain$/);
+
     expect(migrationDirectories[0]).toMatch(/^\d{14}_create_user$/);
     expect(migrationDirectories[1]).toMatch(/^\d{14}_create_stock_domain$/);
   });

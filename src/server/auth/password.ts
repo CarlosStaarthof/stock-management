@@ -6,30 +6,20 @@ import { DEVICE_TOKEN_MAX_AGE_DAYS } from "@/server/auth/attempt-budget";
 import { SETUP_CODE_MIN_LENGTH } from "@/server/auth/credential-rules";
 
 /**
- * The ONLY file in this repository allowed to import the password-hashing library
- * (spec 003 AC-5, enforced by tests/unit/hashing-boundary.test.ts). The admin-creation
- * script and the credentials provider both reach hashing through here, so a second,
+ * The ONLY file in this repository allowed to import the password-hashing library, and the
+ * one CREDENTIAL-CRYPTO module (spec 003 AC-5, 021 S3, S4, S5, S7, S9, AC-6; enforced by
+ * tests/unit/hashing-boundary.test.ts). The PIN digest and hash, the pepper's fingerprint,
+ * the lock key, the device token and the setup-code comparison all live here, so a second,
  * weaker hasher cannot appear in a later feature.
  *
- * Cost 10 is the floor the spec sets. bcrypt salts every hash, so the same password
- * hashed twice yields two different strings — comparison is `verifyPassword`, never
- * string equality.
+ * It is the only reader of the three secrets `PIN_PEPPER`, `SETUP_CODE` and `AUTH_SECRET`.
+ * Each is read when a function is called, never at import (AC-42), and none of them, nor
+ * anything derived from them, is logged.
  *
- * Feature #21 makes it the one CREDENTIAL-CRYPTO module (021 S3, S4, S5, S7, S9, AC-6): the
- * PIN digest and hash, the pepper's fingerprint, the lock key, the device token and the
- * setup-code comparison all live here, and it is the only reader of the three secrets
- * `PIN_PEPPER`, `SETUP_CODE` and `AUTH_SECRET`. Each is read when a function is called,
- * never at import (AC-42), and none of them, nor anything derived from them, is logged.
+ * Cost 10 is the floor the spec sets. bcrypt salts every hash, so the same PIN hashed twice
+ * yields two different strings — comparison is `verifyPin`, never string equality.
  */
 const BCRYPT_COST = 10;
-
-export async function hashPassword(plain: string): Promise<string> {
-  return bcrypt.hash(plain, BCRYPT_COST);
-}
-
-export async function verifyPassword(plain: string, hash: string): Promise<boolean> {
-  return bcrypt.compare(plain, hash);
-}
 
 // ---------------------------------------------------------------------------------------
 // The secrets

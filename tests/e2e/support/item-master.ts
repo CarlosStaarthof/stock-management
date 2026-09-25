@@ -136,9 +136,10 @@ export async function seedCountLine(
   });
   const user = await db.user.create({
     data: {
-      email: `count-${RUN_SUFFIX}-${periodMonth}@macroads-e2e.invalid`,
       name: "E2E count creator",
-      passwordHash: "fixture-not-a-hash",
+      // ACTIVE with no username and no PIN: this profile only creates a count, it never
+      // signs in (021 `User_pending_shape` refuses a request-shaped row).
+      status: "ACTIVE",
       role: "ADMIN",
     },
     select: { id: true },

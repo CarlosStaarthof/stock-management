@@ -3,12 +3,14 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 /**
- * Spec 003 AC-5, automated: exactly one file may import the password-hashing library.
+ * Spec 003 AC-5, automated, and widened by 021 AC-6: exactly one file may compute a
+ * credential digest — import the hashing library, or call the keyed-hash or constant-time
+ * comparison primitives of `node:crypto`.
  *
- * The admin-creation script and the credentials provider both reach hashing through
- * `src/server/auth/password.ts`, so the cost factor is decided in one place. Without this
- * test, a later feature adds `import bcrypt from "bcryptjs"` at cost 4 in a seed script
- * and nothing complains.
+ * The reset script and the credentials provider both reach hashing through
+ * `src/server/auth/password.ts`, so the cost factor and the pepper are decided in one
+ * place. Without this test, a later feature adds `import bcrypt from "bcryptjs"` at cost 4
+ * in a seed script, or an HMAC under a second key, and nothing complains.
  *
  * It reads what the repository contains, not what anybody remembers putting there.
  */
@@ -25,6 +27,23 @@ const HASHING_MODULES = [
 ];
 
 const THE_ONE_FILE = "src/server/auth/password.ts";
+
+// 021 AC-6: the two `node:crypto` operations a credential digest or its comparison is made
+// of. Built from parts, so this file's own source never looks like a caller.
+const CRYPTO_CALLS = [`create${"Hmac"}`, `timing${"SafeEqual"}`].map(
+  (name) => new RegExp(String.raw`\b${name}\s*\(`),
+);
+
+/** Whether the file's source calls one of `CRYPTO_CALLS`. */
+function callsCredentialCrypto(file: string): boolean {
+  let source: string;
+  try {
+    source = readFileSync(file, "utf8");
+  } catch {
+    return false;
+  }
+  return CRYPTO_CALLS.some((pattern) => pattern.test(source));
+}
 
 /** Tracked files plus new files git would carry, under the three code directories. */
 function codeFiles(): string[] {
@@ -68,26 +87,29 @@ function importedModules(file: string): string[] {
 }
 
 describe("the hashing boundary", () => {
-  it("AC-5: exactly one file under src/, scripts/ and prisma/ imports the hashing library", () => {
-    const importers = codeFiles().filter((file) =>
-      importedModules(file).some((specifier) => HASHING_MODULES.includes(specifier)),
+  it("AC-5, amended by 021 AC-6: exactly one file under src/, scripts/ and prisma/ imports the hashing library or calls the digest primitives", () => {
+    const importers = codeFiles().filter(
+      (file) =>
+        importedModules(file).some((specifier) => HASHING_MODULES.includes(specifier)) ||
+        callsCredentialCrypto(file),
     );
 
     expect(importers).toEqual([THE_ONE_FILE]);
   });
 
-  it("AC-5: that file is the module the contract names, and it exports both operations", () => {
+  it("AC-5, amended by 021 AC-6: that file is the module the contract names, and it exports both operations", () => {
     const source = readFileSync(THE_ONE_FILE, "utf8");
 
-    expect(source).toContain("export async function hashPassword");
-    expect(source).toContain("export async function verifyPassword");
+    expect(source).toContain("export async function hashPin");
+    expect(source).toContain("export async function verifyPin");
   });
 
-  it("AC-5: the admin-creation script reaches hashing through the service layer", () => {
-    const specifiers = importedModules("scripts/admin-create.ts");
+  it("AC-5, amended by 021 AC-6: the reset script reaches hashing through the service layer", () => {
+    const specifiers = importedModules("scripts/pin-reset.ts");
 
     expect(specifiers.some((specifier) => HASHING_MODULES.includes(specifier))).toBe(false);
-    expect(specifiers).toContain("@/server/auth/user-service");
+    expect(callsCredentialCrypto("scripts/pin-reset.ts")).toBe(false);
+    expect(specifiers).toContain("@/server/auth/operator-service");
   });
 });
 

@@ -36,7 +36,7 @@ import { seedCount } from "./stock-entry";
  */
 
 /** What `submitAs` and `approveAs` want: a test account, as the session sees it. */
-export type Actor = { id: string; email: string; role: Role };
+export type Actor = { id: string; username: string; name: string; role: Role };
 
 /** One item of the user's master, with the two facts the breakdown groups on. */
 export type FixtureItem = {

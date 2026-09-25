@@ -60,7 +60,7 @@ test.beforeAll(async () => {
   await clearReservedYear(YEAR);
 
   const owner = await createTestUser("YARD_STAFF", "stock-takes-calendar-owner");
-  created.push(owner.email);
+  created.push(owner.username);
 
   const seed = async (
     locationCode: "DUBLIN" | "CLONMEL",
@@ -80,8 +80,8 @@ test.afterAll(async () => {
   if (!(await databaseIsReachable())) return;
 
   await clearReservedYear(YEAR);
-  for (const email of created.splice(0)) {
-    await removeUser(email);
+  for (const username of created.splice(0)) {
+    await removeUser(username);
   }
 
   // 007 AC-30: this file reached nothing outside its own reservation.
@@ -94,7 +94,7 @@ async function newUser(
   label = "stock-takes-calendar",
 ): Promise<TestUser> {
   const user = await createTestUser(role, label);
-  created.push(user.email);
+  created.push(user.username);
   return user;
 }
 
@@ -153,7 +153,7 @@ test("AC-1: both roles get 200, the heading, the email and a way out", async ({ 
     // #3's heading, kept verbatim: `role-access.spec.ts` asserts it for both roles and
     // passes unmodified.
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("Stock Takes");
-    await expect(page.getByTestId("signed-in-email")).toHaveText(user.email);
+    await expect(page.getByTestId("signed-in-name")).toHaveText(user.name);
     await expect(page.getByTestId("month-heading")).toHaveText(`April ${Y}`);
     expect(
       await page.getByTestId("month-heading").evaluate((node) => node.tagName),

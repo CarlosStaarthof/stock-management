@@ -88,7 +88,8 @@ async function postQuantity(
   actor: SessionUser,
   edit: { itemId: string; quantity: string },
 ): Promise<Response> {
-  authMock.mockResolvedValue({ user: { id: actor.id } });
+  // `epoch: 0` is what a freshly made profile's session carries (021 AC-17).
+  authMock.mockResolvedValue({ user: { id: actor.id }, epoch: 0 });
 
   return postLines(
     new Request(`http://localhost:3000/api/counts/${countId}/lines`, {
@@ -857,7 +858,7 @@ describe("AC-18: the reopen — who, what it clears, and what it records", () =>
     const entries = parseAuditLines(row.notes as string);
     expect(entries.map((entry) => entry.event)).toEqual(["SUBMITTED", "APPROVED", "REOPENED"]);
     expect(entries[2].reason).toBe("the MMA price was wrong");
-    expect(entries[2].actorEmail).toBe(admin.email);
+    expect(entries[2].actorRef).toBe(admin.username);
 
     // The one operation here that destroys information is in the server log too.
     expect(warn).toHaveBeenCalledTimes(1);

@@ -16,7 +16,7 @@ import { listCountableYards } from "@/server/counts/count-service";
 /**
  * WHO, WHERE, WHEN — confirmed, not typed.
  *
- * WHO IS COUNTING IS THE SESSION (AC-5). The signed-in name and email are TEXT. There is
+ * WHO IS COUNTING IS THE SESSION (AC-5). The signed-in name is TEXT. There is
  * no "counted by" input and no second identity mechanism: 003 AC-18 already established
  * that nothing the client sets decides who you are, and what #9 asks a person to draw is
  * the second, deliberate artefact — a typed name here would be an unverifiable third. The
@@ -53,9 +53,8 @@ export default async function NewCountPage({
     <main className="mx-auto flex w-full max-w-2xl flex-col gap-5 p-4 sm:p-6">
       <h1 className="text-2xl font-semibold tracking-tight">Start a count</h1>
 
-      <p data-testid="counting-as" className="text-base text-slate-700">
+      <p data-testid="counting-as" className="text-base text-slate-700 [overflow-wrap:anywhere]">
         {countingAs(user.name)}
-        <span className="block text-sm text-slate-500">{user.email}</span>
       </p>
 
       <form method="get" action="/stock-entry/new/confirm" className="flex flex-col gap-5">

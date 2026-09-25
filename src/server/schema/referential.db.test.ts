@@ -108,9 +108,8 @@ async function seedEverything(): Promise<Fixture> {
 
   const user = await db.user.create({
     data: {
-      email: `referential-${unique}@macroads.example`,
       name: "Referential Fixture",
-      passwordHash: `not-a-real-hash-${unique}`,
+      status: "ACTIVE",
     },
   });
   const itemType = await db.itemType.create({
@@ -174,11 +173,13 @@ describe("every foreign key carries the delete rule the spec chose", () => {
     "ItemLocation.locationId",
     "Item.supplierId",
     "Item.itemTypeId",
+    // 021 AC-1: first-run setup's claim can never outlive its administrator.
+    "SetupClaim.userId",
   ];
 
   const CASCADING = ["StockCountLine.stockCountId", "ItemPrice.itemId", "ItemLocation.itemId"];
 
-  it("AC-19: the eight Restrict foreign keys report delete_rule RESTRICT", async () => {
+  it("AC-19, amended by 021 AC-1: the nine Restrict foreign keys report delete_rule RESTRICT", async () => {
     const keys = await foreignKeys();
 
     for (const key of RESTRICTED) {
@@ -194,7 +195,7 @@ describe("every foreign key carries the delete rule the spec chose", () => {
     }
   });
 
-  it("AC-19: those eleven are all of them, and none is SET NULL or NO ACTION", async () => {
+  it("AC-19, amended by 021 AC-1: those twelve are all of them, and none is SET NULL or NO ACTION", async () => {
     const keys = await foreignKeys();
 
     expect([...keys.keys()].sort()).toEqual([...RESTRICTED, ...CASCADING].sort());
@@ -249,12 +250,13 @@ describe("history cannot be deleted, and archival does not touch it", () => {
     expectRestrictViolation(error, "StockCount_createdById_fkey");
     expect(await db.user.count({ where: { id: fixture.userId } })).toBe(1);
 
-    // #3's way of removing a person, and the signature keeps its owner.
+    // The way a person is removed (#3's `active`, #21's `status`), and the signature keeps
+    // its owner.
     const deactivated = await db.user.update({
       where: { id: fixture.userId },
-      data: { active: false },
+      data: { status: "DEACTIVATED" },
     });
-    expect(deactivated.active).toBe(false);
+    expect(deactivated.status).toBe("DEACTIVATED");
     expect(await db.stockCount.count({ where: { createdById: fixture.userId } })).toBe(1);
   });
 

@@ -270,9 +270,20 @@ that module. Counting starts fresh from the next count.
 enum Role        { YARD_STAFF ADMIN }
 enum CountStatus { DRAFT SUBMITTED APPROVED }
 enum UnitKind    { TONNE KILOGRAM LITRE UNIT LINEAR_METRE }
+enum ProfileStatus { PENDING ACTIVE REJECTED DEACTIVATED }                # 021
+enum AuthEventKind { PIN_FAILURE PROFILE_REQUEST SETUP_FAILURE BUDGET_RESET } # 021
 
-User            id  email(unique)  name  passwordHash  role  active
-                createdAt  updatedAt
+User            id  username?(unique)  requestedUsername?  name  role
+                status  pinHash?  pinKeyId?  sessionEpoch  createdAt  updatedAt
+                @@index([status])            # 021: username + PIN, never an email
+
+AccountLock     accountKey(id)  consecutiveFailures  level  lockedUntil?  updatedAt  # 021
+
+AuthEvent       id  kind  bucket  accountKey?  at                               # 021
+                @@index([bucket, kind, at])  @@index([accountKey, at])
+
+SetupClaim      id Int(id)  userId(unique)  claimedAt    # 021; CHECK id = 1
+                user -> User  onDelete: Restrict
 
 Location        id  code(unique)   name  active  sortOrder
                 # DUBLIN "Dublin", CLONMEL "Clonmel"
@@ -309,6 +320,14 @@ StockCountLine  id  stockCountId  itemId
                 note?
                 @@unique([stockCountId, itemId])
 ```
+
+**Feature #21 `pin_auth` reshaped `User` and added the rest marked `# 021`**, on the owner's
+decisions D1–D12 (`specs/features/021-pin_auth.md`): people sign in with a username and a
+PIN, `email`, `passwordHash` and `active` are gone, and `status` says which of four states a
+profile is in. No column stores a PIN: `pinHash` is bcrypt over a digest keyed by a secret the
+database does not hold. `AccountLock`, `AuthEvent` and `SetupClaim` hold the per-account lock,
+the budget bookkeeping and the first-run setup guard, and none of them holds a PIN, a code, a
+typed username or a user id beyond `SetupClaim.userId`.
 
 **Deferred to M7** — `Vehicle`, `BoilerReading`, `BagReading`, `YardBulkReading`, and
 the `BoilerMaterial` / `BagMaterial` enums. The Trucks & Yard sheet is out of v1 scope;

@@ -89,12 +89,10 @@ function suffix(): string {
 }
 
 async function newUser(): Promise<string> {
-  const unique = suffix();
   const user = await db.user.create({
     data: {
-      email: `constraints-${unique}@macroads.example`,
       name: "Constraints Fixture",
-      passwordHash: `not-a-real-hash-${unique}`,
+      status: "ACTIVE",
     },
   });
   return user.id;

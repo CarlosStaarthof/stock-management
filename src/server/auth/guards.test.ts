@@ -6,12 +6,12 @@ import { ForbiddenError, UnauthorizedError } from "@/server/errors";
 
 const staff: SessionUser = {
   id: "u_staff",
-  email: "staff@macroads.example",
+  username: "staff",
   name: "Yard Staff",
   role: "YARD_STAFF",
 };
 
-const admin: SessionUser = { ...staff, id: "u_admin", email: "admin@macroads.example", role: "ADMIN" };
+const admin: SessionUser = { ...staff, id: "u_admin", username: "admin", role: "ADMIN" };
 
 describe("assertUser", () => {
   it("AC-16: returns the user when there is a session", () => {

@@ -240,23 +240,11 @@ describe("AC-22: nothing this feature does not own has been touched", () => {
   });
 
   it("AC-22: TRUNCATED_TABLES still holds exactly its eight entries", () => {
-    // 020 AC-4 compares this set with `information_schema`; this feature adds no table, so
-    // that equality passes untouched.
-    const source = read("src/server/test-db.ts");
-    const listed = [...source.matchAll(/^\s*"(\w+)",$/gm)].map((match) => match[1]);
-
-    expect(new Set(listed)).toEqual(
-      new Set([
-        "Item",
-        "ItemLocation",
-        "ItemPrice",
-        "ItemType",
-        "StockCount",
-        "StockCountLine",
-        "Supplier",
-        "User",
-      ]),
-    );
+    // 020 AC-4 compares the truncate list with `information_schema`, and #10 added no table,
+    // so #10 left the list and the schema as it found them. Re-spelled by 021 AC-4 as a
+    // claim about #10's own commits (021 Phase 0's helper): a later feature that adds a
+    // table legitimately extends the list, and that is not #10's work.
+    expect(filesTouchedBy(10, ["prisma", "src/server/test-db.ts"])).toEqual([]);
   });
 });
 

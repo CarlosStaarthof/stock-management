@@ -115,8 +115,8 @@ test.beforeAll(async () => {
 test.afterAll(async () => {
   if (!(await databaseIsReachable())) return;
 
-  for (const email of created.splice(0)) {
-    await removeUser(email);
+  for (const username of created.splice(0)) {
+    await removeUser(username);
   }
   await cleanUp(ledger);
 
@@ -125,7 +125,7 @@ test.afterAll(async () => {
 
 async function admin(): Promise<TestUser> {
   const user = await createTestUser("ADMIN", "item-master-yard");
-  created.push(user.email);
+  created.push(user.username);
   return user;
 }
 

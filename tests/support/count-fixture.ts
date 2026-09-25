@@ -113,9 +113,9 @@ export async function actorFor(role: "ADMIN" | "YARD_STAFF", name?: string): Pro
 
   const row = await db.user.findUniqueOrThrow({
     where: { id },
-    select: { id: true, email: true, name: true, role: true },
+    select: { id: true, username: true, name: true, role: true },
   });
-  return { id: row.id, email: row.email, name: row.name, role: row.role };
+  return { id: row.id, username: row.username ?? "", name: row.name, role: row.role };
 }
 
 /** Every quantity on a count, in `itemId` order, as strings or real `null`s. */

@@ -413,3 +413,710 @@ attempt-budget `ce450ea6…`, auth-messages `d56ccbec…`. All matched the pre-m
 - **Cost.** `password.test.ts` takes about 4 s: bcrypt at cost 10 in pure JS.
 - **Before my session.** `progress/impl_pin_auth.md` had a one-line change that isn't mine (a path escape fixed in
   the Phase 0 gate note). I only appended this section.
+
+## Phase B
+
+### Work log
+
+Finished and verified steps only, in the order they were done.
+
+1. **Schema (AC-1).** `prisma/schema.prisma`: `User` reshaped to the eleven scalar fields in
+   Part 3's order; `ProfileStatus`, `AuthEventKind`, `AccountLock`, `AuthEvent`, `SetupClaim`
+   added. `npx prisma validate` valid; `prisma format --check` clean; `prisma generate` ok.
+   `specs/domain-model.md` Part 3 updated and names #21. `schema-and-migration.test.ts` (census
+   twelve/five, field and relation lists, the two User tests, 004 AC-23's census re-spelled as
+   #4's own claim through `filesTouchedBy(4, …)`) and `project-contract.test.ts` (twelve/five):
+   35/35 green.
+2. **Migration (AC-2).** `prisma/migrations/20260925120000_pin_profiles/migration.sql`,
+   hand-ordered: enums, `status` added and backfilled from `active` before `active` is dropped,
+   the four credential columns and `sessionEpoch` added (none set), `email`'s index and
+   `email`/`passwordHash`/`active` dropped, three tables, indexes, the `SetupClaim` foreign
+   key, the ten CHECKs. No `INSERT`. Applied first to the test database (through
+   `npm run test:db`), then to the development database with `npx prisma migrate deploy`.
+   Development database, counted by a scratch script that prints counts only:
+
+   | | before | after |
+   |---|---|---|
+   | `User` rows | 33 | 33 |
+   | `active = true` / `status = ACTIVE` | 33 | 33 |
+   | `role = ADMIN` | 8 | 8 |
+   | Item / ItemType / Supplier / ItemPrice / ItemLocation | 140 / 19 / 10 / 129 / 152 | 140 / 19 / 10 / 129 / 152 |
+   | Location / StockCount / StockCountLine | 2 / 0 / 0 | 2 / 0 / 0 |
+   | AccountLock / AuthEvent / SetupClaim | — | 0 / 0 / 0 |
+
+   `prisma migrate status`: "Database schema is up to date!"; `_prisma_migrations` lists the
+   three, each finished and not rolled back. **The leftover e2e users are 33, not 4:** all 33
+   carry the e2e email domain, 8 are `ADMIN`, all were active. After the migration every one
+   is `ACTIVE` with no username, no PIN and epoch 0, so none can sign in. None was deleted.
+   Because 8 `ADMIN` rows exist, `/setup` is unavailable on the development database (S9).
+3. **Truncate list (AC-4).** `TRUNCATED_TABLES` gains `AccountLock`, `AuthEvent`,
+   `SetupClaim`; `test-db.test.ts`'s 020 AC-2 set assertion is the eleven; stock-takes'
+   "TRUNCATED_TABLES still holds exactly its eight entries" is now
+   `filesTouchedBy(10, ["prisma", "src/server/test-db.ts"])` empty (title kept). Rows 5 and 13
+   were Phase 0's. `scripts/run-db-tests.mjs` gives its children a `PIN_PEPPER` and a
+   `SETUP_CODE` generated per run. Unit: stock-takes 29/29, count-entry green;
+   `test-db.test.ts` red on exactly one test, **Finding B1** below.
+   *Resolved:* B1 was ruled (020 AC-6 amended by 021 AC-1), and the amended test is green. See *Continuation* → work log 1.
+
+4. **Services, Auth.js, screens, every `email` reference in `src/` (compiles).**
+   `sign-in-service.ts` (`attemptSignIn`, the eight steps), `operator-service.ts`
+   (`createActiveProfile` only), `profile-admin-service.ts` (`ProfileListEntry` and
+   `resetProfilePin` only), `sign-in-codes.ts`, `profile-status.ts`; `user-service.ts` keeps
+   `findActiveUserById` (now also compares the epoch) and `listUsers`, adds
+   `landingPathForUsername`, and loses the four removed functions; `SessionUser` is
+   `{ id, username, name, role }`; the JWT carries `epoch`; `authorize` calls `attemptSignIn`
+   only and sets `macroads-device`; `/sign-in` with `PinPad`; `IdentityHeader` on
+   `/stock-entry`, `/stock-takes`, `/analysis`; `counting-as` shows the name only; audit lines
+   carry `actorRef` = username. `password.ts` lost `hashPassword`/`verifyPassword`;
+   `auth-messages.ts` lost the two email-era messages. `scripts/admin-create.ts`, its npm
+   entry and the three superseded db test files were deleted. Unit and db test fixtures
+   changed in how they build a `SessionUser`/`User` only. `tsc` over `src/`, `tests/unit`,
+   `tests/support`: 0 errors; `eslint src tests/unit tests/support`: 0.
+   `npm run test:unit`: 63 files, 3 failing tests, exactly: 020 AC-6 (Finding B1), and the
+   two tests that read the reset script, which is Phase C's (Finding B4).
+   *Resolved:* all three are green now. `npm run test:unit` is 66 files and 950 tests, none failing. See *Continuation* → work log 1, 4 and 5.
+
+5. **Database tests.** New: `pin-schema.db.test.ts` (AC-3, 30 tests), `sign-in-service.db.test.ts`
+   (AC-10 including the trivial-PIN ruling, AC-12 including 20 concurrent attempts, AC-14 including
+   20 concurrent new-device attempts and retention, AC-32 sign-in half, AC-33 sign-in half; 14
+   tests), `pin-session.db.test.ts` (AC-17 and AC-24 service halves, and `resetProfilePin`'s
+   guards; 10 tests). Fixture-only edits elsewhere, plus `epoch: 0` in two stubbed sessions
+   (`route.db.test.ts`, `count-lifecycle-service.db.test.ts`). The database halves of 004 AC-1
+   (twelve tables), AC-5 (User's columns) and AC-19 (twelve foreign keys, `SetupClaim.userId`
+   RESTRICT) were amended as Part 3 assertions (see B2). First full `npm run test:db`: 22 files,
+   4 failing; after the fixes, the four affected files plus `pin-session` rerun: 5 files, 1
+   failing test, exactly 004 AC-24's migration count (Finding B2).
+   *Resolved:* 004 AC-24 is re-spelled per the B2 ruling, and `columns.db.test.ts` is 19/19. See *Continuation* → work log 2.
+6. **Unit contract scans.** `tests/unit/pin-auth-contract.test.ts` (19 tests): AC-2's SQL text and
+   its one-directory claim through `filesTouchedBy(21, …)`, AC-6's `process.env` readers, AC-8,
+   AC-31, AC-37's retired test id (built from parts) and AC-39's literal scan. 19/19 green.
+   `hashing-boundary.test.ts` amended per AC-6. The six criteria of 007, 010 and 011 that quoted
+   the email now say name and the new test id (AC-37).
+7. **e2e written.** `support/users.ts` per AC-40 (`TestUser = { id, username, name, pin, role }`,
+   `createTestUser` through `createActiveProfile`, `signIn` adds a fresh known-device cookie,
+   `enterCredentials`, `removeUser`/`deactivate`/`storedPinHash`, a `PIN_PEPPER is not set` skip);
+   `support/stock-entry.ts` `actorFor` builds `{ id, username, name, role }`; `support/analysis.ts`
+   and `support/item-master.ts` fixtures follow. Eighteen specs changed by the four substitutions
+   only. `sign-in.spec.ts` rewritten (AC-9, AC-10, AC-12, AC-15, AC-17, AC-36, plus 003 AC-11 as
+   amended and 003 AC-21). `route-protection.spec.ts`'s 390 px test replaced by AC-35's `/sign-in`
+   half. New: `pin-device.spec.ts` (AC-16), `pin-boundary.spec.ts` (AC-33 response half, AC-34),
+   `pin-header.spec.ts` (AC-37 on the three existing pages). `tsc` 0 errors over the whole
+   project, `eslint src tests` 0, `npm run build` exit 0.
+
+8. **AC-38.** `src/lib/count-audit-ref.test.ts` (2 tests, unit: a runtime username round-trips;
+   an email line then a username line parse verbatim) and
+   `src/server/auth/audit-username.db.test.ts` (the APPROVED line carries the approver's
+   username; it lives under `auth/` because 007 AC-25's scan pins the exact files in the counts
+   tree that may name the lifecycle calls). 009 AC-20's `count-audit.test.ts` changed only the
+   field name in its calls.
+9. **Security mutations**, each applied alone by `scratchpad/pb/mutate.py`, its db test run, then
+   the file restored by byte copy and `sha256sum -c` passed for all three targets
+   (`session.ts 2ffc86d8…`, `sign-in-service.ts 0c65587d…`, `profile-admin-service.ts ca572989…`):
+
+   | # | Mutation | Red (and nothing else in the files run) |
+   |---|---|---|
+   | M1 | a staff session reaching money: `getCurrentUser` trusts the token's ADMIN role hint | 2 of 19: `pin-session` "the role in the token is never read"; `session.db` "AC-18: the role comes from the stored row" |
+   | M2 | a wrong PIN signing in: an ACTIVE row signs in whatever bcrypt said | "AC-10: (a) to (e) … identical statement sequence" (1 of the 2 AC-10 tests run) |
+   | M3 | a locked account evaluating a PIN: the lock check is skipped | all 3 AC-12 tests run |
+   | M4 | a reset not ending sessions: `resetProfilePin` does not increment the epoch | 2 of 10: "after resetProfilePin the profile's existing session is refused"; "… and bumps the epoch" |
+
+10. **First full `npm run test:e2e`** (both phases, one build): phase 1 **79 passed**, none
+    skipped (so `PIN_PEPPER` is set in `.env`; its value was never read by me); phase 2 **132
+    passed, 7 failed**. The seven are exactly Finding B3, each failing on a literal fixture name:
+    `stock-entry-approve.spec.ts:208` (line 259) and `:347` (line 393),
+    `stock-entry-start.spec.ts:92` (99), `:183` (209), `:265` (327), `:364` (381), and
+    `stock-entry-submit.spec.ts:329` (344). Development database afterwards: `User` 33,
+    `AccountLock` 0, no `pin:new-devices` event, and 5 `PIN_FAILURE` events in throwaway device
+    buckets with no account key (AC-10 (f)'s malformed attempts), which I deleted; `sign-in.spec.ts`
+    now removes its own (`forgetDevices`). After that run: `sign-in-codes.ts` gained an own-key
+    check (a unit test found that `"toString"` rendered a function), and `page-guards.ts` a
+    comment. The final e2e run below is after every edit.
+    *Resolved:* no final e2e run was recorded before the session ended. After the fifth substitution, the three affected specs pass 26/26. See *Continuation* → work log 3.
+
+11. **A full `test:db` attempt was abandoned, and it is recorded here.** After every edit I started
+    the full suite. Four files in, the test branch stopped answering: `Can't reach database
+    server`, `Server has closed the connection`, a pool timeout, then every hook in
+    `count-entry-service.db.test.ts` timed out at 30 s (30 of 30, 930 s). All four files had
+    passed in the earlier runs. I stopped the run (both node processes), then confirmed that the
+    branch answered again (`session.db.test.ts` 9/9), and restarted the full suite.
+   *Resolved:* the coordinator traced the collapsed runs to the network link, not the code: 428 of 432 on a quiet re-run (`progress/current.md` → *Coordinator — Phase B interrupted*).
+
+### Findings: where the spec is wrong or conflicts with itself
+
+Recorded as found. None was worked around.
+
+- **B1. 020 AC-6's schema-text test cannot hold under AC-1.** `src/server/test-db.test.ts` →
+  "AC-6: prisma/schema.prisma declares nine ids, every one of them @default(cuid())". AC-1
+  mandates `AccountLock.accountKey String @id` and `SetupClaim.id Int @id`, neither a cuid, so
+  the schema now has twelve `@id` lines, two without `@default(cuid())`. No #21 criterion
+  names this test, and 021 says a shipped assertion that turns red is a finding, not a licence
+  to edit it, so it is **left red**. What 020 AC-6 protects still holds: no id is
+  `autoincrement`, and the database half (no sequence in `pg_class`) is unaffected, because an
+  `Int @id` with no default creates no sequence. A ruling is needed: amend 020 AC-6's unit half
+  to "no id is autoincrement, and every `@id` is either `@default(cuid())` or
+  application-supplied with no default", or something else.
+  *Resolved:* ruled B1. The unit half now asserts twelve `@id`s: ten cuids, and exactly those two with no `@default`. See *Continuation* → work log 1.
+- **B2. 004 AC-24's database census of migrations cannot hold under AC-2.**
+  `src/server/schema/columns.db.test.ts` → "AC-24: both migrations are applied, in order,
+  and none was rolled back" asserts `_prisma_migrations` has exactly two rows. AC-2's
+  migration makes three. 021's *Resolved* section re-spelled 004 AC-23's unit census (the
+  directory count) as #4's own claim, but not this database twin of it, and no criterion
+  names it, so it is **left red**. It needs the same treatment (the first two rows are
+  `create_user` then `create_stock_domain`, finished and not rolled back, whatever follows).
+  By contrast I **did** amend the same file's "AC-1: … exactly the nine tables of Part 3" and
+  "AC-5: User still has the same eight columns …": those are the database halves of 004 AC-1
+  and AC-5, which 021 AC-1 amends ("the shipped assertions of Part 3 are amended to match").
+  I also amended `referential.db.test.ts`'s 004 AC-19 foreign-key census (eleven → twelve,
+  `SetupClaim.userId` RESTRICT) on the same reading. That is my reading of AC-1; if the
+  coordinator reads AC-1's list as exhaustive, those three edits are also findings.
+  *Resolved:* ruled B2. AC-24 is re-spelled with no row count, and the three census amendments are confirmed: AC-1 now names them. See *Continuation* → work log 2.
+- **B3. AC-40's display name for test profiles contradicts eleven shipped e2e expectations.**
+  AC-40 makes `createTestUser` name a profile `<label>-<16 hex>`. The old helper named every
+  profile `E2E Yard Staff` or `E2E Administrator`, and eleven shipped `expect(` lines quote
+  those names as literals: `stock-entry-start.spec.ts:99, 209, 327, 336, 382`,
+  `stock-entry-approve.spec.ts:260, 263, 297 (an `actorName` in an expected audit line),
+  301, 394`, `stock-entry-submit.spec.ts:343`. None of AC-40's four substitutions turns a
+  literal name into `user.name`, so they are **left unchanged**; none of them can match a
+  `<label>-<16 hex>` name. A fifth
+  substitution would fix it: "a string literal equal to the old fixture name → the test
+  profile's `name`". I implemented AC-40's naming as written.
+  *Resolved:* ruled B3. AC-40's fifth substitution is applied at the eleven sites. See *Continuation* → work log 3.
+- **B4. Deleting `scripts/admin-create.ts` is forced in Phase B; its replacement is Phase
+  C's.** The script imports `createUser`, which AC-43's table removes, so it no longer
+  compiles once the schema changes. Two shipped unit tests read it:
+  `hashing-boundary.test.ts` (amended here per AC-6 to name `scripts/pin-reset.ts`) and
+  `no-default-password.test.ts` → "AC-7: the script has no fallback value to guess" (AC-41,
+  left unamended). Both are **red until Phase C writes `scripts/pin-reset.ts`** (AC-30) and
+  AC-41. Not a spec defect; a consequence of the phase split. I did not pull AC-30 forward,
+  because the brief gives it to C.
+  *Resolved:* ruled B4. AC-30 and the Phase B part of AC-41 moved into Phase B, and both are done. See *Continuation* → work log 4 and 5.
+- **B5. AC-40's diff rule and the new `pin-*.spec.ts` files.** AC-40 says that outside five named
+  files "no `test(` title … is added". The criteria's own preamble puts browser criteria in new
+  `tests/e2e/pin-*.spec.ts` files, which necessarily add titles. I read the rule as governing the
+  shipped specs and added three new files; the diff evidence below lists them separately.
+  *Resolved:* ruled B5, reading confirmed. The diff evidence is in *Continuation* → *AC-40 diff evidence*.
+
+### Scope and status
+
+**Status: complete for the implementer, with the findings above left for a ruling.** Phase B is
+the swap: schema, migration, the sign-in service and Auth.js, `/sign-in` with `PinPad`, one
+`IdentityHeader`, every `email` reference in `src/`, the e2e helpers and substitutions.
+`feature_list.json` is unchanged (#21 stays `in_progress`). I ran no `init`.
+*Resolved:* the findings are ruled, and the work each ruling asks for is in *Continuation*.
+
+Built early because a Phase B criterion needs them: `profile-admin-service.ts` holds only
+`ProfileListEntry` and `resetProfilePin` (AC-17, AC-24); `operator-service.ts` holds only
+`createActiveProfile` (AC-40's fixtures). **Left to Phase C:** the other nine admin functions,
+`listProfilesForOperator` and `setCredentialsForOperator`, `requestProfile`, `setup-service`,
+the `/sign-in/create`, `/sign-in/requested`, `/setup` and `/profiles` pages (the `/sign-in`
+page already links to `/sign-in/create`, which is a 404 until then), `PROTECTED_PATHS` and the
+matcher gaining `/profiles`, `scripts/pin-reset.ts` and `pin:reset`, `docs/operations.md` and
+`.env.example` (AC-41; `.env.example` is outside my permissions, so I could not read it).
+*Resolved:* under the B4 ruling, the two operator functions, `scripts/pin-reset.ts`, `pin:reset` and `docs/operations.md`'s migrated-profile, lockout and lost-pepper sections are now Phase B's, and are done. `.env.example` and the `/setup` paragraph stay in Phase C.
+
+### Files created
+- `prisma/migrations/20260925120000_pin_profiles/migration.sql`: the one migration (AC-2).
+- `src/server/auth/sign-in-service.ts`: `attemptSignIn`, the eight steps.
+- `src/server/auth/operator-service.ts`: `createActiveProfile` (fixtures; Phase C adds the rest).
+- `src/server/auth/profile-admin-service.ts`: `ProfileListEntry`, `AccountLockView`, `resetProfilePin`.
+- `src/server/auth/sign-in-codes.ts`: the device cookie's name, and the four refusal codes mapped to messages.
+- `src/server/auth/profile-status.ts`: the `ProfileStatus` union, so only `db.ts` imports `@prisma/client`.
+- `src/components/PinPad.tsx`: the keypad (client).
+- `src/components/IdentityHeader.tsx`: display name, sign-out, optional links.
+- Tests: `src/server/auth/pin-schema.db.test.ts` (AC-3), `sign-in-service.db.test.ts`,
+  `pin-session.db.test.ts`, `audit-username.db.test.ts`, `sign-in-codes.test.ts`;
+  `src/lib/count-audit-ref.test.ts`; `tests/unit/pin-auth-contract.test.ts`.
+- `tests/e2e/pin-device.spec.ts` (AC-16), `pin-boundary.spec.ts` (AC-33, AC-34), `pin-header.spec.ts` (AC-37).
+
+### Files modified
+- `prisma/schema.prisma`, `specs/domain-model.md` Part 3: AC-1.
+- `src/server/test-db.ts`: `TRUNCATED_TABLES` is eleven (AC-4).
+- `scripts/run-db-tests.mjs`: a runtime `PIN_PEPPER` and `SETUP_CODE` per run.
+- `package.json`: `admin:create` removed (B4).
+- `src/server/auth/`: `user-service.ts`, `session-user.ts`, `session.ts` (epoch), `next-auth.ts`
+  (username and PIN provider, device cookie), `password.ts` (password functions removed).
+- `src/lib/auth-config.ts` (epoch in the JWT and the session), `src/types/next-auth.d.ts`.
+- `src/app/sign-in/page.tsx`, `form-state.ts`, `src/app/auth-actions.ts`, `src/components/SignInForm.tsx`.
+- `src/app/stock-entry/page.tsx`, `stock-takes/page.tsx`, `analysis/page.tsx` (the header),
+  `stock-entry/new/page.tsx` (`counting-as` shows the name only), `page-guards.ts` (comment).
+- `src/app/api/session/route.ts` (`username`); `/api/users` follows `listUsers`.
+- `src/lib/count-audit.ts`, `src/types/stock-count.ts`, `src/server/counts/count-lifecycle-service.ts`: `actorRef`.
+- `src/lib/auth-messages.ts`: the two email-era messages removed.
+- Specs 007, 010, 011: the six criteria AC-37 names.
+- Tests: the shipped unit and db tests listed in the work log (fixture-only, plus the amendments
+  AC-1, AC-4, AC-6, AC-37 and AC-38 name); the e2e helpers and specs (AC-40).
+- Deleted: `scripts/admin-create.ts`, `src/server/auth/admin-create.db.test.ts`,
+  `user-service.db.test.ts`, `credentials-logging.db.test.ts` (AC-43's table).
+
+### Acceptance criteria
+| AC | Where it is satisfied | Test that proves it | Phase |
+|----|----|----|----|
+| AC-1 | `schema.prisma`, Part 3 | `schema-and-migration.test.ts`, `project-contract.test.ts`; db halves in `columns.db.test.ts`, `referential.db.test.ts` | B |
+| AC-2 | the migration; applied to the development database (work log 2) | `pin-auth-contract.test.ts` "021 AC-2" (6); `schema-and-migration` 004 AC-23 re-spelled | B |
+| AC-3 | the ten CHECKs, the unique index, the FK | `pin-schema.db.test.ts` (30) | B |
+| AC-4 | `TRUNCATED_TABLES` | `test-db.test.ts` AC-2; `test-db.db.test.ts` AC-4 unmodified; stock-takes AC-22 re-spelled | B |
+| AC-5, AC-7, AC-11, AC-13 | Phase A | Phase A | A |
+| AC-6 | `password.ts` alone | `hashing-boundary.test.ts` (amended); `pin-auth-contract` AC-6 | B (the script check waits for C: B4) |
+| AC-8 | no literal PIN or code anywhere | `pin-auth-contract` AC-8 (3) | B scan; the empty-database half is the gate's |
+| AC-9 | `/sign-in`, `authorize`, `/api/session` | `sign-in.spec.ts` AC-9 (5); `session.db.test.ts` | B |
+| AC-10 | `sign-in-service.ts` steps 3 to 8 | `sign-in-service.db.test.ts` AC-10 (2); `sign-in.spec.ts` AC-10 | B |
+| AC-12 | step 4 | `sign-in-service.db.test.ts` AC-12 (3); `sign-in.spec.ts` AC-12 | B |
+| AC-14 | step 2, retention | `sign-in-service.db.test.ts` AC-14 (6) | B |
+| AC-15 | `authorize` is the one evaluation | `sign-in.spec.ts` AC-15 | B |
+| AC-16 | `next-auth.ts` sets the cookie | `pin-device.spec.ts` (5); token half in Phase A | B |
+| AC-17 | `session.ts` epoch, `resetProfilePin` | `pin-session.db.test.ts` (4); `sign-in.spec.ts` AC-17 (3) | B |
+| AC-18 to AC-21, AC-25 to AC-30 | none yet | none yet | C |
+| AC-22 | `resetProfilePin`'s guard only | `pin-session.db.test.ts` "AC-22, for this function" | C (the rest) |
+| AC-23 | next-request deactivation only | `sign-in.spec.ts` "003 AC-11, amended by 021 AC-17" | C (the service) |
+| AC-24 | `resetProfilePin` | `pin-session.db.test.ts` AC-24 (5) | B service half; C the `/profiles` rendering |
+| AC-31 | imports, provider, `signIn(` | `pin-auth-contract` AC-31 (6) | B (see Deviation 1) |
+| AC-32 | step 1 and step 7 | `sign-in-service.db.test.ts` AC-32 (2); `sign-in-codes.test.ts` | B; C `requestProfile`, `setupAvailable`, `/profiles` |
+| AC-33 | nothing logged; `/api/users` shape | `sign-in-service.db.test.ts` AC-33; `pin-boundary.spec.ts` AC-33 | B; C the setup, request, approval and creation logs |
+| AC-34 | `requireRole`/`shapeForRole` untouched | `pin-boundary.spec.ts` (3); `pin-session` deepKeys; mutation M1 | B; C the three new pages |
+| AC-35 | `PinPad`, `SignInForm` | `route-protection.spec.ts` AC-35 (4) | B `/sign-in`; C the other three pages |
+| AC-36 | `SignInForm` | `sign-in.spec.ts` AC-36 | B `/sign-in`; C `/sign-in/create` |
+| AC-37 | `IdentityHeader` | `pin-header.spec.ts` (4); `pin-auth-contract` AC-37 | B; C `/profiles` |
+| AC-38 | `count-audit.ts`, lifecycle | `count-audit-ref.test.ts` (2); `audit-username.db.test.ts`; `count-lifecycle` reopen line | B |
+| AC-39 | module; the fourth substitution | `auth-messages.test.ts`; `pin-auth-contract` AC-39 | B |
+| AC-40 | `support/users.ts`, specs | the diff evidence below | B (B3, B5) |
+| AC-41 | none yet | none yet | C |
+| AC-42, AC-43 | the gate | the gate | coordinator |
+
+*Resolved:* AC-6's script check is green. AC-30 is now Phase B's and done. AC-40 is complete with the fifth substitution. AC-41's test and docs part is now Phase B's and done. See *Continuation* → *Acceptance criteria*.
+
+### Deviations from the spec
+1. **The one `signIn(` call passes `redirect: false`, not the redirect target.** The landing path
+   depends on the role, which is known only after `authorize`. So the action calls
+   `signIn("credentials", { username, pin, redirect: false })`. After a successful sign-in it
+   redirects to the safe `callbackUrl`, or to `landingPathForUsername(username)`: one read of the
+   role, after success, with no credential and no bcrypt. `authorize` still evaluates each
+   attempt exactly once. The AC-31 scan asserts the keys are `{ username, pin, redirect }`.
+2. **A refusal travels as a `CredentialsSignin` whose `code` names the outcome.** Auth.js rethrows
+   it to the server action, which renders the matching message. The HTTP callback answers with
+   Auth.js's usual redirect to `/sign-in?error=CredentialsSignin&code=<outcome>`. The page does
+   not render from that query.
+3. **Modules and exports beyond the table:** `sign-in-codes.ts`, `profile-status.ts`, and
+   `user-service.ts`'s `landingPathForUsername`. `sign-in-service.ts` also exports `SignInOutcome`
+   and `DeviceContext`.
+4. **`resetProfilePin` on an `ACTIVE` profile with no username** (a row migrated from #3) raises
+   `ConflictError(ONLY_ACTIVE_PIN_RESET)`. `User_pin_needs_username` forbids a PIN there, and only
+   the operator's script can give such a row both. Phase C may want its own message.
+5. **The e2e helpers do a little more than AC-40 lists.** `removeUser` also deletes the lock row
+   and the events keyed by that username's account key. `deactivate` writes S14's shape directly,
+   because `deactivateProfile` is Phase C's. `addKnownDevice` returns its bucket, and
+   `forgetDevices` removes events that carry no account key. So a run leaves nothing behind.
+6. **004's database censuses** (twelve tables, User's columns, twelve foreign keys) were amended
+   under AC-1 (see B2).
+   *Resolved:* confirmed by the B2 ruling. AC-1 now names all three.
+7. `src/server/errors.test.ts` still uses `"email"` as an example `ValidationError` field. It is
+   not an account reference, so I left it.
+
+### Notes for the reviewer
+- **No PIN, digest, hash, key or code is printed.** The census scripts printed counts only. I read
+  no `.env` value. The one environment probe I tried was denied, and I did not retry it.
+- **The first `test:db` run found that the stubbed sessions** in `route.db.test.ts` and
+  `count-lifecycle-service.db.test.ts` carried no epoch. They now carry `epoch: 0`, a fixture
+  change. That is AC-17's rule working: a token with no epoch is refused.
+- **`sign-in-service.ts` holds the bucket's advisory lock and the account row lock across its one
+  bcrypt.** That is what makes AC-12's and AC-14's concurrency hold. The transaction limits are
+  60 s for that reason.
+- **`/stock-entry/new`'s `counting-as` now wraps at any character too.** It is not one of AC-37's
+  four pages, but an 80-character name would otherwise widen it.
+
+### Continuation, after the rulings
+
+Brief: the coordinator's scratchpad `impl21-b2.md`. It covers the five rulings in
+`specs/features/021-pin_auth.md` → *Five findings by Phase B*. **Status: complete.** Nothing is
+committed. `feature_list.json`, `Samples/`, `tests/support/feature-scope.ts` and `.env.example`
+are untouched, and `.env.example` was not read. I ran no full `test:db`, no full `test:e2e` and no
+`init`.
+
+#### Work log
+
+Finished and verified steps only, in the order they were done.
+
+1. **B1: 020 AC-6's unit half, amended by 021 AC-1** (`src/server/test-db.test.ts`). The test
+   is now titled "AC-6, amended by 021 AC-1: prisma/schema.prisma declares twelve ids, ten of
+   them @default(cuid()) and exactly AccountLock.accountKey and SetupClaim.id with no
+   @default". It walks `schema.prisma` model by model, so each `@id` line is named
+   `Model.field`. It asserts:
+   - twelve `@id`s;
+   - ten carrying `@default(cuid())`;
+   - no `@default` on exactly `["AccountLock.accountKey", "SetupClaim.id"]`, sorted.
+
+   The separate "no id anywhere in the schema is an autoincrement" test is unchanged.
+
+   Proved red on the real file, after a byte copy (`cp -p`) and with its sha256 recorded
+   (`05da2fd10f9e5fe3…`):
+
+   | Breach | Result |
+   |---|---|
+   | `SetupClaim.id Int @id @default(1)` | 1 of 8 red: `expected [ 'AccountLock.accountKey' ] to deeply equal [ 'AccountLock.accountKey', …(1) ]` |
+   | `AccountLock.accountKey String @id @default(cuid())` | 1 of 8 red: the ten-cuid assertion, `to have a length of 10 but got 11` |
+
+   After each breach I restored the byte copy, and `sha256sum -c` reported
+   `prisma/schema.prisma: OK`. Green afterwards: 8/8.
+2. **B2: 004 AC-24, re-spelled per 021 AC-2** (`src/server/schema/columns.db.test.ts`). The
+   test is now titled "AC-24, amended by 021 AC-2: the first two migrations are create_user
+   then create_stock_domain, and every migration is finished and none rolled back". Ordered by
+   `started_at`:
+   - `rows[0]` matches `/^\d{14}_create_user$/`;
+   - `rows[1]` matches `/^\d{14}_create_stock_domain$/`;
+   - every row is finished and none is rolled back.
+
+   `toHaveLength(2)` is gone, and nothing replaced it.
+
+   AC-2 also says "this criterion's own test pins the third row as `_pin_profiles`". No test
+   did, so `src/server/auth/pin-schema.db.test.ts` gained one: "AC-2: ordered by started_at, the
+   third _prisma_migrations row is <timestamp>_pin_profiles, finished and not rolled back".
+   Runs: `columns.db.test.ts` 19/19 in 11 s; `pin-schema.db.test.ts` 31/31 in 13 s (the 30
+   Phase B tests plus this one).
+3. **B3: AC-40's fifth substitution, at the eleven named sites.** Each site's fixture-name
+   literal became an interpolation of the named user's `name`, with the rest of the literal
+   unchanged. A whole-literal name became `` `${user.name}` ``, which keeps the substitution
+   mechanical. `grep "E2E Yard Staff\|E2E Administrator" tests/e2e` now finds nothing.
+
+   | Site | Now reads | Why that user |
+   |---|---|---|
+   | `stock-entry-approve.spec.ts:260` `signedByMessage(…)` | `staff` | `submittedCount(staff, 2)` submitted and signed the count; `approved.signedById` is `staff.id` |
+   | `stock-entry-approve.spec.ts:263` `approvedByMessage(…)` | `admin` | the page signed in as `admin` clicked approve; `approved.approvedById` is `admin.id` |
+   | `stock-entry-approve.spec.ts:297` `actorName` in `auditSentence` | `admin` | the approver; the same call's `actorRef` is `admin.username` |
+   | `stock-entry-approve.spec.ts:301` `"Approved by … on "` | `admin` | the same audit sentence's actor |
+   | `stock-entry-approve.spec.ts:394` `reopenedNotice(…)` | `admin` | the AC-18 test reopens the count signed in as `admin` |
+   | `stock-entry-start.spec.ts:99` `"Counting as …"` | `staff` | `counting-as` names the signed-in user, `staff` |
+   | `stock-entry-start.spec.ts:209` `"Counting as …"` | `staff` | same: signed in as `staff`, who starts the count |
+   | `stock-entry-start.spec.ts:327` `"Counting as …"` | `staff` | same: the row belongs to `staff` (`createdByIdOf` is `staff.id`) |
+   | `stock-entry-start.spec.ts:336` `expect(body).not.toContain(…)` | `admin`, **still negative** | the forged ADMIN whose id the form carried; the staff page must not name him |
+   | `stock-entry-start.spec.ts:382` `"…started by … on 10 June…"` | `staff` | `staff` started the draft earlier in the same test |
+   | `stock-entry-submit.spec.ts:344` `"Signed by … on "` | `staff` | `submitAs(countId, staff)` signed it |
+
+   `npm run build` exited 0 in 75 s, because the last build predated one Phase B edit (see the
+   notes). Then I ran `npx playwright test` on the three files with
+   `--project=chromium-stock-entry`, once, with nothing else running. It took 257 s: 105 passed,
+   0 failed, 0 skipped. The config makes project `chromium` a dependency, so the 105 are 79 in
+   `chromium` and 26 in `chromium-stock-entry`. The seven Phase B found red all pass:
+   - `stock-entry-approve.spec.ts:208` and `:347`;
+   - `stock-entry-start.spec.ts:92`, `:183`, `:265` and `:364`;
+   - `stock-entry-submit.spec.ts:329`.
+
+   The negative at `:336` sits in `:265`, which also passes. Port 3000 was free afterwards.
+4. **AC-30, now Phase B's.**
+   - `src/server/auth/operator-service.ts` gains the two functions the *Services* table names:
+     - `listProfilesForOperator(now?)` gets the current key id first, so an unusable
+       `PIN_PEPPER` fails before any row is read. It returns one `OperatorProfileLine` per
+       profile, oldest first: `id`, `username`, `name`, `role`, `status`, `pinState` (`set`,
+       `none` or `reset needed`) and `lockState` (`-` with no username, `not locked`, or
+       `locked until <ISO>`).
+     - `setCredentialsForOperator({ id, pin, username? })` parses the PIN, and the username if
+       one is given, and hashes before the transaction. Inside it, the row is locked
+       `FOR UPDATE`, and the function refuses, in this order: an unknown id (`NotFoundError`
+       naming the id); a status other than `ACTIVE` (`ConflictError(ONLY_ACTIVE_PIN_RESET)`);
+       a missing username for a profile that has none, or a given one for a profile that has
+       one (`ValidationError("username", …)`); a taken username
+       (`ConflictError(USERNAME_TAKEN_MESSAGE)`, with the unique index as the backstop).
+       Otherwise it sets the username, if the profile had none, and the PIN and key id, and
+       increments `sessionEpoch`. If the username has a lock row, it applies
+       `applyOutcome(…, "CLEARED")`, which zeroes the count, ends the lock and keeps the level,
+       as `resetProfilePin` does. It returns `{ id, username, name, role }`.
+   - `scripts/pin-reset.ts` accepts exactly `--list` and `--profile <id>`. Anything else,
+     `--create-admin` included, is refused with the usage lines and creates nothing. With
+     `NEW_PIN` unset or empty it refuses before reading anything, and names `NEW_PIN`. It
+     never prompts. A `ValidationError` prints as `NEW_PIN: <message>` or
+     `NEW_USERNAME: <message>`. A conflict, not-found or pepper error prints its own message on
+     its own line. Any other error prints its name and code only, never its message. It
+     imports only `operator-service` and `errors`.
+   - `package.json` gains `"pin:reset": "tsx scripts/pin-reset.ts"`, where `admin:create` was.
+   - `src/server/auth/pin-reset.db.test.ts`: 21 tests. It spawns `npm run pin:reset --silent --
+     …`, the pattern 003's `admin-create.db.test.ts` used. Every run goes through one helper,
+     which counts how many forbidden values appear in stdout plus stderr and fails on any. The
+     values are the `NEW_PIN` value, every `pinHash` and `pinKeyId` in the database before
+     and after the run, the current key id, the account key of every stored username and of
+     `NEW_USERNAME`, and every `AccountLock` key. It reports the count, never the value. Every
+     refusal asserts a non-zero exit, its message, and an unchanged snapshot of every `User`
+     and `AccountLock` row and of the `AuthEvent` count. The cases are:
+     - `--list` over six profiles: active, locked, migrated, stale pepper, deactivated, and a
+       pending request;
+     - the migrated-profile repair;
+     - the stale-pepper repair;
+     - `NEW_PIN` unset, and empty;
+     - a malformed `NEW_PIN` (five digits), and a trivial one (built by rule);
+     - `NEW_USERNAME` missing, unwanted, malformed and taken;
+     - `PENDING`, `REJECTED` and `DEACTIVATED` profiles;
+     - an unknown id;
+     - `PIN_PEPPER` unset, in both forms (see Deviation 1);
+     - five other argument forms: `--create-admin`, none, `--profile` with no id, `--list`
+       with `--profile`, and `--profile <id>` with `--create-admin`.
+
+     First green run: 21/21 in 60 s.
+   - **Breaches.** I byte-copied the script and the service and recorded their sha256
+     (`pin-reset.ts 0f3f36e7…`, `operator-service.ts 2a102cb1…`). I applied each breach alone
+     with `scratchpad/b2/mutate.py` and ran the file. Then I restored the byte copy, and
+     `sha256sum -c` reported both files `OK` each time.
+
+     | # | Breach | Red (nothing else in the file went red) |
+     |---|---|---|
+     | 1 | the script prints the `NEW_PIN` value after a successful repair | 2 of 21: both repair tests, "values printed that must never be … expected 1 to be +0" |
+     | 2 | the service stops incrementing `sessionEpoch` | 2 of 21: both repair tests, `expected +0 to be 1` |
+     | 3 | the script accepts `--create-admin` and creates an `ADMIN` through `createActiveProfile` | 1 of 21: `["--create-admin"]`, exit 0 (`expected +0 not to be +0`) |
+     | 4 | the service drops its `ACTIVE` check | 3 of 21: `PENDING`, `REJECTED` and `DEACTIVATED`, `ONLY_ACTIVE_PIN_RESET` missing from stderr. The exit was still non-zero and no row changed, because the database's `CHECK`s (`User_pin_only_when_live`, `User_pending_shape`) refused the write. The message assertion caught the breach. |
+
+     Final green run, after the last restore: 21/21 in 54 s.
+   - `hashing-boundary.test.ts`'s script check ("the reset script reaches hashing through the
+     service layer") is green.
+5. **AC-41's Phase B part.**
+   - `tests/unit/no-default-password.test.ts`:
+     - The scan detects `NEW_PIN`, `PIN_PEPPER` and `SETUP_CODE`, alongside #3's
+       `ADMIN_PASSWORD`, `DEFAULT_PASSWORD` and `SEED_PASSWORD`.
+     - The documentation test requires `NEW_PIN=<choose-a-pin>` and
+       `npm run pin:reset -- --profile <id>` in `docs/operations.md`.
+     - "the script has no fallback value to guess" now reads `scripts/pin-reset.ts`, and
+       requires `process.env.NEW_PIN ?? ""` and `NEW_PIN is not set` (see Deviation 5).
+     - A new test proves the scan is not vacuous: a digit-first value, built at runtime, is
+       caught under each of the three new names.
+   - The wider scan found two existing assignments. I changed their shape, not what they do:
+     - `scripts/run-db-tests.mjs` gave the pepper's key an inline `randomBytes(32)` call converted
+       to base64, and gave the setup code's key the same. The detector captured the call's
+       opening, up to the `32`, as a value. Each
+       draw is now a zero-argument function, `runPepper()` and `runSetupCode()`, which the
+       detector already reads as code. It is still drawn once per run and never printed.
+     - `tests/unit/pin-auth-contract.test.ts:239`, the AC-8 non-vacuity sample
+       was one template literal joining the variable's name, an equals sign and `${code}`. It is
+       now built from parts with `.join("=")`. That is the file's own stated convention. It
+       still asserts exactly one match.
+       *(Reworded by the coordinator: these two sentences first quoted the old shapes verbatim,
+       and the scan they describe then caught them in this file. The scan is right and is
+       unchanged.)*
+   - `docs/operations.md`: *Creating the first administrator*, which named `admin:create`, is
+     replaced by *Profiles, usernames and PINs*. It contains:
+     - the one-line marker "First-run setup: added with `/setup`.";
+     - *The reset script*: both forms, and what each prints and refuses;
+     - *One time, on a database migrated from #3*: `pin:reset -- --list`, then
+       `NEW_USERNAME=<choose-a-username> NEW_PIN=<choose-a-pin> npm run pin:reset -- --profile <id>`;
+     - *Lockout recovery*: S6's numbers, and a reset ends the lock but keeps the level;
+     - *Recovery from a lost `PIN_PEPPER`*: S4's four steps, plus one sentence saying that
+       until `/profiles` exists, the script is the way to reset every profile.
+
+     It uses placeholders only. The `SETUP_CODE` paragraph stays for Phase C.
+6. **AC-34's service-key check is complete and passes.** It is at
+   `src/server/auth/pin-session.db.test.ts:114-115`, inside "AC-24: the new PIN has the chosen
+   length…", and runs for both lengths:
+   `expect(deepKeys({ profile: entry, newPin }).filter((key) => MONEY_KEY.test(key))).toEqual([])`.
+   `MONEY_KEY` is AC-34's `/price|value|total|amount/i`. It is complete for Phase B's surface:
+   - `profile-admin-service.ts` exports two types and one function that returns a value,
+     `resetProfilePin`, and the check covers that function's whole return;
+   - `deepKeys` recurses into `profile.lock`;
+   - `setup-service.ts` does not exist yet, because it is Phase C's.
+
+   Run: `pin-session.db.test.ts` 10/10 in 15 s.
+7. **Final checks, after every edit:**
+   - `npm run typecheck`: exit 0.
+   - `npm run lint`: exit 0. `eslint scripts` is also clean.
+   - `npm run test:unit`: 66 files, 950 tests, 0 failing.
+   - `npx prisma validate`: valid.
+   - `sha256sum -c` for `schema.prisma`, `pin-reset.ts` and `operator-service.ts`: all `OK`.
+   - Database files, run one at a time with nothing else running: `pin-reset` 21/21,
+     `columns` 19/19, `pin-schema` 31/31, `pin-session` 10/10. No run hit a connection error
+     or a timeout, so none was repeated.
+
+#### AC-40 diff evidence
+
+**Base commit: `9bf1f82`**, #21's Phase 0 spec commit, where the Phase 0 worktree was cut.
+- `git diff --quiet 5d28556 9bf1f82 -- tests/e2e` and `git diff --quiet 9bf1f82 HEAD -- tests/e2e`
+  both exit 0.
+- So for `tests/e2e`, `5d28556` (the last commit before #21's Phase 0), the base and `HEAD` (`1ac0045`) are identical.
+
+Phase B is uncommitted, so the command compares the base with the working tree:
+`git diff 9bf1f82 -- tests/e2e`. Once the phase is committed, `git diff 9bf1f82..HEAD -- tests/e2e`
+shows the same diff.
+
+`git diff --stat 9bf1f82 -- tests/e2e`:
+
+```
+ tests/e2e/analysis-access.spec.ts        |  13 +-
+ tests/e2e/analysis-figures.spec.ts       |   8 +-
+ tests/e2e/item-master-access.spec.ts     |  16 +-
+ tests/e2e/item-master-items.spec.ts      |   8 +-
+ tests/e2e/item-master-yards.spec.ts      |   6 +-
+ tests/e2e/role-access.spec.ts            |  17 ++-
+ tests/e2e/route-protection.spec.ts       | 118 +++++++++++----
+ tests/e2e/sign-in.spec.ts                | 582 +++++++++++++++++++-------
+ tests/e2e/stock-entry-access.spec.ts     |  20 +--
+ tests/e2e/stock-entry-approve.spec.ts    |  18 +--
+ tests/e2e/stock-entry-autosave.spec.ts   |   6 +-
+ tests/e2e/stock-entry-calendar.spec.ts   |   8 +-
+ tests/e2e/stock-entry-filters.spec.ts    |   6 +-
+ tests/e2e/stock-entry-quantities.spec.ts |   6 +-
+ tests/e2e/stock-entry-refusals.spec.ts   |   6 +-
+ tests/e2e/stock-entry-signature.spec.ts  |   6 +-
+ tests/e2e/stock-entry-start.spec.ts      |  18 +--
+ tests/e2e/stock-entry-submit.spec.ts     |  11 +-
+ tests/e2e/stock-takes-calendar.spec.ts   |  10 +-
+ tests/e2e/stock-takes-count.spec.ts      |   8 +-
+ tests/e2e/support/analysis.ts            |   2 +-
+ tests/e2e/support/item-master.ts         |   5 +-
+ tests/e2e/support/stock-entry.ts         |  18 +--
+ tests/e2e/support/users.ts               | 137 ++++++++++++-----
+ 24 files changed, 764 insertions(+), 289 deletions(-)
+```
+
+The governed diff is every changed line outside the five exempt files, with leading indentation
+collapsed and identical lines counted. It comes from
+`git diff -U0 9bf1f82 -- tests/e2e ':!tests/e2e/support/users.ts' ':!tests/e2e/support/stock-entry.ts' ':!tests/e2e/sign-in.spec.ts' ':!tests/e2e/role-access.spec.ts' ':!tests/e2e/route-protection.spec.ts'`.
+Each line is labelled with its substitution:
+
+```
+17 - for (const email of created.splice(0)) {        17 + for (const username of created.splice(0)) {      (1)
+17 - created.push(user.email);                       17 + created.push(user.username);                     (1)
+17 - await removeUser(email);                        17 + await removeUser(username);                      (1)
+ 3 - created.push(owner.email, approver.email);       3 + created.push(owner.username, approver.username); (1)
+ 3 - created.push(owner.email);                       3 + created.push(owner.username);                    (1)
+ 1 - created.push(staff.email);                       1 + created.push(staff.username);                    (1)
+ 1 - actorEmail: admin.email,                         1 + actorRef: admin.username,                        (1)
+ 1 - await expect(page.getByTestId("signed-in-email")).toHaveText(user.email);   -> signed-in-name / user.name   (2)
+ 1 - await expect(page.getByTestId("signed-in-email")).toHaveText(staff.email);  -> signed-in-name / staff.name  (2)
+ 1 - await expect(page.getByTestId("signed-in-email")).toHaveText(admin.email);  -> signed-in-name / admin.name  (2)
+ 1 - await expect(page.getByTestId("counting-as")).toContainText(staff.email);   -> staff.name                   (2)
+ 2 - await page.getByLabel("Email").fill(…); 2 - await page.getByLabel("Password").fill(…);
+ 2 - await page.getByTestId("sign-in-submit").click();   2 + await enterCredentials(page, staff|admin);        (3)
+ 2 - import { createTestUser, removeUser, signIn } …      2 + import { createTestUser, enterCredentials, removeUser, signIn } …  (3)
+ 4 - "You do not have access to that page.",             4 + ACCESS_DENIED_MESSAGE,                           (4)
+                                                         4 + import { ACCESS_DENIED_MESSAGE } from "@/lib/auth-messages";  (4)
+ 1 - signedByMessage("E2E Yard Staff", signedAt),        1 + signedByMessage(`${staff.name}`, signedAt),      (5)
+ 1 - approvedByMessage("E2E Administrator", …),          1 + approvedByMessage(`${admin.name}`, …),           (5)
+ 1 - actorName: "E2E Administrator",                     1 + actorName: `${admin.name}`,                      (5)
+ 1 - ).toContain("Approved by E2E Administrator on ");   1 + ).toContain(`Approved by ${admin.name} on `);    (5)
+ 1 - reopenedNotice("E2E Administrator", …),             1 + reopenedNotice(`${admin.name}`, …),              (5)
+ 1 - …toContainText("Counting as E2E Yard Staff");       1 + …toContainText(`Counting as ${staff.name}`);     (5)
+ 2 - …toHaveText("Counting as E2E Yard Staff");          2 + …toHaveText(`Counting as ${staff.name}`);        (5)
+ 1 - expect(body).not.toContain("E2E Administrator");    1 + expect(body).not.toContain(`${admin.name}`);     (5, negative kept)
+ 1 - `…, started by E2E Yard Staff on 10 June …`,         1 + `…, started by ${staff.name} on 10 June …`,       (5)
+ 1 - …toContainText("Signed by E2E Yard Staff on ");     1 + …toContainText(`Signed by ${staff.name} on `);   (5)
+ 1 - export type Actor = { id: string; email: string; role: Role };   1 + … { id: string; username: string; name: string; role: Role };  (support/analysis.ts fixture type)
+ 1 - email: `count-…@macroads-e2e.invalid`,  1 - passwordHash: "fixture-not-a-hash",
+                                              1 + status: "ACTIVE",  + two comment lines                          (support/item-master.ts fixture row)
+ 2 + (blank line after an import)
+```
+
+- No `test(` line is added, removed or altered in the governed files: counted with `grep`, the
+  answer is 0.
+- Every changed `expect(` line is one of substitutions (1) to (5).
+- The only other changed lines are two fixture shapes in `support/analysis.ts` and
+  `support/item-master.ts`, and neither is a `test(` or `expect(` line.
+- In `route-protection.spec.ts`, the only changes are the imports and the 390 px test,
+  replaced by AC-35's tests, which are exempt.
+- **Listed separately (B5), new files:** `tests/e2e/pin-boundary.spec.ts`,
+  `tests/e2e/pin-device.spec.ts` and `tests/e2e/pin-header.spec.ts`.
+
+#### Files created
+- `scripts/pin-reset.ts`: `npm run pin:reset`, `--list` and `--profile <id>`, no other form (AC-30).
+- `src/server/auth/pin-reset.db.test.ts`: AC-30, 21 tests, with the scan for secrets in every run's output.
+
+#### Files modified
+- `src/server/test-db.test.ts`: 020 AC-6's unit half, amended by 021 AC-1 (B1).
+- `src/server/schema/columns.db.test.ts`: 004 AC-24, re-spelled per 021 AC-2 (B2).
+- `src/server/auth/pin-schema.db.test.ts`: plus "021 AC-2: the migration applied third is this feature's".
+- `tests/e2e/stock-entry-approve.spec.ts`, `stock-entry-start.spec.ts`, `stock-entry-submit.spec.ts`:
+  the fifth substitution at the eleven sites (B3).
+- `src/server/auth/operator-service.ts`: plus `listProfilesForOperator`, `setCredentialsForOperator`
+  and their types (AC-30).
+- `package.json`: plus `pin:reset`.
+- `tests/unit/no-default-password.test.ts`: amended per AC-41 (see step 5).
+- `docs/operations.md`: *Creating the first administrator* replaced (AC-41, Phase B part).
+- `scripts/run-db-tests.mjs`, `tests/unit/pin-auth-contract.test.ts`: the same values in a shape
+  the widened detector reads as code (step 5).
+- `progress/current.md`: plan and log for this continuation.
+
+#### Acceptance criteria (this continuation)
+| AC | Where it is satisfied | Test that proves it |
+|----|-----------------------|---------------------|
+| AC-1 (020 AC-6's unit half) | `prisma/schema.prisma` | `test-db.test.ts` → "AC-6, amended by 021 AC-1: …" (red under both breaches) |
+| AC-2 (004 AC-24, third row) | the migration | `columns.db.test.ts` → "AC-24, amended by 021 AC-2: …"; `pin-schema.db.test.ts` → "AC-2: … the third _prisma_migrations row is <timestamp>_pin_profiles …" |
+| AC-6 (script half) | `scripts/pin-reset.ts` imports `operator-service` only | `hashing-boundary.test.ts` → "AC-5, amended by 021 AC-6: the reset script reaches hashing through the service layer" |
+| AC-30 | `scripts/pin-reset.ts`; `operator-service.ts` `listProfilesForOperator`, `setCredentialsForOperator`; `package.json` | `pin-reset.db.test.ts` (21), red under all four breaches |
+| AC-34 (service keys) | `profile-admin-service.ts` `resetProfilePin` | `pin-session.db.test.ts:114-115` in "AC-24: the new PIN has the chosen length…" |
+| AC-40 | the eleven sites | the diff evidence above; the three specs green in `chromium-stock-entry` (26/26) |
+| AC-41 (Phase B part) | `docs/operations.md`; `no-default-password.test.ts` | `no-default-password.test.ts` (4 tests); `npm run test:unit` green. `.env.example` and the `/setup` paragraph are Phase C's. |
+
+#### Verification output
+
+```
+$ npm run typecheck                  -> exit 0
+$ npm run lint                       -> exit 0
+$ npm run test:unit
+ Test Files  66 passed (66)
+      Tests  950 passed (950)
+$ npx prisma validate
+The schema at prisma\schema.prisma is valid
+$ npm run test:db -- src/server/auth/pin-reset.db.test.ts     Tests  21 passed (21)   54 s
+$ npm run test:db -- src/server/schema/columns.db.test.ts     Tests  19 passed (19)   11 s
+$ npm run test:db -- src/server/auth/pin-schema.db.test.ts    Tests  31 passed (31)   13 s
+$ npm run test:db -- src/server/auth/pin-session.db.test.ts   Tests  10 passed (10)   15 s
+$ npx playwright test stock-entry-approve stock-entry-start stock-entry-submit --project=chromium-stock-entry
+  105 passed (3.9m)          [79 chromium (config dependency) + 26 chromium-stock-entry]
+$ sha256sum -c
+prisma/schema.prisma: OK
+scripts/pin-reset.ts: OK
+src/server/auth/operator-service.ts: OK
+```
+
+No `init` was run: the coordinator runs the gate.
+
+#### Deviations from the spec
+1. **"`PIN_PEPPER` unset" is driven by an empty value in the test.** When the command imports
+   Prisma's client, the client loads the project's `.env` into every variable the environment
+   lacks and never overrides one that is present. I checked this in
+   `node_modules/.prisma/client/index.js` (`schemaEnvPath: "../../../.env"`) and the runtime's
+   `dotenv.config`. So deleting the variable from the child's environment would hand the
+   command whatever `.env` holds, on a machine that has one. The test passes `PIN_PEPPER=""`
+   instead. `password.ts` refuses unset and empty through one branch
+   (`(process.env.PIN_PEPPER ?? "").trim() === ""`) with one message, "PIN_PEPPER is not set".
+   I confirmed first that an empty variable survives `spawnSync(…, { shell: true })` through
+   `node` and `npx tsx`, using a scratch probe on a dummy variable. The script's behaviour is
+   what AC-30 asks. Only the way the test produces "unset" differs.
+2. **Shapes the spec leaves open, chosen here.** These are the signatures of the two operator
+   functions, plus the exported types `OperatorPinState`, `OperatorProfileLine` and
+   `OperatorCredentialsInput`, and the lock-state words (`-`, `not locked`,
+   `locked until <ISO>`). `--list` prints tab-separated fields with no header, so every line
+   is a profile.
+3. **Refusal texts.** A PIN or username `ValidationError` prints as `NEW_PIN: <message>` or
+   `NEW_USERNAME: <message>`. That both names the variable and carries the matching message.
+   A taken username prints a line equal to `USERNAME_TAKEN_MESSAGE(username)`. The missing
+   and unwanted `NEW_USERNAME` messages are this module's own sentences, not
+   `auth-messages.ts` constants, because no screen renders them.
+4. **`setCredentialsForOperator` checks that the username is free before it writes.** It
+   still maps a unique-index violation to `USERNAME_TAKEN_MESSAGE` for a race.
+5. **`no-default-password.test.ts` amends a third test that AC-41 does not name.** The test
+   "the script has no fallback value to guess" read the deleted `scripts/admin-create.ts`.
+   Phase B's finding B4 names it as the test the reset script's arrival turns green. It now
+   reads `scripts/pin-reset.ts`, and its title says "amended by 021 AC-30". I also added one
+   non-vacuity test.
+6. **Two files changed shape so the widened detector passes** (step 5). This is not a
+   loosening: the detector's value rules are unchanged.
+
+#### Notes for the reviewer
+- **The detector has an inherited blind spot, left as it was.** 003's `isNotAPassword` accepts
+  any value shaped like an identifier (`/^[A-Za-z_$][\w$.]*\(?$/`). The capture also consumes an
+  opening quote, so a quoted value passes too: `NAME: "abc123"` is read as code. With the three
+  new names, it catches:
+  - every PIN, because a PIN begins with a digit;
+  - every padded base64 pepper, because of the `=`, `+` or `/`.
+
+  It misses a letters-first, purely alphanumeric setup code. The AC-8 setup-code scan in
+  `pin-auth-contract.test.ts` has the same identifier exemption. I did not tighten either one.
+  AC-41 names the variables to detect, not the value rule, and tightening it would re-open
+  #3's accepted cases. It may deserve a ruling.
+- **A `NEW_PIN` in `.env` would be used.** Prisma loads `.env` before `main()` reads `NEW_PIN`,
+  so a value written there would act as a default. `pin-auth-contract.test.ts` AC-8 asserts
+  that `.env.example` assigns no `NEW_PIN`. Nothing can assert the same of a developer's
+  `.env`.
+- **The build was rebuilt before the e2e signal.** `.next/BUILD_ID` (14:40:01) predated Phase
+  B's last `sign-in-codes.ts` edit (14:40:20).
+- **Server log lines during the e2e run.** 31 `auth.pin_failed bucket=device` lines all came in
+  the `chromium` phase, before the first `chromium-stock-entry` test. They are
+  `sign-in.spec.ts`'s deliberate failures from known devices. Two `Failed to find Server
+  Action` lines appeared during the stock-entry phase. All tests passed, and I did not
+  investigate those two lines.
+- **The script reports an unexpected error by name and code only.** A database error's
+  message can quote the query's arguments, which here include a hash.
+- **Timing.** The `pin-reset.db.test.ts` file spawns `npm` 26 times and takes about 55 to 60 s.
+  Each test makes one spawn, or two for the pepper case, and stays well under the 30 s limit.

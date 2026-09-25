@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
 
+import { ACCESS_DENIED_MESSAGE } from "@/lib/auth-messages";
+
 import { databaseIsReachable, skipWithoutDatabase } from "./support/database";
 import {
   cleanUp,
@@ -9,7 +11,7 @@ import {
   seedSupplier,
   seededMasterCounts,
 } from "./support/item-master";
-import { createTestUser, removeUser, signIn } from "./support/users";
+import { createTestUser, enterCredentials, removeUser, signIn } from "./support/users";
 import type { TestUser } from "./support/users";
 
 /**
@@ -54,8 +56,8 @@ test.beforeAll(async () => {
 test.afterAll(async () => {
   if (!(await databaseIsReachable())) return;
 
-  for (const email of created.splice(0)) {
-    await removeUser(email);
+  for (const username of created.splice(0)) {
+    await removeUser(username);
   }
   await cleanUp(ledger);
 
@@ -65,7 +67,7 @@ test.afterAll(async () => {
 
 async function newUser(role: "YARD_STAFF" | "ADMIN"): Promise<TestUser> {
   const user = await createTestUser(role, `item-master-${role.toLowerCase()}`);
-  created.push(user.email);
+  created.push(user.username);
   return user;
 }
 
@@ -110,9 +112,7 @@ test("AC-1: signing in from that redirect lands on the requested path", async ({
   await page.goto("/item-master/suppliers");
   await expect(page).toHaveURL(/\/sign-in\?callbackUrl=/);
 
-  await page.getByLabel("Email").fill(admin.email);
-  await page.getByLabel("Password").fill(admin.password);
-  await page.getByTestId("sign-in-submit").click();
+  await enterCredentials(page, admin);
 
   await page.waitForURL("**/item-master/suppliers");
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Suppliers");
@@ -147,7 +147,7 @@ test("AC-2: a YARD_STAFF session is refused at all seven URLs and sent no item a
   await page.goto("/item-master");
   await expect(page).toHaveURL(/\/stock-entry\?denied=item-master/);
   await expect(page.getByTestId("access-denied")).toHaveText(
-    "You do not have access to that page.",
+    ACCESS_DENIED_MESSAGE,
   );
 
   await context.close();

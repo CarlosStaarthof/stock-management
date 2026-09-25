@@ -5,12 +5,12 @@ import type { SessionUser } from "@/server/auth/session-user";
 
 const staff: SessionUser = {
   id: "u_staff",
-  email: "staff@macroads.example",
+  username: "staff",
   name: "Yard Staff",
   role: "YARD_STAFF",
 };
 
-const admin: SessionUser = { ...staff, id: "u_admin", email: "admin@macroads.example", role: "ADMIN" };
+const admin: SessionUser = { ...staff, id: "u_admin", username: "admin", role: "ADMIN" };
 
 describe("shapeForRole", () => {
   it("AC-17: a YARD_STAFF user gets the staff shape and forAdmin is never called", () => {

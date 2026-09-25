@@ -2,10 +2,9 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { JSX } from "react";
 
-import { signOutAction } from "@/app/auth-actions";
 import { requireUserPage } from "@/app/page-guards";
+import { IdentityHeader } from "@/components/IdentityHeader";
 import { CalendarGrid } from "@/components/stock-entry/CalendarGrid";
-import { SignOutForm } from "@/components/SignOutForm";
 import { CountJump } from "@/components/stock-takes/CountJump";
 import { ScopeSelector } from "@/components/stock-takes/ScopeSelector";
 import type { ScopeOption } from "@/components/stock-takes/ScopeSelector";
@@ -45,7 +44,7 @@ import type { CountRef, YardScope } from "@/types/stock-count";
  * the `innerHTML` of `data-testid="stock-takes-body"` fetched in the two sessions is
  * compared for exact equality — which is a strictly stronger claim than 009 AC-23's
  * "identical except one link", and it is affordable only because this screen has nothing
- * to differ about. The signed-in email is the one thing that does differ, and it is
+ * to differ about. The signed-in name is the one thing that does differ, and it is
  * outside that element, in the identity header, with the sign-out control.
  *
  * THE SAME CALENDAR AS `/stock-entry`, RENDERED AT A SECOND ADDRESS (AC-4). It calls
@@ -153,12 +152,10 @@ export default async function StockTakesPage({
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-col gap-4 p-3 sm:p-6">
       {/* The identity header, and the ONE thing that differs between two sessions. */}
-      <header className="flex flex-col gap-2">
-        <h1 className="text-2xl font-semibold tracking-tight">{STOCK_TAKES_HEADING}</h1>
-        <p data-testid="signed-in-email" className="text-sm break-words text-slate-600">
-          {user.email}
-        </p>
-      </header>
+      <IdentityHeader
+        name={user.name}
+        heading={<h1 className="text-2xl font-semibold tracking-tight">{STOCK_TAKES_HEADING}</h1>}
+      />
 
       <div data-testid="stock-takes-body" className="flex flex-col gap-4">
         <h2 data-testid="month-heading" className="text-xl font-semibold tracking-tight">
@@ -249,8 +246,6 @@ export default async function StockTakesPage({
           emptyDayHref={() => null}
         />
       </div>
-
-      <SignOutForm action={signOutAction} />
     </main>
   );
 }

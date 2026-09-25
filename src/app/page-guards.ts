@@ -10,8 +10,9 @@ import { ForbiddenError, UnauthorizedError } from "@/server/errors";
  * redirect a browser expects instead of a thrown error.
  *
  * A request only reaches a protected page when the middleware saw a session token, so
- * `getCurrentUser()` returning null here means the row is gone or `active` is false —
- * which is why the redirect says `reason=inactive` (AC-11).
+ * `getCurrentUser()` returning null here means the row is gone, is no longer ACTIVE, or its
+ * PIN was reset since the session began (021 AC-17) — which is why the redirect says
+ * `reason=inactive`, and the sign-in page says the session has ended (003 AC-11).
  */
 export async function requireUserPage(): Promise<SessionUser> {
   const user = await getCurrentUser();

@@ -10,7 +10,7 @@ import type { CountForAdmin, CountForStaff } from "@/types/stock-count";
  */
 const ADMIN: SessionUser = {
   id: "user_admin",
-  email: "admin@macroads.test",
+  username: "admin",
   name: "Fixture Administrator",
   role: "ADMIN",
 };
@@ -76,7 +76,7 @@ describe("countForRole", () => {
     // parameter here for a query string, a header or a cookie to arrive through.
     expect(countForRole.length).toBe(3);
 
-    const staffWithAdminName = { ...STAFF, name: "ADMIN", email: "admin@macroads.test" };
+    const staffWithAdminName = { ...STAFF, name: "ADMIN", username: "admin" };
     const result = countForRole(staffWithAdminName, () => FOR_STAFF, () => FOR_ADMIN);
 
     expect(Object.hasOwn(result, "itemsWithoutPrice")).toBe(false);

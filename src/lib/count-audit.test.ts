@@ -17,7 +17,7 @@ const REOPENED: AuditEntry = {
   at: "2026-09-12T14:03:11.482Z",
   event: "REOPENED",
   actorName: "Ann Doyle",
-  actorEmail: "ann@macroads.ie",
+  actorRef: "ann@macroads.ie",
   reason: "the MMA price was wrong",
 };
 
@@ -25,7 +25,7 @@ const SUBMITTED: AuditEntry = {
   at: "2026-09-12T14:03:11.482Z",
   event: "SUBMITTED",
   actorName: "Jo Byrne",
-  actorEmail: "jo@macroads.ie",
+  actorRef: "jo@macroads.ie",
   reason: null,
 };
 

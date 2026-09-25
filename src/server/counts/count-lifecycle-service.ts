@@ -107,7 +107,7 @@ function auditFor(
     at: at.toISOString(),
     event,
     actorName: actor.name,
-    actorEmail: actor.email,
+    actorRef: actor.username,
     reason,
   });
 }

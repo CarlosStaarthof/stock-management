@@ -11,6 +11,7 @@
 // — connects to the test branch.
 
 import { spawnSync } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
@@ -104,6 +105,16 @@ function withConnectionParameters(url) {
 
 const childUrl = withConnectionParameters(testDirectUrl);
 
+/** 32 random bytes, base64: this run's PIN_PEPPER (021 S3). Drawn once, never printed. */
+function runPepper() {
+  return randomBytes(32).toString("base64");
+}
+
+/** 24 random bytes, base64url: this run's SETUP_CODE, well over its 16-character minimum. */
+function runSetupCode() {
+  return randomBytes(24).toString("base64url");
+}
+
 const childEnv = {
   ...process.env,
   DATABASE_URL: childUrl,
@@ -111,6 +122,10 @@ const childEnv = {
   // Read by resetTestDb(): a truncation that cannot prove it is on the test database
   // refuses to run.
   MACROADS_TEST_DB: "1",
+  // Spec 021: the suite runs under a PIN_PEPPER and a SETUP_CODE generated for this run
+  // only, and never under the developer's. Neither is printed or written anywhere.
+  PIN_PEPPER: runPepper(),
+  SETUP_CODE: runSetupCode(),
 };
 
 /** Resolved through each package's own `bin` entry, so a moved CLI does not break this. */

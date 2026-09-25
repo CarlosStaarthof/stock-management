@@ -45,7 +45,7 @@ test.beforeAll(async () => {
   await clearReservedYear(YEAR);
 
   const owner = await createTestUser("YARD_STAFF", "stock-entry-calendar-owner");
-  created.push(owner.email);
+  created.push(owner.username);
 
   // Two counts on the SAME day, one at each yard (AC-20).
   dublinCountId = await seedCount({
@@ -80,8 +80,8 @@ test.afterAll(async () => {
   if (!(await databaseIsReachable())) return;
 
   await clearReservedYear(YEAR);
-  for (const email of created.splice(0)) {
-    await removeUser(email);
+  for (const username of created.splice(0)) {
+    await removeUser(username);
   }
 
   expect(await realCountIds()).toEqual(realCountsBefore);
@@ -90,7 +90,7 @@ test.afterAll(async () => {
 
 async function newUser(role: "YARD_STAFF" | "ADMIN" = "YARD_STAFF"): Promise<TestUser> {
   const user = await createTestUser(role, "stock-entry-calendar");
-  created.push(user.email);
+  created.push(user.username);
   return user;
 }
 

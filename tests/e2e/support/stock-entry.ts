@@ -339,13 +339,13 @@ export const DRAWN_SIGNATURE = strokesToPath([
 ]);
 
 /** A `SessionUser` for a test account, so a spec can call a service the way a page does. */
-export function actorFor(user: { id: string; email: string; role: Role }): SessionUser {
-  return {
-    id: user.id,
-    email: user.email,
-    name: user.role === "ADMIN" ? "E2E Administrator" : "E2E Yard Staff",
-    role: user.role,
-  };
+export function actorFor(user: {
+  id: string;
+  username: string;
+  name: string;
+  role: Role;
+}): SessionUser {
+  return { id: user.id, username: user.username, name: user.name, role: user.role };
 }
 
 /**
@@ -425,7 +425,7 @@ export async function lifecycleOf(countId: string): Promise<{
  */
 export async function submitAs(
   countId: string,
-  user: { id: string; email: string; role: Role },
+  user: { id: string; username: string; name: string; role: Role },
   signaturePath = DRAWN_SIGNATURE,
 ): Promise<void> {
   await submitCount(actorFor(user), countId, { signaturePath });
@@ -444,7 +444,7 @@ export async function submitAs(
  */
 export async function approveAs(
   countId: string,
-  user: { id: string; email: string; role: Role },
+  user: { id: string; username: string; name: string; role: Role },
 ): Promise<void> {
   await approveCount(actorFor(user), countId);
 }

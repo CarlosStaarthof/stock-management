@@ -1,11 +1,12 @@
 "use server";
 
-import { AuthError } from "next-auth";
+import { AuthError, CredentialsSignin } from "next-auth";
+import { redirect } from "next/navigation";
 
-import { INVALID_CREDENTIALS_MESSAGE } from "@/lib/auth-messages";
-import { landingPathForRole } from "@/server/auth/landing";
+import { INCORRECT_SIGN_IN_MESSAGE } from "@/lib/auth-messages";
 import { signIn, signOut } from "@/server/auth/next-auth";
-import { verifyCredentials } from "@/server/auth/user-service";
+import { refusalMessage } from "@/server/auth/sign-in-codes";
+import { landingPathForUsername } from "@/server/auth/user-service";
 
 import type { SignInState } from "@/app/sign-in/form-state";
 
@@ -21,37 +22,37 @@ function safeCallbackPath(value: FormDataEntryValue | null): string | null {
   return value;
 }
 
+/**
+ * The sign-in form's action. It evaluates nothing itself: `signIn` reaches the credentials
+ * provider, whose `authorize` is the one place an attempt is decided (021 AC-15, AC-31), so
+ * an attempt through this form is counted exactly once. A refusal comes back as a
+ * `CredentialsSignin` whose code names which of the four answers to render.
+ *
+ * The landing path depends on the role, which is known only once the PIN has matched, so
+ * the redirect is made here after a successful sign-in rather than handed to `signIn`.
+ */
 export async function signInAction(
   previous: SignInState,
   formData: FormData,
 ): Promise<SignInState> {
-  const email = String(formData.get("email") ?? "");
-  const password = String(formData.get("password") ?? "");
+  const username = String(formData.get("username") ?? "");
+  const pin = String(formData.get("pin") ?? "");
   const callbackUrl = safeCallbackPath(formData.get("callbackUrl"));
 
-  // Asked before signing in, because the landing path depends on the role and the role is
-  // known only once the credentials are good. Wrong password, unknown email and a
-  // deactivated account all come back as null — one answer, one message (AC-10).
-  const user = await verifyCredentials(email, password);
-  if (user === null) {
-    return { error: INVALID_CREDENTIALS_MESSAGE, email, attempt: previous.attempt + 1 };
-  }
-
   try {
-    await signIn("credentials", {
-      email,
-      password,
-      redirectTo: callbackUrl ?? landingPathForRole(user.role),
-    });
+    await signIn("credentials", { username, pin, redirect: false });
   } catch (error) {
-    // signIn signals its redirect by throwing; that throw must reach Next untouched.
+    if (error instanceof CredentialsSignin) {
+      return { error: refusalMessage(error.code), username, attempt: previous.attempt + 1 };
+    }
+    // Any other Auth.js refusal is still one answer, never a stack trace (AC-10).
     if (error instanceof AuthError) {
-      return { error: INVALID_CREDENTIALS_MESSAGE, email, attempt: previous.attempt + 1 };
+      return { error: INCORRECT_SIGN_IN_MESSAGE, username, attempt: previous.attempt + 1 };
     }
     throw error;
   }
 
-  return { error: null, email, attempt: previous.attempt };
+  redirect(callbackUrl ?? (await landingPathForUsername(username)));
 }
 
 export async function signOutAction(): Promise<void> {

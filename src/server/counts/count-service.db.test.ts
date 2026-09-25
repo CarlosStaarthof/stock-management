@@ -67,9 +67,9 @@ async function newActor(role: "ADMIN" | "YARD_STAFF", name = "Jo Byrne"): Promis
   await db.user.update({ where: { id }, data: { name } });
   const row = await db.user.findUniqueOrThrow({
     where: { id },
-    select: { id: true, email: true, name: true, role: true },
+    select: { id: true, username: true, name: true, role: true },
   });
-  return { id: row.id, email: row.email, name: row.name, role: row.role };
+  return { id: row.id, username: row.username ?? "", name: row.name, role: row.role };
 }
 
 /**

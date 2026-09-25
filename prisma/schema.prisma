@@ -1,13 +1,14 @@
 // Macroads Stock — database schema.
 //
-// This file is specs/domain-model.md Part 3, field for field, and nothing else: nine
-// models and three enums. Drift from Part 3 turns tests/unit/schema-and-migration.test.ts
-// red (spec 004 AC-1 and AC-4).
+// This file is specs/domain-model.md Part 3, field for field, and nothing else: twelve
+// models and five enums. Drift from Part 3 turns tests/unit/schema-and-migration.test.ts
+// red (spec 004 AC-1 and AC-4, amended by 021 AC-1).
 //
-// Feature #3 auth_and_roles owns the `Role` enum and the `User` model, plus the
-// repository's first migration. Feature #4 domain_schema owns every other declaration
-// here, plus the second migration. `User` gains three RELATION fields from #4 and no
-// columns — the foreign keys live on `StockCount` (004 AC-5).
+// Feature #3 auth_and_roles owned the `Role` enum and the `User` model, plus the
+// repository's first migration. Feature #4 domain_schema owns the stock declarations, plus
+// the second migration. Feature #21 pin_auth reshaped `User` (username and PIN instead of
+// email and password, on the owner's decisions D1-D12) and added `ProfileStatus`,
+// `AuthEventKind`, `AccountLock`, `AuthEvent` and `SetupClaim`, plus the third migration.
 //
 // Deferred to M7 and absent on purpose: `Vehicle`, `BoilerReading`, `BagReading`,
 // `YardBulkReading`, `BoilerMaterial`, `BagMaterial`.
@@ -54,27 +55,90 @@ enum UnitKind {
   LINEAR_METRE
 }
 
-/// An account. `passwordHash` is a bcrypt hash written by src/server/auth/password.ts;
-/// the plaintext is never stored, logged or returned.
-///
-/// `active` is read on every authenticated request rather than trusted from the session
-/// token, so deactivating a leaver locks them out on their very next request.
-///
-/// The three `StockCount[]` fields are relation fields, not columns: they add nothing to
-/// the `User` table, and the migration that introduced them emits no ALTER TABLE "User".
-model User {
-  id           String   @id @default(cuid())
-  email        String   @unique
-  name         String
-  passwordHash String
-  role         Role     @default(YARD_STAFF)
-  active       Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+/// Which of four states a profile is in (021). Replaces #3's `active` boolean: a request
+/// waiting for approval, a live profile, a refused request, and a leaver.
+enum ProfileStatus {
+  PENDING
+  ACTIVE
+  REJECTED
+  DEACTIVATED
+}
 
+/// What an `AuthEvent` records (021 S8): a wrong PIN, a profile request, a wrong setup
+/// code, and an ADMIN lifting the new-device pause.
+enum AuthEventKind {
+  PIN_FAILURE
+  PROFILE_REQUEST
+  SETUP_FAILURE
+  BUDGET_RESET
+}
+
+/// A profile. People sign in with `username` and a PIN (021 D1, D8). No column stores a
+/// PIN: `pinHash` is bcrypt over a digest keyed by `PIN_PEPPER`, which the database does
+/// not hold, and `pinKeyId` names which pepper it was made under (S3, S4).
+///
+/// `status` and `sessionEpoch` are read on every authenticated request rather than trusted
+/// from the session token, so deactivating a leaver or resetting a PIN ends their session
+/// on the very next request (021 AC-17, AC-23).
+///
+/// Ten hand-written CHECKs in the pin_profiles migration hold the shapes Prisma cannot
+/// express: a stored username is lower-case, which makes the unique index the
+/// case-insensitive rule (S1); a PENDING row is always a YARD_STAFF request with a PIN and
+/// no username; a PIN exists only on a live row.
+///
+/// The three `StockCount[]` fields are relation fields, not columns.
+model User {
+  id                String        @id @default(cuid())
+  username          String?       @unique
+  requestedUsername String?
+  name              String
+  role              Role          @default(YARD_STAFF)
+  status            ProfileStatus @default(PENDING)
+  pinHash           String?
+  pinKeyId          String?
+  sessionEpoch      Int           @default(0)
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  setupClaim          SetupClaim?
   stockCountsCreated  StockCount[] @relation("StockCountCreatedBy")
   stockCountsApproved StockCount[] @relation("StockCountApprovedBy")
   stockCountsSigned   StockCount[] @relation("StockCountSignedBy")
+
+  @@index([status])
+}
+
+/// One per typed username, whether or not a profile holds it (021 S5). Keyed by
+/// `accountKey(username)`, an HMAC under the pepper: no PIN, no typed text, no user id.
+model AccountLock {
+  accountKey          String    @id
+  consecutiveFailures Int       @default(0)
+  level               Int       @default(0)
+  lockedUntil         DateTime?
+  updatedAt           DateTime  @updatedAt
+}
+
+/// Budget bookkeeping and the failure history /profiles shows (021 S8). No PIN, digest,
+/// code, typed text or user id. `accountKey` is set on a PIN_FAILURE with a well-formed
+/// username only.
+model AuthEvent {
+  id         String        @id @default(cuid())
+  kind       AuthEventKind
+  bucket     String
+  accountKey String?
+  at         DateTime      @default(now())
+
+  @@index([bucket, kind, at])
+  @@index([accountKey, at])
+}
+
+/// The race guard for first-run setup: at most one row, ever (021 S9, CHECK id = 1). It is
+/// not the availability rule — that reads the profiles.
+model SetupClaim {
+  id        Int      @id
+  userId    String   @unique
+  claimedAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Restrict)
 }
 
 /// A yard. A closed set of two, fixed by specs/product-brief.md and written by this

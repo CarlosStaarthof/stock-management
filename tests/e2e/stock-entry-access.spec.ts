@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
 
+import { ACCESS_DENIED_MESSAGE } from "@/lib/auth-messages";
+
 import { seededMasterCounts } from "./support/item-master";
 import { databaseIsReachable, skipWithoutDatabase } from "./support/database";
 import {
@@ -9,7 +11,7 @@ import {
   realCountIds,
   seedCount,
 } from "./support/stock-entry";
-import { createTestUser, removeUser, signIn } from "./support/users";
+import { createTestUser, enterCredentials, removeUser, signIn } from "./support/users";
 import type { TestUser } from "./support/users";
 
 /**
@@ -44,7 +46,7 @@ test.beforeAll(async () => {
   await clearReservedYear(YEAR);
 
   const owner = await createTestUser("YARD_STAFF", "stock-entry-access-owner");
-  created.push(owner.email);
+  created.push(owner.username);
   countId = await seedCount({
     locationCode: "DUBLIN",
     year: YEAR,
@@ -58,8 +60,8 @@ test.afterAll(async () => {
   if (!(await databaseIsReachable())) return;
 
   await clearReservedYear(YEAR);
-  for (const email of created.splice(0)) {
-    await removeUser(email);
+  for (const username of created.splice(0)) {
+    await removeUser(username);
   }
 
   // AC-30: not one row outside this file's reservation moved.
@@ -69,7 +71,7 @@ test.afterAll(async () => {
 
 async function newUser(role: "YARD_STAFF" | "ADMIN"): Promise<TestUser> {
   const user = await createTestUser(role, `stock-entry-${role.toLowerCase()}`);
-  created.push(user.email);
+  created.push(user.username);
   return user;
 }
 
@@ -119,9 +121,7 @@ test("AC-1: signing in from that redirect lands on the requested path", async ({
   await page.goto("/stock-entry/new");
   await expect(page).toHaveURL(/\/sign-in\?callbackUrl=/);
 
-  await page.getByLabel("Email").fill(staff.email);
-  await page.getByLabel("Password").fill(staff.password);
-  await page.getByTestId("sign-in-submit").click();
+  await enterCredentials(page, staff);
 
   await page.waitForURL("**/stock-entry/new");
   await expect(page.getByTestId("counting-as")).toContainText("Counting as");
@@ -149,14 +149,14 @@ test("AC-2: the three test ids #3 left on /stock-entry survive its replacement",
   await signIn(page, staff);
 
   await page.goto("/stock-entry");
-  await expect(page.getByTestId("signed-in-email")).toHaveText(staff.email);
+  await expect(page.getByTestId("signed-in-name")).toHaveText(staff.name);
   await expect(page.getByTestId("sign-out")).toBeVisible();
 
   // For ANY value of ?denied=, including an empty one.
   for (const denied of ["item-master", "analysis", ""]) {
     await page.goto(`/stock-entry?denied=${denied}`);
     await expect(page.getByTestId("access-denied")).toHaveText(
-      "You do not have access to that page.",
+      ACCESS_DENIED_MESSAGE,
     );
   }
 

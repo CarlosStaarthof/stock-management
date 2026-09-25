@@ -2,10 +2,9 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { JSX } from "react";
 
-import { signOutAction } from "@/app/auth-actions";
 import { requireUserPage } from "@/app/page-guards";
+import { IdentityHeader } from "@/components/IdentityHeader";
 import { CalendarGrid } from "@/components/stock-entry/CalendarGrid";
-import { SignOutForm } from "@/components/SignOutForm";
 import { ACCESS_DENIED_MESSAGE } from "@/lib/auth-messages";
 import {
   NEXT_MONTH,
@@ -22,9 +21,11 @@ import { monthKeyOf } from "@/server/counts/period";
 /**
  * THE CALENDAR — the first screen a `YARD_STAFF` user ever sees.
  *
- * It replaces #3's placeholder and keeps its three test ids: `signed-in-email`, `sign-out`
- * and `access-denied`, because `sign-in.spec.ts`, `role-access.spec.ts` and
- * `item-master-access.spec.ts` all assert on them and all three pass unmodified (AC-2).
+ * It replaced #3's placeholder and kept its three test ids — the identity header's, `sign-out`
+ * and `access-denied` — because `sign-in.spec.ts`, `role-access.spec.ts` and
+ * `item-master-access.spec.ts` all assert on them (AC-2). #21 moved the first two into the
+ * shared `IdentityHeader`, which shows the display name in `signed-in-name` and wraps it at
+ * any character: this page's header was the recorded overflow debt against 008 AC-30.
  * `/stock-entry?denied=…` is still where a refused `ADMIN`-only page sends a staff session.
  *
  * `requireUserPage`, not `requireAdminPage`: Part 6 gives BOTH roles the calendar, the
@@ -76,14 +77,14 @@ export default async function StockEntryPage({
         </p>
       )}
 
-      <header className="flex flex-col gap-2">
-        <h1 data-testid="month-heading" className="text-2xl font-semibold tracking-tight">
-          {month.monthLabel}
-        </h1>
-        <p data-testid="signed-in-email" className="text-sm text-slate-600">
-          {user.email}
-        </p>
-      </header>
+      <IdentityHeader
+        name={user.name}
+        heading={
+          <h1 data-testid="month-heading" className="text-2xl font-semibold tracking-tight">
+            {month.monthLabel}
+          </h1>
+        }
+      />
 
       {/* Plain links, so the browser's own progress is the loading state (UI states). */}
       <nav className="flex flex-wrap items-center gap-2">
@@ -141,8 +142,6 @@ export default async function StockEntryPage({
       )}
 
       <CalendarGrid month={month} />
-
-      <SignOutForm action={signOutAction} />
     </main>
   );
 }

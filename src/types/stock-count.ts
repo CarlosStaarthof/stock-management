@@ -190,7 +190,11 @@ export type AuditEntry = {
   at: string;
   event: AuditEvent;
   actorName: string;
-  actorEmail: string;
+  /**
+   * The bracketed reference: the actor's username (021 S13). Lines written before #21 carry
+   * an email address here, and parse back verbatim.
+   */
+  actorRef: string;
   /** `REOPENED` only, and validated to a single line of 1–200 characters (009 AC-18). */
   reason: string | null;
 };

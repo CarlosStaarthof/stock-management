@@ -29,8 +29,9 @@ export const SEEDED_LOCATIONS = [
 ] as const;
 
 /**
- * The eight tables the reset empties — every table in the schema except `Location`, which
- * is restored rather than emptied, and `_prisma_migrations`, which is Prisma's.
+ * The eleven tables the reset empties — every table in the schema except `Location`, which
+ * is restored rather than emptied, and `_prisma_migrations`, which is Prisma's. #21 added
+ * `AccountLock`, `AuthEvent` and `SetupClaim` (021 AC-4).
  *
  * Order is irrelevant: a single `TRUNCATE` over a set closed under its foreign keys has no
  * child-before-parent requirement, which is why the comment that used to describe one is
@@ -39,10 +40,13 @@ export const SEEDED_LOCATIONS = [
  * here turns that test red instead of quietly keeping its rows between tests.
  */
 export const TRUNCATED_TABLES: readonly string[] = [
+  "AccountLock",
+  "AuthEvent",
   "Item",
   "ItemLocation",
   "ItemPrice",
   "ItemType",
+  "SetupClaim",
   "StockCount",
   "StockCountLine",
   "Supplier",

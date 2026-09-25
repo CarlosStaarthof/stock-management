@@ -48,9 +48,8 @@ async function seedEverything(): Promise<void> {
 
   const user = await db.user.create({
     data: {
-      email: `reset-${unique}@macroads.example`,
       name: "Reset Fixture",
-      passwordHash: `not-a-real-hash-${unique}`,
+      status: "ACTIVE",
     },
   });
   const itemType = await db.itemType.create({
