@@ -1378,3 +1378,82 @@ skipped)`.
 More than half the effort went into problems that were already in the product.
 
 **Closed 2026-09-25 after owner sign-off.**
+
+## #21 `pin_auth`: username and PIN sign-in, profile requests, first-run setup, profiles
+
+### What shipped
+
+- **Sign-in is a username and a 4- or 6-digit PIN for every role**, entered on a phone-sized
+  keypad that also works without JavaScript.
+- **How a PIN is stored:** bcrypt over an HMAC keyed by `PIN_PEPPER`, with the pepper's
+  fingerprint stored, so a lost pepper means a reset, not a lockout.
+- **How guessing is bounded:** five wrong PINs lock the typed username for 15 minutes, doubling
+  to a 24-hour cap. Devices have daily budgets. Every failure gives one answer at one cost.
+- **Sessions:** a PIN reset ends the profile's existing sessions, through the session epoch.
+- **Create profile** asks and can never grant, and reveals nothing about a username.
+  **`/setup`** creates the first `ADMIN` once, with a one-time `SETUP_CODE`. **`/profiles`**
+  holds approval, role changes, resets (a new PIN shown once), deactivation, lock clearing,
+  direct creation and the failure view. The last `ADMIN` cannot go.
+- **The reset script:** `pin:reset` repairs existing profiles only, and reads `NEW_PIN` before
+  anything can load `.env`.
+- **`.env.example` retired by the owner's decision:** `.env` is the only settings file, and
+  `docs/operations.md` → *Environment* is the checklist.
+- **The money boundary did not move:** a `YARD_STAFF` session is still sent no price, value or
+  total.
+
+### How it was built
+
+Five phases, each committed only on a green gate with the database checks executed:
+- **Phase 0:** feature-scoped git assertions, so a test about one feature's work stops expiring
+  at the next feature.
+- **Phase A:** the pure and cryptographic modules.
+- **Phase B:** the swap. The agent was killed mid-task by a network outage, and a leaner
+  continuation finished it.
+- **Phase C1:** the public side.
+- **Phase C2:** the admin side.
+
+Twelve implementer findings were ruled in the spec, every one of them reported rather than
+worked around.
+
+### The review found a real hole
+
+**An open redirect after sign-in.** Phase B had replaced Auth.js's redirect with Next's, which
+writes a callback into `Location` as given. A slash followed by a backslash then sent a
+no-JavaScript sign-in to another host. It was proved red first, then fixed: same origin only,
+path and query only, re-checked after dot segments collapse. A probe of about 1.9 million
+values found no escape. The review also strengthened AC-8's PIN scan twice, with the promise
+kept and never narrowed, and required `Secure` to be proved over https. There were three review
+passes, and the verdict was **APPROVED, 47 of 47**.
+
+### Verification at close
+
+- **Final gate:** `init` exit 0, unit 1013, e2e 111 + 139 with 0 flaky and 0 failed, database
+  535, 0 connection errors, database checks executed.
+- **Two more consecutive clean full e2e runs** before the last repairs.
+- **Both no-database `init` runs,** `init.sh` and `init.ps1`, end `[OK] Environment ready
+  (database checks skipped)`.
+- **The owner's stock data was identical** on the development database before and after every
+  run: 140 items, 19 types, 10 suppliers, 129 prices, 152 assignments.
+
+### Coordinator errors, recorded
+
+- **Three wrong diagnoses** of collapsing database runs before measuring. The actual cause was
+  a jittery Wi-Fi link, which a `pg_stat_activity` sampler and pings established.
+- **The keep-awake call was broken all along.** `0x80000001` parses as a negative `Int32` in
+  PowerShell 5.1, and it is now `[uint32]2147483649`.
+- **An agent was dispatched before its brief fix had landed,** and a correction was sent.
+- **A random test name drew the digits of a price,** which the gate caught (ruling C2-4).
+
+### For #16
+
+Verify in production that both cookies carry `Secure` behind Vercel's TLS proxy. Use a
+**different** `PIN_PEPPER` and `SETUP_CODE` for production.
+
+### Cost (each API response counted once)
+
+| | Input | Output |
+|---|---:|---:|
+| #21's agents: spec, five phases, three reviews, repairs | 346.4M | 2.12M |
+| Coordinator, from #11's close to #21's | 129.9M | 0.33M |
+
+**Closed 2026-09-26 after owner sign-off.**

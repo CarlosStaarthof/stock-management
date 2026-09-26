@@ -1453,3 +1453,11 @@ rulings in 021 → *The review's findings, ruled by the coordinator*. Nothing is
   unit 1013, e2e 111 + 139 with 0 flaky, 0 failed and 0 retries, db 535, `[OK] Environment
   ready` with the database checks executed, 0 connection errors, dev census identical. **#21 is
   ready for the owner's sign-off.**
+- **#21 closed, 2026-09-26, after the owner's sign-off:** `feature_list.json` status `done`,
+  and a `progress/history.md` entry. With #21 no longer `in_progress`, the Phase 0 helper reads
+  #21's own commits, and `npm run test:unit` is 1013/1013 on that basis.
+- **`lint-fence.test.ts`, a third intermittent failure outside a gate.** A partial
+  `npx vitest run tests/unit` failed its first test at 57 s. The full `npm run test:unit` run
+  straight after passed. It has now failed three times, never in a gate. Still deferred and not
+  a feature's. The fix direction is to take ESLint's cold start out of a unit test's time
+  budget, **never** to raise the timeout.
