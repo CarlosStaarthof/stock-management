@@ -3,8 +3,12 @@ import Credentials from "next-auth/providers/credentials";
 import { cookies } from "next/headers";
 
 import { baseAuthConfig } from "@/lib/auth-config";
-import { DEVICE_TOKEN_MAX_AGE_DAYS } from "@/server/auth/attempt-budget";
-import { DEVICE_COOKIE, SIGN_IN_REFUSALS, type SignInRefusal } from "@/server/auth/sign-in-codes";
+import {
+  DEVICE_COOKIE,
+  SIGN_IN_REFUSALS,
+  deviceCookieOptions,
+  type SignInRefusal,
+} from "@/server/auth/sign-in-codes";
 import { attemptSignIn } from "@/server/auth/sign-in-service";
 
 /**
@@ -30,8 +34,6 @@ class SignInRefused extends CredentialsSignin {
     this.code = refusal;
   }
 }
-
-const SECONDS_PER_DAY = 86_400;
 
 /** The value of one cookie in a `Cookie` header, or `null`. */
 function cookieValue(header: string | null, name: string): string | null {
@@ -66,14 +68,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         }
 
         // Issued on every successful sign-in, renewed with the same id when the browser
-        // already held one (S8). HttpOnly: no script needs it. Signing out leaves it.
-        (await cookies()).set(DEVICE_COOKIE, result.deviceToken, {
-          httpOnly: true,
-          sameSite: "lax",
-          path: "/",
-          maxAge: DEVICE_TOKEN_MAX_AGE_DAYS * SECONDS_PER_DAY,
-          secure: new URL(request.url).protocol === "https:",
-        });
+        // already held one (S8). Signing out leaves it.
+        (await cookies()).set(DEVICE_COOKIE, result.deviceToken, deviceCookieOptions(request.url));
 
         return {
           id: result.user.id,

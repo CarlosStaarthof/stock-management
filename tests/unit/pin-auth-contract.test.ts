@@ -1,7 +1,8 @@
 import { spawnSync } from "node:child_process";
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomInt } from "node:crypto";
 import { existsSync, readFileSync, statSync } from "node:fs";
 
+import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
 import * as messages from "@/lib/auth-messages";
@@ -69,6 +70,53 @@ function importedModules(source: string): string[] {
 
 function isTestFile(file: string): boolean {
   return /\.(test|spec)\.tsx?$/.test(file);
+}
+
+/** Every name a parameter binds, destructured ones included. */
+function boundNames(name: ts.BindingName): string[] {
+  if (ts.isIdentifier(name)) return [name.text];
+  const elements: readonly ts.ArrayBindingElement[] = name.elements;
+  return elements.flatMap((element) => (ts.isOmittedExpression(element) ? [] : boundNames(element.name)));
+}
+
+/**
+ * The names of every function declaration, named arrow or function expression, and method in
+ * `source` whose parameter list names a parameter matching /pin/i (021 AC-8). An arrow or a
+ * function expression is named by what it is assigned to; a named function expression by its
+ * own name as well. Parsed, not pattern-matched, so a type or a default value in the list
+ * cannot hide a parameter.
+ */
+function pinParameterFunctions(file: string, source: string): string[] {
+  const kind = file.endsWith(".tsx")
+    ? ts.ScriptKind.TSX
+    : /\.(mjs|cjs|js)$/.test(file)
+      ? ts.ScriptKind.JS
+      : ts.ScriptKind.TS;
+  const names: string[] = [];
+  const visit = (node: ts.Node): void => {
+    if (
+      (ts.isFunctionDeclaration(node) ||
+        ts.isFunctionExpression(node) ||
+        ts.isArrowFunction(node) ||
+        ts.isMethodDeclaration(node)) &&
+      node.parameters.some((parameter) => boundNames(parameter.name).some((name) => /pin/i.test(name)))
+    ) {
+      if (node.name !== undefined && ts.isIdentifier(node.name)) names.push(node.name.text);
+      const holder = node.parent;
+      if (
+        (ts.isVariableDeclaration(holder) ||
+          ts.isPropertyAssignment(holder) ||
+          ts.isPropertyDeclaration(holder)) &&
+        holder.initializer === node &&
+        ts.isIdentifier(holder.name)
+      ) {
+        names.push(holder.name.text);
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, kind));
+  return names;
 }
 
 /* ------------------------------------------------------------------ AC-2 */
@@ -189,6 +237,40 @@ describe("021 AC-8: no PIN and no setup code is written down anywhere", () => {
   const files = repositoryFiles().filter((file) => file !== SELF);
   const QUOTED_PIN = String.raw`["'\x60](?:\d{4}|\d{6})["'\x60]`;
   const PIN_NAME = String.raw`\w*pin\w*`;
+  /**
+   * The review's shapes (ruled 2026-09-26). A literal passed to a call whose name matches
+   * /pin/i, or to `attemptSignIn`, whose second parameter is the PIN: that name holds no
+   * "pin", so the line rule below cannot see such a call on its own.
+   */
+  const CALL_ARGUMENT = new RegExp(String.raw`\b(?:${PIN_NAME}|attemptSignIn)\s*\(.*${QUOTED_PIN}`, "i");
+  /** A fill, with any literal, of a PIN field held in a variable whose name matches /pin/i. */
+  const FILL_ON_PIN_VARIABLE = new RegExp(String.raw`\b${PIN_NAME}\s*\.fill\(\s*["'\x60]`, "i");
+  /** The stricter rule: no quoted literal of exactly 4 or 6 digits on any line naming a PIN. */
+  const PIN_LINE = new RegExp(String.raw`^(?=.*pin).*${QUOTED_PIN}`, "i");
+  /**
+   * The second pass's shapes ("R2 again"). A fill of ANY field with such a literal, whatever
+   * holds the locator: a variable's name need not say what it holds. The literal may stand in
+   * any argument position (the third pass), so `page.fill(<selector>, <literal>)` is caught
+   * as well as a locator's fill, with or without a space before the parenthesis.
+   */
+  const FILL_ANY_RECEIVER = new RegExp(String.raw`\.fill\s*\(.*${QUOTED_PIN}`);
+  /**
+   * Such a literal in a call to any function whose parameter list names a PIN parameter. The
+   * set is derived from the source, so a helper written tomorrow is covered the day it lands.
+   * An empty set would match nothing, so the derivation is asserted to find some.
+   */
+  const callToPinParameter = (names: Iterable<string>): RegExp => {
+    // Sorted, so one set of names always makes one rule, whatever order it was found in.
+    const alternatives = [...names].sort().map((name) => name.replace(/\$/g, "\\$"));
+    if (alternatives.length === 0) return /(?!)/;
+    return new RegExp(String.raw`(?<![\w$])(?:${alternatives.join("|")})\s*\(.*${QUOTED_PIN}`);
+  };
+  const PIN_PARAMETER_FUNCTIONS = new Set(
+    files
+      .filter((file) => CODE.test(file))
+      .flatMap((file) => pinParameterFunctions(file, read(file) ?? "")),
+  );
+  const CALL_TO_PIN_PARAMETER = callToPinParameter(PIN_PARAMETER_FUNCTIONS);
   const pinPatterns = [
     // assigned to, or a key of, a name matching /pin/i
     new RegExp(String.raw`\b${PIN_NAME}["']?\s*[:=]\s*${QUOTED_PIN}`, "i"),
@@ -199,6 +281,11 @@ describe("021 AC-8: no PIN and no setup code is written down anywhere", () => {
     new RegExp(String.raw`name=["']${PIN_NAME}["'][^>]*value=${QUOTED_PIN}`, "i"),
     // a fill of a PIN input with a literal
     new RegExp(String.raw`\(\s*["'\x60][^"'\x60]*pin[^"'\x60]*["'\x60][^)]*\)\s*\.fill\(\s*["'\x60][^"'\x60]*["'\x60]`, "i"),
+    CALL_ARGUMENT,
+    FILL_ON_PIN_VARIABLE,
+    PIN_LINE,
+    FILL_ANY_RECEIVER,
+    CALL_TO_PIN_PARAMETER,
   ];
   const PLACEHOLDERS = new Set(["REPLACE_WITH_A_GENERATED_SECRET", "<choose-a-setup-code>"]);
   // Either a quoted literal, read whole up to its closing quote, or an unquoted value.
@@ -232,7 +319,7 @@ describe("021 AC-8: no PIN and no setup code is written down anywhere", () => {
     return offences;
   }
 
-  it("AC-8: no 4- or 6-digit literal is assigned to, passed as or compared with a PIN, and no PIN input is filled with a literal", () => {
+  it("AC-8: no 4- or 6-digit literal is assigned to, passed as or compared with a PIN, no PIN input is filled with a literal, no field is filled with such a literal, no function with a PIN parameter is called with one, and no line naming a PIN quotes one", () => {
     const offenders: string[] = [];
     for (const file of files) {
       const source = read(file);
@@ -244,6 +331,23 @@ describe("021 AC-8: no PIN and no setup code is written down anywhere", () => {
       });
     }
     expect(offenders).toEqual([]);
+  });
+
+  it("AC-8: the functions with a PIN parameter are derived from the source, and include at least attempt, hashPin and verifyPin", () => {
+    // An empty derivation would make the call rule match nothing, silently.
+    expect([...PIN_PARAMETER_FUNCTIONS]).toEqual(expect.arrayContaining(["attempt", "hashPin", "verifyPin"]));
+  });
+
+  it("AC-8: the call rule the scan uses is built from the derivation over the scanned files, derived afresh here", () => {
+    // Re-listed and re-derived, so the scan's own set cannot be a fixed list in disguise: one
+    // could stay green only while it happened to be complete, and would turn red the day a
+    // function with a PIN parameter landed.
+    const scanned = repositoryFiles().filter((file) => file !== SELF && CODE.test(file));
+    const fresh = new Set(scanned.flatMap((file) => pinParameterFunctions(file, read(file) ?? "")));
+
+    expect([...PIN_PARAMETER_FUNCTIONS].sort()).toEqual([...fresh].sort());
+    expect(pinPatterns).toContain(CALL_TO_PIN_PARAMETER);
+    expect(CALL_TO_PIN_PARAMETER.source).toBe(callToPinParameter(fresh).source);
   });
 
   it("AC-8: no literal that could be a setup code is assigned to a setup-code name", () => {
@@ -275,6 +379,89 @@ describe("021 AC-8: no PIN and no setup code is written down anywhere", () => {
     expect(pinPatterns[4]?.test(`page.getByLabel("PIN").fill("${digits}")`)).toBe(true);
     const code = "x".repeat(20);
     expect([...["SETUP_CODE", code].join("=").matchAll(SETUP_CODE_ASSIGNMENT)]).toHaveLength(1);
+
+    // The review's shapes (ruled 2026-09-26), each caught by the rule that names it.
+    const caughtBy = (line: string): RegExp[] => pinPatterns.filter((pattern) => pattern.test(line));
+    const digitsOf = (length: 4 | 6): string =>
+      Array.from({ length }, () => String(randomInt(10))).join("");
+
+    for (const length of [4, 6] as const) {
+      for (const quote of ['"', "'", "`"]) {
+        const literal = `${quote}${digitsOf(length)}${quote}`;
+        const shapes: [string, string, RegExp[]][] = [
+          [
+            "a literal passed to hashPin",
+            `const stored = await hashPin(${literal});`,
+            [CALL_ARGUMENT, CALL_TO_PIN_PARAMETER, PIN_LINE],
+          ],
+          [
+            "a literal passed to verifyPin",
+            `expect(await verifyPin(${literal}, row.pinHash)).toBe(true);`,
+            [CALL_ARGUMENT, CALL_TO_PIN_PARAMETER, PIN_LINE],
+          ],
+          // No "pin" on this line: only the call rules can see it.
+          [
+            "a literal as attemptSignIn's second argument",
+            `await attemptSignIn(user.username, ${literal}, device);`,
+            [CALL_ARGUMENT, CALL_TO_PIN_PARAMETER],
+          ],
+          [
+            "a fill of a PIN field held in a variable",
+            `await pinField.fill(${literal});`,
+            [FILL_ON_PIN_VARIABLE, FILL_ANY_RECEIVER, PIN_LINE],
+          ],
+          // Caught by the line rule alone: no targeted shape describes it.
+          ["any other line naming a PIN", `const [firstPin] = [${literal}];`, [PIN_LINE]],
+          // The second pass's shapes ("R2 again"): neither line names a PIN anywhere.
+          [
+            "a fill of a field held in a variable not named like one",
+            `await field.fill(${literal});`,
+            [FILL_ANY_RECEIVER],
+          ],
+          ["a literal passed to attempt", `await attempt(page, user.username, ${literal});`, [CALL_TO_PIN_PARAMETER]],
+          // The third pass's shapes: the literal as a later argument of the fill.
+          [
+            "a fill through the page, the literal after a selector",
+            `await page.fill("#entry", ${literal});`,
+            [FILL_ANY_RECEIVER],
+          ],
+          [
+            "a fill with a space before its parenthesis, the literal after a selector",
+            `await frame.fill ("#entry", ${literal});`,
+            [FILL_ANY_RECEIVER],
+          ],
+        ];
+        for (const [label, line, rules] of shapes) {
+          const caught = caughtBy(line);
+          for (const rule of rules) {
+            // Soft, so a missing rule is reported for every shape it leaves uncaught.
+            expect.soft(caught, `${label}, ${length} digits, ${quote}: ${String(rule)}`).toContain(rule);
+          }
+        }
+      }
+    }
+
+    // The derivation, not a fixed list: helpers declared at runtime, one of each form, under
+    // names no file holds, are found by it, and a literal passed to any of them is caught.
+    const helperName = (): string => `probe${randomBytes(4).toString("hex")}`;
+    const [declared, arrow, expression, method] = [helperName(), helperName(), helperName(), helperName()];
+    const declarations = [
+      `function ${declared}(page: Page, pin: string): void {}`,
+      `const ${arrow} = async (pin: string): Promise<void> => {};`,
+      `const ${expression} = function (page, { pin }) {};`,
+      `class Probe { ${method}(pin: string): void {} }`,
+      `function unrelated(page: Page, username: string): void {}`,
+    ].join("\n");
+    const derived = pinParameterFunctions("probe.ts", declarations);
+    expect([...derived].sort()).toEqual([declared, arrow, expression, method].sort());
+
+    const argument = `"${digitsOf(6)}"`;
+    for (const name of derived) {
+      const line = `await ${name}(page, ${argument});`;
+      expect(callToPinParameter(derived).test(line), `a call to the runtime helper ${name}`).toBe(true);
+      // No file declares it, so the scan's own set could not have caught it: the derivation did.
+      expect(CALL_TO_PIN_PARAMETER.test(line), `${name} is in no file`).toBe(false);
+    }
   });
 
   it("AC-8 (G1): a letters-first value in quotes is caught under every setup-code name, and only an unquoted identifier or call is read as code", () => {
@@ -753,6 +940,25 @@ describe("021 AC-22: /profiles is an ADMIN's, refused as a service", () => {
       const firstStatement = source.slice(bodyStart + 2).trimStart().split("\n")[0];
       expect(firstStatement, name).toBe('assertRole(actor, "ADMIN");');
     }
+  });
+
+  it("AC-22: toProfileListEntry, the one export that asserts no role, is reached only from profile-admin-service.ts, setup-service.ts and tests", () => {
+    // It is exempt from the check above because it runs inside a guarded transaction. So who
+    // may reach it is asserted here, as AC-31 asserts who imports operator-service.
+    const files = repositoryFiles().filter((file) => CODE.test(file));
+    const naming = files.filter((file) => /\btoProfileListEntry\b/.test(read(file) ?? ""));
+    const importers = files.filter((file) =>
+      [...(read(file) ?? "").matchAll(/\bimport\s+(?:type\s+)?\{([^}]*)\}\s*from\s*["']([^"']+)["']/g)].some(
+        (match) =>
+          /(^|\/)profile-admin-service$/.test(match[2] ?? "") && /\btoProfileListEntry\b/.test(match[1] ?? ""),
+      ),
+    );
+
+    expect(naming.filter((file) => !isTestFile(file)).sort()).toEqual([
+      "src/server/auth/profile-admin-service.ts",
+      "src/server/auth/setup-service.ts",
+    ]);
+    expect(importers.filter((file) => !isTestFile(file))).toEqual(["src/server/auth/setup-service.ts"]);
   });
 });
 

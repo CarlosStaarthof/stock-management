@@ -2045,3 +2045,469 @@ rebuilt, ran the named test, and restored the file with `cp -p`. After each rest
 - **What the sign-out change touches.** It changes height only. On every page with the header,
   the sign-out button is now 44 px tall instead of 38 px. None of the 88 + 19 header and
   overflow tests that ran needed a change.
+
+## Review repairs
+
+Brief: the coordinator's scratchpad `fix21.md`, against `progress/review_pin_auth.md` and the
+rulings in `specs/features/021-pin_auth.md` → *The review's findings, ruled by the coordinator*.
+**Status: complete.** R1, R2 and R3 are done, and so are observations 2, 3, 4 and 6, each with
+its tests. Every mutation the brief asks for went red and was restored from a byte copy. R4 (the
+no-database `init` runs) is the coordinator's. Nothing is committed. I did not touch
+`feature_list.json`, `Samples/`, `tests/support/feature-scope.ts` or the spec. I ran no full
+suite and no `init`. Port 3000 is free.
+
+### Work log
+
+Finished and verified steps only, in the order they were done.
+
+1. **Before any run.** Dev census `{"users":33,"admins":8,"pending":0,"setupClaims":0,
+   "requestNewDevices":0,"pinNewDevices":0,"authEvents":0,"accountLocks":0}` (and the wider one:
+   items 140, prices 129, assignments 152, counts 0). Nothing was listening on port 3000.
+2. **R1, red first.** I added one `javaScriptEnabled: false` test to `sign-in.spec.ts`. Its
+   callback is a slash, a backslash, then a foreign host built at runtime under `.invalid`.
+   I ran it on the unfixed code, on a fresh build, alone: **1 failed**, at its first assertion.
+   The sign-in POST answered with `Location: /\offsite-63c3f3344786.invalid/x`, which resolves
+   to `http://offsite-63c3f3344786.invalid`, not `http://localhost:3000`. The census was
+   identical afterwards.
+3. **R1, the fix.**
+   - `safeCallbackPath` is now a pure export of the new `src/lib/callback-path.ts`, and
+     `src/app/auth-actions.ts` imports it. It works in three steps:
+     - it refuses any value holding a backslash, an ASCII control character (U+0000 to U+001F
+       and U+007F) or any whitespace;
+     - the value must begin with exactly one `/`, and is parsed against a fixed origin. It is
+       kept only if that origin is unchanged;
+     - it returns `pathname + search`, and **checks that result once more** for a leading `//`.
+       Dot segments can produce one: a single slash, a dot and two slashes stays on the origin
+       but parses to a pathname that begins `//`, which is protocol-relative in `Location`.
+   - `src/lib/callback-path.ts` has 10 unit tests, all passing with no browser. They cover:
+     - both of the reviewer's shapes, and the `//`, `https://`, `http://` and other scheme forms;
+     - every C0 control, DEL and four kinds of whitespace, at the start, middle and end;
+     - the percent-encoded forms of each refused shape, decoded both by `URLSearchParams` (as
+       the page's `searchParams` are) and by `decodeURIComponent`;
+     - values that are still encoded after one decode, which stay paths on our origin;
+     - dot segments that collapse to `//`;
+     - values that are not strings;
+     - `/analysis` with its query, which is kept, and the fragment, which is dropped;
+     - a property run of 5,000 random values built from the characters URLs turn on: whatever
+       is kept begins with one slash and stays on two different origins. Its floor is 50 kept
+       values; over 200 probe runs the fewest was 102.
+   - In the e2e spec, the old JavaScript-only callback test and the red case are replaced by
+     two tests, each run with JavaScript on and off:
+     - an ADMIN sent to sign in from `/analysis` lands on `/analysis`;
+     - a callback of any of the four off-site shapes is ignored, and the ADMIN lands on
+       `/stock-takes` on our origin, with `signed-in-name` rendered. The four shapes are a slash
+       then a backslash, a slash then a tab then a second slash, `//`, and `https://`.
+
+     Without JavaScript, each test also asserts that the POST's `Location` resolves on our
+     origin. Result, on a fresh build, `-g AC-9`: **8 passed**. The census was identical.
+4. **M-R1: the old rule restored** (see *Mutations*). Unit: 6 of 10 red. E2e, rebuilt: both
+   off-site tests red, and both `/analysis` tests green, as they should be. Restored.
+5. **R2, a probe first.** I ran the proposed line rule and the two new targeted shapes over
+   every tracked and untracked file, except the scan's own source. The probe printed file, line
+   and the line with its digits masked. **0 hits**, so there is no non-PIN line to report. The
+   spec's example had already been reworded.
+6. **R2, the rules.** `tests/unit/pin-auth-contract.test.ts` keeps the five targeted patterns
+   and adds three rules:
+   - `CALL_ARGUMENT`: a quoted 4- or 6-digit literal after the opening parenthesis of a call
+     whose name matches /pin/i, or of `attemptSignIn`;
+   - `FILL_ON_PIN_VARIABLE`: `.fill(` with any quoted literal on a receiver whose name matches
+     /pin/i;
+   - `PIN_LINE`: any quoted literal of exactly 4 or 6 digits on a line that matches /pin/i.
+
+   The scan test's title now names the line rule.
+
+   The non-vacuity test is extended with five shapes. Each is built at runtime with digits from
+   `randomInt`, in 4 and 6 digits, and in all three quote characters:
+   - a literal passed to `hashPin`;
+   - a literal passed to `verifyPin`;
+   - a literal as `attemptSignIn`'s second argument;
+   - a `.fill(` on a variable named like a PIN field;
+   - a line that only the line rule can see.
+
+   Each shape is asserted to be caught by the rule that names it, with `expect.soft`, so a
+   missing rule is reported for every shape it leaves uncaught. 37/37.
+7. **R2 mutations**, each rule removed from the scan's list in turn: every shape that relies on
+   it went red, 6 variants each (see *Mutations*). Restored.
+8. **R3.**
+   - `deviceCookieOptions(requestUrl)` is a pure export of `src/server/auth/sign-in-codes.ts`,
+     beside `DEVICE_COOKIE`. `next-auth.ts` now sets the cookie with it.
+   - Three unit tests: `Secure` over three `https` URLs, not `Secure` over three `http` URLs
+     with every other attribute equal, and a lifetime of 180 days in seconds. 5/5 in the file.
+   - `pin-device.spec.ts`'s "a device cookie alone is not signed in" test now loops over
+     `PROTECTED_PATHS`, imported from `src/lib/auth-config.ts`. It also asserts that the list
+     holds `/profiles`.
+   - M-R3a and M-R3b went red. Restored.
+9. **Observation 2.** AC-10 (e) in `sign-in-service.db.test.ts` is now the real flow:
+   - `requestProfile` with a chosen username and PIN (asserted `SENT`);
+   - `rejectProfile` by an ACTIVE ADMIN (the row asserted `REJECTED`);
+   - an attempt with that original username and PIN.
+
+   It runs inside the existing loop, so (e) is asserted `INCORRECT`, with one bcrypt and a
+   statement sequence identical to (a).
+10. **Observation 6.** AC-14's "no typed value" check now goes column by column:
+    - a hex column is never searched. `AccountLock.accountKey` and a non-null
+      `AuthEvent.accountKey` must each be the key of a typed well-formed username, and a
+      bucket's device id must be the run's own device;
+    - `AuthEvent.id`, `AuthEvent.kind` and the bucket with its device id removed are searched
+      for every typed username and PIN;
+    - the counters must be integers and never equal a typed value;
+    - the times must be Dates.
+
+    The failure labels name the column, never the value. The malformed-username attempt's
+    PIN is now six digits, and it is among the values searched: a four-digit one could turn
+    up by chance inside a random 25-character id about once in ten thousand runs. `test:db`
+    on the file: **14/14**.
+11. **M-14:** the service stores a typed PIN in `AuthEvent.id`. The bookkeeping test went red
+    with "AuthEvent.id holds a typed PIN", and its log held no 6-digit run. Restored.
+12. **Observation 3.**
+    - `src/server/test-db.db.test.ts:186` is now titled "AC-2: the first statement is the
+      TRUNCATE of exactly the tables in TRUNCATED_TABLES". The assertion is untouched.
+    - Comments only, in two e2e specs:
+      - `stock-takes-calendar.spec.ts`: the AC-19 lever block (`:102-112`, including the named
+        `:104-110`), `:570`, and the same fixture's comment at `:582-586`;
+      - `analysis-access.spec.ts`: the AC-20 lever block (`:150-157`, including `:152`) and
+        `:170`.
+
+      They now describe the name `${label}-` plus 16 letters, and `{user.name}`.
+      `git diff -U0` over both files shows **0** changed lines that are not comments, and **0**
+      changed lines holding `expect(` or `test(`. The two `UNBREAKABLE_LABEL` values and the
+      `:147` test title are untouched.
+13. **Observation 4.** A new AC-22 unit test in `pin-auth-contract.test.ts` asserts two things:
+    - the non-test code files that name `toProfileListEntry` are exactly
+      `profile-admin-service.ts` and `setup-service.ts`;
+    - the only non-test named import of it is `setup-service.ts`'s.
+
+    38/38. As a probe, a temporary untracked `src/app/profiles/zz-probe.ts` importing it turned
+    the test red, naming that file. I deleted it, and the test was green again.
+14. **Verification** on the final source:
+    - `npm run typecheck`: 0;
+    - `npm run lint`: 0;
+    - `npm run test:unit`: **1011/1011** in 72 files. That is the old 997, plus 10 in
+      `callback-path.test.ts`, 3 in `sign-in-codes.test.ts` and 1 in `pin-auth-contract.test.ts`;
+    - `npm run test:db -- src/server/test-db.db.test.ts`: 13/13;
+    - `npm run test:e2e -- tests/e2e/sign-in.spec.ts tests/e2e/pin-device.spec.ts`, on a fresh
+      build, with nothing else running: **23 passed** in 1.0 min. That is 18 in `sign-in`
+      (15, minus the replaced callback test, plus the four AC-9 tests) and 5 in `pin-device`.
+      The census was identical before and after, and port 3000 was not listening afterwards;
+    - finally, `npm run test:db -- src/server/auth/sign-in-service.db.test.ts` again, after
+      every mutation of the service had been restored: **14/14**.
+
+### Mutations
+
+Before each mutation I made a byte copy of the file. After each one I restored it with `cp -p`
+and ran `sha256sum -c`, which reported `OK` every time. Failure logs that could carry runtime
+values were checked for digit runs and then deleted.
+
+| # | Mutation | What went red |
+|---|---|---|
+| M-R1 | `safeCallbackPath`'s body replaced by the pre-review rule (begins `/`, not `//`, returned as given) | Unit: 6 of 10 (fragment, the reviewer's shapes, control and whitespace, percent-encoded, dot segments, the property run). E2e (rebuilt): without JavaScript, the four-shape test at its `Location` assertion (`/\offsite-4d80802ddfca.invalid/x`, whose origin is that host); with JavaScript, at the landing path (`/x` on our origin, not `/stock-takes`). Both `/analysis` tests stayed green |
+| M-R2a | `CALL_ARGUMENT` removed from the scan's list | the hashPin, verifyPin and attemptSignIn shapes, 6 variants each |
+| M-R2b | `FILL_ON_PIN_VARIABLE` removed | the fill-on-a-variable shape, 6 variants |
+| M-R2c | `PIN_LINE` removed | the hashPin, verifyPin, fill and line-only shapes, 6 variants each |
+| M-R3a | `secure` always false | "AC-16: over https the cookie is Secure…" |
+| M-R3b (extra) | `secure` always true | "AC-16: over http the cookie is not Secure…" |
+| M-14 | after each counted failure, the service appends the typed PIN to that event's stored `id` | "AC-14: the bookkeeping holds…", with the message "AuthEvent.id holds a typed PIN" |
+| M-14b (extra) | the raw username used as the account key | Red, **but it proves nothing about the test**: the database's `AccountLock_key_format` CHECK refuses a non-hex key before the test's check runs |
+
+### Files created
+- `src/lib/callback-path.ts`: `safeCallbackPath`, the same-origin rule for a `callbackUrl`
+  (AC-9).
+- `src/lib/callback-path.test.ts`: its 10 unit tests.
+
+### Files modified
+- `src/app/auth-actions.ts`: imports `safeCallbackPath`; the local copy is removed; the doc
+  comment says why.
+- `src/server/auth/sign-in-codes.ts`: `deviceCookieOptions` and its type.
+- `src/server/auth/next-auth.ts`: sets the device cookie with `deviceCookieOptions`.
+- `src/server/auth/sign-in-codes.test.ts`: three AC-16 tests.
+- `src/server/auth/sign-in-service.db.test.ts`: AC-10 (e) through `requestProfile` and
+  `rejectProfile`, and AC-14's check column by column.
+- `src/server/test-db.db.test.ts`: the `:186` title only.
+- `tests/unit/pin-auth-contract.test.ts`: the three new AC-8 rules and their non-vacuity
+  cases, and the `toProfileListEntry` importer test.
+- `tests/e2e/sign-in.spec.ts`: the AC-9 callback tests, with JavaScript on and off.
+- `tests/e2e/pin-device.spec.ts`: the protected list from `PROTECTED_PATHS`, and a comment.
+- `tests/e2e/stock-takes-calendar.spec.ts`, `tests/e2e/analysis-access.spec.ts`: comments only.
+- `progress/current.md` and this section.
+
+### Acceptance criteria (the repaired halves)
+
+| AC | Where it is satisfied | Test that proves it |
+|----|-----------------------|---------------------|
+| AC-8 (PIN half) | `tests/unit/pin-auth-contract.test.ts:197-201` (the three new rules), kept beside the five targeted ones | same file → "AC-8: no 4- or 6-digit literal … and no line naming a PIN quotes one" (`:248`), and "AC-8: the scans are not vacuous…" (`:284`) with the five shapes; M-R2a to M-R2c |
+| AC-9 (same-origin rule) | `src/lib/callback-path.ts:38-53`; `src/app/auth-actions.ts:31` | `src/lib/callback-path.test.ts` (10 tests); `tests/e2e/sign-in.spec.ts:205-263` → "AC-9: with / without JavaScript, an ADMIN sent to sign in from /analysis lands on /analysis" and "… a callbackUrl of any of the four off-site shapes is ignored, and an ADMIN lands on /stock-takes"; M-R1 |
+| AC-10 (e) | the real flow in `sign-in-service.db.test.ts:164-190` | "AC-10: (a) to (e) issue the identical statement sequence and exactly one bcrypt each" |
+| AC-14 (no typed value) | `sign-in-service.db.test.ts:384-464` | "AC-14: the bookkeeping holds ids, kinds, bucket forms, hex keys and times — never a PIN or a username"; M-14 |
+| AC-16 (`Secure`, both branches) | `src/server/auth/sign-in-codes.ts:36-44`; `next-auth.ts:72` | `sign-in-codes.test.ts:39`, `:49`, `:59`; M-R3a, M-R3b. The served build's http branch is also checked by `pin-device.spec.ts` |
+| AC-16 (every protected route) | `tests/e2e/pin-device.spec.ts:131-132` | "AC-16: a request carrying only a valid device cookie is not signed in", over `PROTECTED_PATHS` (five paths today, `/profiles` among them) |
+| AC-22 (observation 4) | `tests/unit/pin-auth-contract.test.ts:806` | "AC-22: toProfileListEntry, the one export that asserts no role, is reached only from…"; the temporary-importer probe |
+| AC-43 (observation 3) | `src/server/test-db.db.test.ts:186`, title only | its assertion is unchanged and passes, 13/13 |
+
+### Verification output
+```
+> tsc --noEmit                                  (exit 0)
+> eslint src tests --max-warnings 0             (exit 0)
+ Test Files  72 passed (72)
+      Tests  1011 passed (1011)                 (npm run test:unit)
+ Test Files  1 passed (1)
+      Tests  13 passed (13)                     (test:db src/server/test-db.db.test.ts)
+  23 passed (1.0m)                              (test:e2e sign-in.spec.ts pin-device.spec.ts)
+ Test Files  1 passed (1)
+      Tests  14 passed (14)                     (test:db src/server/auth/sign-in-service.db.test.ts)
+```
+
+### Findings: for the coordinator
+1. **AC-8's parenthesis claims a little too much.** The criterion says the line rule "also
+   covers a literal passed to `hashPin`, `verifyPin` or `attemptSignIn`". For `attemptSignIn`,
+   it cannot on its own: that name holds no "pin", and a call such as
+   `attemptSignIn(user.username, <literal>, device)` has none anywhere on the line. The
+   criterion as a whole is still met, because the literal is "passed as a parameter whose name
+   matches /pin/i" (`attemptSignIn`'s second parameter). The targeted `CALL_ARGUMENT` rule
+   covers that clause, and the non-vacuity test asserts that this shape is caught by
+   `CALL_ARGUMENT` alone. Only the wording may want correcting.
+2. **With JavaScript, the old rule failed differently.** In M-R1, the backslash shape with
+   JavaScript on did not leave the origin: the page ended at `/x` on our origin, not at
+   `/stock-takes`. Without JavaScript, the browser went to the foreign host. Either way it was
+   red. I did not investigate how Next's client router treats the value.
+3. **A stale pointer in #6's file.** A comment at `src/app/item-master/actions.ts:97` says
+   `safeCallbackPath` is in `src/app/auth-actions.ts`. It now lives in
+   `src/lib/callback-path.ts` and is still called there. That file is #6's, so I left it
+   alone.
+4. **`Secure` behind #16's proxy is not proved here.** The unit tests prove what
+   `deviceCookieOptions` does with the URL it is given. Whether `authorize`'s `request.url` is
+   `https` behind a TLS-terminating proxy depends on how Auth.js rebuilds that URL from the
+   forwarded headers. I have not verified that; it belongs to #16's deployment checks.
+
+### Deviations from the spec and the brief
+1. **`safeCallbackPath` moved** from `src/app/auth-actions.ts` to `src/lib/callback-path.ts`.
+   A `"use server"` file may export only async functions, and a unit test needs the export.
+   `auth-actions.ts` calls it exactly where it did before.
+2. **`deviceCookieOptions` is in `sign-in-codes.ts`**, not inside `next-auth.ts`. A unit test
+   cannot import `next-auth.ts` without NextAuth and the service that reaches the database.
+   `sign-in-codes.ts` is pure, already owns `DEVICE_COOKIE`, and its comment already listed
+   the attributes.
+3. **One step beyond the brief's three:** the rebuilt path is checked again for a leading `//`
+   (see step 3). Without it, a dot-segment value passes every other rule and still leaves the
+   origin.
+4. **The AC-9 e2e tests were restructured, not only extended.** The old test (JavaScript only:
+   `/analysis`, `//`, `https://`) and the red case are replaced by the 2 × 2 matrix, which
+   covers everything they did, with JavaScript on and off.
+5. **More comment lines were corrected than the brief names**, all describing the same email
+   fixture: `stock-takes-calendar.spec.ts:102`, `:112` and `:582-586`, and
+   `analysis-access.spec.ts:150` and `:170`. They are comments only, as the diff check in step 12
+   shows.
+6. **AC-14's malformed-username attempt now uses a six-digit PIN**, and that PIN is searched
+   for. Before, a four-digit PIN was typed but never searched. See step 10.
+7. **The new non-vacuity shapes use `expect.soft`**, so one missing rule reports every shape
+   it uncovers.
+
+### Notes for the reviewer
+- **No PIN, setup-code or `.env` value was printed or written.**
+  - Every PIN and digit run comes from `generatePin` or `randomInt` at runtime.
+  - The new AC-14 check's messages name columns, never values.
+  - The R2 probe masked every digit.
+  - The only concrete values in this section are two crafted `.invalid` hosts from the R1 runs.
+- **`sha256sum -c` on `pin-auth-contract.test.ts` now reports a mismatch against the R2
+  copy.** That is expected: observation 4's test was added after the R2 mutations had been
+  restored, and that restore itself verified `OK`. The other three copies still verify `OK`.
+- **`test-results/` holds only `.last-run.json`.** The traces from failing runs were deleted,
+  because a trace records the values typed into fields.
+- **The build on disk is from the final source.** The last e2e run built it after every
+  mutation had been restored.
+
+### Second-pass repair
+
+Brief: the coordinator's message carrying the ruling in `specs/features/021-pin_auth.md` → *The
+review's findings, ruled by the coordinator* → "R2 again", and AC-8 as it now reads. **Status:
+complete.** Only `tests/unit/pin-auth-contract.test.ts` changed. I ran no e2e, no `test:db` and
+no `init`, and nothing is committed.
+
+#### Work log
+
+Finished and verified steps only, in the order they were done.
+
+1. **A probe first.** It derived the set with the same parse the test now uses, then ran both
+   new rules over every tracked and untracked file, except the scan's own source. It printed
+   file and line with every digit masked.
+   - The derived set has 10 names: `NewPinNotice`, `attempt`, `attemptSignIn`, `differentPin`,
+     `hashPin`, `isTrivialPin`, `parseAttempt`, `pinDigest`, `verifyPin` and `wrongPin`.
+   - **0 hits** for either rule, so there is no existing line to report. The result was the
+     same with and without parent pointers, so no arrow or function expression named by its
+     variable adds a name today.
+2. **The two rules**, both in AC-8's `pinPatterns`, beside the eight kept:
+   - `FILL_ANY_RECEIVER` (`:254`): `.fill(` whose argument is a quoted literal of exactly 4 or
+     6 digits, on any receiver.
+   - `CALL_TO_PIN_PARAMETER` (`:260-270`): such a literal anywhere after the opening
+     parenthesis of a call to any derived name, a method call included. The names match
+     exactly, since they are identifiers. An empty set gives a rule that matches nothing,
+     which is why the derivation is asserted non-empty below.
+3. **The derivation**, `pinParameterFunctions` (`:76-122`):
+   - It parses each code file (`.ts`, `.tsx`, `.js`, `.mjs`, `.cjs`) among the scanned ones
+     with the TypeScript compiler API, as `feature-scope.test.ts` and `layout.test.ts` already
+     do. It never pattern-matches parameter lists, so a type, a default value or a
+     destructured `{ pin }` cannot hide a parameter.
+   - It collects every function declaration, function expression, arrow function and method
+     with a parameter binding whose name matches /pin/i.
+   - The name it records is the declaration's own name, and for an arrow or function
+     expression also the variable, property or class field it is assigned to.
+4. **The "at least" assertion** is a new test (`:333`): the derived set contains `attempt`,
+   `hashPin` and `verifyPin`.
+5. **Non-vacuity** (`:360`), extended. Every digit run comes from `randomInt` at runtime:
+   - two new shapes in the per-rule loop (4 and 6 digits × three quote characters), neither
+     naming a PIN anywhere on the line:
+     - a `.fill(` on a variable named `field`, expected caught by `FILL_ANY_RECEIVER`;
+     - a call to `attempt` with the literal as its PIN argument, expected caught by
+       `CALL_TO_PIN_PARAMETER`;
+   - the existing shapes now also expect the new rules where they apply: the hashPin,
+     verifyPin and attemptSignIn shapes expect `CALL_TO_PIN_PARAMETER`, and the PIN-variable
+     fill expects `FILL_ANY_RECEIVER`;
+   - **the derivation, not a fixed list** (`:418`). Four helpers are declared at runtime under
+     random names that no file holds: a function declaration, an async arrow, an anonymous
+     function expression with a destructured `{ pin }`, and a class method. Each has a
+     parameter named `pin`. A fifth function has no such parameter. Deriving from that
+     runtime source must give exactly the four names. For each of them, a call with a literal
+     PIN argument is caught by the rule built from the derived set, and **not** by the scan's
+     own set, which proves the catch came from the derivation.
+6. `typecheck` 0, `lint` 0, `test:unit` **1012/1012** in 72 files. That is 1011 plus the "at
+   least" test.
+
+#### Mutations
+
+I made a byte copy of `tests/unit/pin-auth-contract.test.ts` and applied each mutation to the
+working file. I ran the two affected tests, then restored the file with `cp -p`. `sha256sum -c`
+reported `OK` after each restore, and the full file then passed, 39/39. Each shape ran in 6
+variants (2 lengths × 3 quotes). The mutation logs held no quoted digit run and were deleted.
+
+| # | Mutation | What went red |
+|---|---|---|
+| M-R2d | `FILL_ANY_RECEIVER` removed from `pinPatterns` | non-vacuity: the fill on a variable not named like a PIN, 6 of 6, and the PIN-variable fill, 6 of 6 |
+| M-R2e | `CALL_TO_PIN_PARAMETER` removed from `pinPatterns` | non-vacuity: the `attempt` shape, 6 of 6, and the hashPin, verifyPin and attemptSignIn shapes, 6 of 6 each |
+| M-R2f | `pinParameterFunctions` returns nothing | the "at least attempt, hashPin and verifyPin" test (`expected [] to deeply equal ArrayContaining…`); non-vacuity: the four call shapes, 6 of 6 each, and the runtime helpers (`expected [] to deeply equal` the four names) |
+
+#### Files modified (this step)
+- `tests/unit/pin-auth-contract.test.ts`: the two rules, the derivation, the "at least" test,
+  the extended non-vacuity test, and the scan test's title, which now names both clauses.
+- `progress/current.md` and this section.
+
+#### Acceptance criteria (this step's half)
+
+| AC | Where it is satisfied | Test that proves it |
+|----|-----------------------|---------------------|
+| AC-8 (fill of any field; call to a derived PIN-parameter function) | `tests/unit/pin-auth-contract.test.ts:254`, `:260-270`, `:76-122` | the scan test (`:319`), "AC-8: the functions with a PIN parameter are derived from the source, and include at least attempt, hashPin and verifyPin" (`:333`), and "AC-8: the scans are not vacuous…" (`:360`); M-R2d to M-R2f |
+
+#### Verification output
+```
+> tsc --noEmit                                  (exit 0)
+> eslint src tests --max-warnings 0             (exit 0)
+ Test Files  72 passed (72)
+      Tests  1012 passed (1012)                 (npm run test:unit)
+```
+
+#### Notes for the reviewer
+- **The derivation reads code files only.** The line rules still read every scanned file,
+  Markdown included. A function is declared in code, and parsing a document as TypeScript
+  would only add noise.
+- **The set runs wider than the three names asserted.** Today it also holds
+  `attemptSignIn`, `pinDigest`, `isTrivialPin`, `parseAttempt`, `wrongPin`, `differentPin` and
+  `NewPinNotice`, whose props are destructured.
+  - /pin/i also matches words such as "mapping" or "skipping", so a later parameter so named
+    widens the set. That errs strict.
+  - A call to one of those functions carrying a 4- or 6-digit quoted literal would then be
+    flagged. None exists today.
+- **Collection is slower.** The file's collection now takes about 4 s instead of 2.4 s, because
+  every code file is parsed once when the describe block is set up.
+- **Still true from the first pass:** no PIN, setup-code or `.env` value was printed or
+  written, and every failure message here names a shape or a rule, never a value.
+- **A change in the tree that is not mine.** `src/app/item-master/actions.ts:97` now names
+  `src/lib/callback-path.ts`, which settles the first pass's finding 3. That edit was made
+  between the passes by someone else, and I left it as I found it.
+
+### Third-pass hardening
+
+Brief: the coordinator's message carrying the third pass's two non-blocking observations
+(`progress/review_pin_auth.md` → `## Third pass`, observations 1 and 2). **Status: complete.**
+Only `tests/unit/pin-auth-contract.test.ts` changed. I ran no e2e, no `test:db` and no `init`,
+and nothing is committed.
+
+#### Work log
+
+Finished and verified steps only, in the order they were done.
+
+1. **A probe first**, with the same derivation the test uses, over every tracked and untracked
+   file except the scan's own source. It printed file and line with every digit masked.
+   - The derived set is unchanged: the same 10 names.
+   - The widened fill rule matched **0** of the **85** lines in the tree that call `.fill(`, and
+     the call rule matched **0** lines. There is no existing line to report.
+2. **Observation 1: the fill rule takes the literal in any argument position.**
+   `FILL_ANY_RECEIVER` (`:256`) now matches `.fill`, optional whitespace, `(`, then a quoted
+   literal of exactly 4 or 6 digits anywhere after it on the line. So a locator's fill, a
+   `page.fill(<selector>, <literal>)` and a `.fill (` with a space before the parenthesis are
+   all caught.
+
+   The non-vacuity loop gains two shapes, in 4 and 6 digits and all three quote characters,
+   with digits from `randomInt`. Each is expected caught by `FILL_ANY_RECEIVER`, and neither
+   line names a PIN:
+   - `page.fill` with a selector, then the literal (`:424`);
+   - `frame.fill` with a space before the parenthesis, a selector, then the literal (`:429`).
+     This is one more than the brief asks for, covering the space the reviewer noted.
+3. **Observation 2: the scan's set is tied to the derivation.** A new test (`:341`) lists the
+   repository afresh, re-derives the names from every scanned code file with
+   `pinParameterFunctions`, and asserts three things:
+   - the scan's `PIN_PARAMETER_FUNCTIONS` **equals** that fresh set;
+   - `pinPatterns` contains `CALL_TO_PIN_PARAMETER`;
+   - that rule's source equals the rule built from the fresh set.
+4. **The rule is now canonical for its set.** `callToPinParameter` (`:262`) sorts the names
+   before joining them. Without that, the third assertion compares alternation order: my
+   first run of the fixed-list mutation went red only because an alphabetical list differed
+   from the derivation's file order. That red proved nothing about fixed lists, so I made the
+   rule independent of order and ran every mutation again from the new baseline. Sorting
+   cannot change what the rule matches, because a regex tries every alternative.
+5. `typecheck` 0, `lint` 0, `test:unit` **1013/1013** in 72 files. That is 1012 plus the new
+   equality test. The contract file alone passes 40/40.
+
+#### Mutations
+
+I made a byte copy of the test file, taken after the step-4 change. For each mutation I applied
+the change, ran the file's AC-8 tests (7 of them), and restored the file with `cp -p`.
+`sha256sum -c` reported `OK`, and the full file passed 40/40 afterwards. The logs held no
+quoted digit run and were deleted.
+
+| # | Mutation | Result |
+|---|---|---|
+| M-R3a | `FILL_ANY_RECEIVER` narrowed back to the literal as the first argument | Non-vacuity red: the `page.fill` shape, 6 of 6, and the spaced `frame.fill` shape, 6 of 6 |
+| M-R3b | the scan's set replaced by a fixed list of `attempt`, `hashPin` and `verifyPin` | The new test red at the set equality, and the non-vacuity `attemptSignIn` shape red, 6 of 6. The "at least" test stayed green, which is why it was not enough on its own |
+| M-R3c | the scan's set replaced by a fixed list of **all ten** names derived today | **Green**, as it must be: it equals the derivation today. Then I added an untracked file declaring one new function with a parameter named `pin`, and the new test went **red** at the set equality. As a control, the real code with that same file stayed green, because the derivation picked the function up. The file was then deleted |
+| M-R3d | the scan's set left intact, but `CALL_TO_PIN_PARAMETER` built from a fixed list of three names | The new test red at the rule-source assertion, and the non-vacuity `attemptSignIn` shape red, 6 of 6 |
+
+So a fixed list in the scan's place can pass only while it is exactly what the derivation would
+find, and it fails the first time a function with a PIN parameter lands without being added.
+
+#### Files modified (this step)
+- `tests/unit/pin-auth-contract.test.ts`: the widened fill rule, the sorted rule builder, the
+  equality test, and the two new non-vacuity shapes.
+- `progress/current.md` and this section.
+
+#### Acceptance criteria (this step's half)
+
+| AC | Where it is satisfied | Test that proves it |
+|----|-----------------------|---------------------|
+| AC-8 (a fill of any field, in any argument position) | `tests/unit/pin-auth-contract.test.ts:256` | the scan test, and "AC-8: the scans are not vacuous…" with the `page.fill` and spaced `frame.fill` shapes; M-R3a |
+| AC-8 (the scan derives its set of functions from the source) | `:262-272` | "AC-8: the call rule the scan uses is built from the derivation over the scanned files, derived afresh here" (`:341`); M-R3b to M-R3d |
+
+#### Verification output
+```
+> tsc --noEmit                                  (exit 0)
+> eslint src tests --max-warnings 0             (exit 0)
+ Test Files  72 passed (72)
+      Tests  1013 passed (1013)                 (npm run test:unit)
+```
+
+#### Notes for the reviewer
+- **The widened fill rule errs strict.** It reads to the end of the line, so a quoted 4- or
+  6-digit literal later on the same line as any `.fill(` call is flagged, even after that call
+  has closed. None occurs today.
+- **The equality test costs about 1.4 s**, because it parses every code file a second time.
+- **Observations 3 and 4 of the third pass are left as they are.** They are the forms the
+  derivation cannot name and the call shapes a lexical scan misses. None occurs in the tree,
+  and the brief did not ask for them.
+- **Still true:** no PIN, setup-code or `.env` value was printed or written.

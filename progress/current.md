@@ -1283,3 +1283,173 @@ Report: `progress/impl_pin_auth.md` → `## Phase C2`.
   reviewer checks it with the rest.
 - **Deferred observation (not #21's):** the same page renders random count cuids, which could
   in principle contain a price's digits. That predates #21 and is logged only.
+- **Phase C2 committed** after a green re-gate (`scratchpad/gate21c2b.txt`): `init` exit 0 in
+  19.9 min, unit 997, e2e 108 + 139 with 0 failed, db 535/535, 0 skipped, 0 connection
+  errors, dev census identical. Commits: `5a04b64` `spec(#21)` for C2-1 to C2-4, and `8ee3748`
+  `feat(#21): Phase C2`.
+- **AC-43: two consecutive full `npm run test:e2e` runs** (`scratchpad/e2e2.ps1`, kept awake,
+  Git Bash, on `8ee3748`, nothing else running):
+  - run 1: exit 0 in 8.7 min, phase 1 108 passed, phase 2 139 passed;
+  - run 2: exit 0 in 7.3 min, phase 1 108 passed, phase 2 139 passed.
+
+  Each run had 0 failed, 0 flaky and 0 `Retry #`. The dev census was identical before and
+  after. Counting the gate's own run just before, that is three consecutive clean full runs.
+  The logs are `scratchpad/ac43-run1.txt` and `ac43-run2.txt`.
+
+### Review repairs (R1, R2, R3; observations 2, 3, 4, 6), implementer, 2026-09-26
+Brief: the coordinator's scratchpad `fix21.md`, against `progress/review_pin_auth.md` and the
+rulings in 021 → *The review's findings, ruled by the coordinator*. Nothing is committed;
+`feature_list.json`, `Samples/` and `tests/support/feature-scope.ts` are not touched.
+
+**Plan, written before coding:**
+- R1 first. Red e2e for a slash-backslash callback with JavaScript off, on the current code,
+  and record its `Location`. Then `safeCallbackPath` becomes a pure exported function in a new
+  module (`src/lib/callback-path.ts`: a `"use server"` file may export only async functions),
+  imported by `src/app/auth-actions.ts`; unit test beside it; e2e for both shapes, JavaScript
+  on and off, plus the valid `/analysis` callback.
+- R2: the stricter line rule and four runtime-built non-vacuity shapes in
+  `tests/unit/pin-auth-contract.test.ts`. Any non-PIN tracked line it flags is reported.
+- R3: the device cookie's options as a pure exported function beside `next-auth.ts`, unit-tested
+  over https and http; `pin-device.spec.ts` derives its list from `PROTECTED_PATHS`.
+- Obs 2: AC-10 (e) through `requestProfile` + `rejectProfile` in `sign-in-service.db.test.ts`.
+- Obs 3: the `test-db.db.test.ts` title; comments only in two e2e specs.
+- Obs 4: a unit scan of who names `toProfileListEntry`.
+- Obs 6: AC-14's typed-value check column by column; mutation-proved.
+- Mutations from byte copies, restored and checked with `sha256sum -c`.
+
+**Log (finished and verified steps only):**
+- Dev census before any run: users 33, admins 8, pending 0, claims 0, events 0, locks 0
+  (both census scripts). Port 3000 free.
+- **R1 red, on the unfixed code** (fresh build, `sign-in.spec.ts -g` the new no-JS case, alone):
+  1 failed, at the `Location` assertion. The POST's `Location` was a slash, a backslash, then
+  the run's `offsite-<12 hex>.invalid/x`, which resolves to that host's origin instead of
+  `http://localhost:3000`. Census identical after; port 3000 not listening; `test-results/` cleared.
+- **R1 fixed.** `safeCallbackPath` moved to the pure `src/lib/callback-path.ts` (refuses a
+  backslash, ASCII controls and whitespace; one leading slash; parsed against a fixed origin;
+  returns path + query, re-checked for a leading `//` left by dot segments). `auth-actions.ts`
+  imports it. Unit: `src/lib/callback-path.test.ts` 10/10. E2e (fresh build) `sign-in.spec.ts
+  -g AC-9`: **8 passed** — `/analysis` honoured and all four off-site shapes ignored, with
+  JavaScript on and off. Census identical after.
+- **M-R1** (old rule restored from a byte copy): unit 6 of 10 red; e2e (rebuilt) both
+  off-site tests red — without JavaScript at the `Location` assertion (the foreign host's
+  origin), with JavaScript at the landing path (`/x`, not `/stock-takes`); the two `/analysis`
+  tests stayed green, as they should. Restored with `cp -p`; `sha256sum -c` OK; unit 10/10.
+- **R2 done.** Probe of the tree with the stricter line rule and the two new targeted shapes:
+  **0 hits** (no non-PIN line to report). `pin-auth-contract.test.ts` gains `CALL_ARGUMENT`
+  (a literal in a call whose name matches /pin/i or is `attemptSignIn`), `FILL_ON_PIN_VARIABLE`
+  and `PIN_LINE`; the five targeted patterns are kept; the non-vacuity test gains five shapes
+  × 2 lengths × 3 quotes, digits from `randomInt`, soft-asserted per rule. 37/37.
+- **R2 mutations** (each rule removed from the scan's list, one at a time, from a byte copy):
+  without `CALL_ARGUMENT` the hashPin, verifyPin and attemptSignIn shapes red (6 each); without
+  `FILL_ON_PIN_VARIABLE` the fill shape red (6); without `PIN_LINE` hashPin, verifyPin, fill and
+  the line-only shape red (6 each). Restored; `sha256sum -c` OK; 37/37. The mutation logs
+  carried no quoted digit run and were deleted.
+- **R3 code and unit half done.** `deviceCookieOptions(requestUrl)` is a pure export of
+  `src/server/auth/sign-in-codes.ts` (beside `DEVICE_COOKIE`); `next-auth.ts` calls it.
+  `sign-in-codes.test.ts` gains three AC-16 tests (https → Secure; http → not; lifetime), 5/5.
+  `pin-device.spec.ts` now loops over `PROTECTED_PATHS` (asserting it holds `/profiles`).
+  M-R3a (`Secure` always false): the https test red. M-R3b (always true, extra): the http test
+  red. Each restored from a byte copy, `sha256sum -c` OK, 5/5. E2e still to run.
+- **Obs 2 and Obs 6 done** in `sign-in-service.db.test.ts`. (e) is now a `requestProfile`
+  (SENT) rejected by `rejectProfile` (row REJECTED), attempted with the chosen username and PIN.
+  AC-14's check is column by column: hex columns must be keys the run can derive (account keys of
+  its typed usernames; the bucket's device id is the run's device), never searched; `id`, `kind`
+  and the bucket with its device id removed are searched for every typed username and PIN;
+  counters are integers and never equal a typed value; times are Dates. Labels name the column,
+  never the value. The malformed attempt's PIN is now six digits (a four-digit one could match
+  inside the random 25-character id about once in ten thousand runs). `test:db` on the file:
+  **14/14** (69.7 s).
+- **M-14** (the service appends the typed PIN to the stored `AuthEvent.id` after each counted
+  failure): the bookkeeping test red, "AuthEvent.id holds a typed PIN"; the log held no 6-digit
+  run. Extra M-14b (raw username as the account key): red, but because the database's CHECK
+  refuses a non-hex key, so it proves nothing about the test. Both restored from a byte copy;
+  `sha256sum -c` OK.
+- **Obs 3 done.** `test-db.db.test.ts:186` now titled "…exactly the tables in
+  TRUNCATED_TABLES", assertion untouched. Comments only in `stock-takes-calendar.spec.ts`
+  (the AC-19 lever block, `:570`, and the same fixture's comment at `:582-586`) and
+  `analysis-access.spec.ts` (the AC-20 lever block, `:152`, and `:170`'s historical
+  measurement): `git diff -U0` shows 0 non-comment lines and 0 `expect(`/`test(` lines changed.
+  The two `UNBREAKABLE_LABEL` values and the `test(` title at `:147` are untouched.
+- **Obs 4 done.** `pin-auth-contract.test.ts` AC-22: the non-test code files naming
+  `toProfileListEntry` are exactly `profile-admin-service.ts` and `setup-service.ts`, and the
+  only non-test named import of it is `setup-service.ts`'s. 38/38. Probe: a temporary untracked
+  `src/app/profiles/zz-probe.ts` importing it turned the test red, naming that file; deleted,
+  green again.
+- **Verification on the final source:** `typecheck` 0, `lint` 0, `test:unit` 1011/1011 (72
+  files); `test:db` `test-db.db.test.ts` 13/13; e2e (fresh build, nothing else running)
+  `sign-in.spec.ts` + `pin-device.spec.ts` **23 passed**; `test:db` `sign-in-service.db.test.ts`
+  14/14 after every service mutation was restored. Census identical before and after every e2e
+  run; port 3000 free; `test-results/` holds only `.last-run.json`. Report:
+  `progress/impl_pin_auth.md` → `## Review repairs`. Nothing committed.
+- **Review of #21: CHANGES_REQUESTED** (`progress/review_pin_auth.md`). Four required changes,
+  ruled in 021 → *The review's findings, ruled by the coordinator*:
+  - R1, an **open redirect** after a no-JavaScript sign-in, a security defect Phase B
+    introduced;
+  - R2, gaps in AC-8's PIN scan;
+  - R3, `Secure` unproved over https, and `/profiles` missing from the device-cookie check;
+  - R4, the no-database `init` evidence.
+
+  The repair (`progress/impl_pin_auth.md` → *Review repairs*):
+  - R1 was proved red first. The no-JavaScript POST's `Location` resolved to a foreign
+    `.invalid` host. Fixed in `src/lib/callback-path.ts`, which refuses any value holding a
+    backslash, control or whitespace; accepts it only on the same origin; returns path and
+    query only; and re-checks for a leading `//` after dot segments collapse.
+  - R2 and R3 were closed, along with observations 2, 3, 4 and 6. Every mutation went red and
+    was restored.
+  - **Coordinator's disclosed exceptions:** AC-8's wording was corrected (the line rule alone
+    can't catch `attemptSignIn`), and one stale comment pointer in
+    `src/app/item-master/actions.ts:97` was fixed.
+- **For #16, deploy checklist:** verify in production that the `macroads-device` cookie carries
+  `Secure` behind Vercel's TLS proxy (repair finding 4). The unit test proves only what
+  `deviceCookieOptions` does with the URL it is given.
+- **Close-out run 1** (`scratchpad/close-1-gate.txt`): the gate with the database, `init` exit 0
+  in 20 min, 0 connection errors, unit 1011, e2e 111 + 139, db 535, `[OK] Environment ready`
+  with the database checks executed.
+- **Close-out run 2** (`scratchpad/close-2-e2e.txt`): a full `npm run test:e2e`, exit 0 in 8.7
+  min, 111 + 139 passed. Runs 1 and 2 each had 0 flaky, 0 failed and 0 `Retry #`. **AC-43 holds
+  on the final tree:** two consecutive clean full runs.
+- **R4 / AC-42, both no-database `init` runs**, with all four URLs at `macroads-nodns.invalid`:
+  - `init.sh` (`close-3-nodb-sh.txt`): exit 0 in 3.0 min;
+  - `init.ps1` (`close-4-nodb-ps1.txt`): exit 0 in 2.7 min.
+
+  Each ran typecheck, lint, unit 1011/1011, and e2e (14 passed, 97 + 139 skipped as
+  database-dependent). Each ended with
+  `[skip] database unreachable at macroads-nodns.invalid - database-dependent checks skipped`,
+  then `[OK] Environment ready (database checks skipped)`. The dev census was identical before
+  and after the whole close-out.
+- **Second-pass repair ("R2 again"), implementer, 2026-09-26.** In `pin-auth-contract.test.ts`
+  only. Probe first: the parsed derivation finds 10 names (at least attempt, hashPin,
+  verifyPin); **0 hits** for either new rule. Added `FILL_ANY_RECEIVER` and
+  `CALL_TO_PIN_PARAMETER` (names derived from every scanned code file with the TypeScript
+  compiler API), an "at least" test, and non-vacuity shapes built from `randomInt`: a fill on a
+  variable named `field`, a call to `attempt`, and four runtime-declared helpers (declaration,
+  arrow, function expression, method) found by the derivation and not by the scan's own set.
+  M-R2d (fill rule removed), M-R2e (call rule removed) and M-R2f (derivation returns nothing)
+  each red as expected; restored from a byte copy, `sha256sum -c` OK, 39/39. `typecheck` 0,
+  `lint` 0, `test:unit` 1012/1012. No e2e, db or `init`; nothing committed. Report:
+  `progress/impl_pin_auth.md` → `### Second-pass repair`.
+- **Third-pass hardening (observations 1 and 2), implementer, 2026-09-26.** In
+  `pin-auth-contract.test.ts` only. Probe: the same 10 derived names; the widened fill rule
+  flags 0 of the 85 lines that call `.fill(`; the call rule flags 0. `FILL_ANY_RECEIVER` now
+  catches the literal in any argument position (and with a space before the parenthesis); the
+  non-vacuity test adds `page.fill` and spaced `frame.fill` shapes. A new test asserts the scan's
+  name set equals a fresh derivation over the scanned files, that the rule is in the scan's list,
+  and that its source equals the rule built from the fresh set; `callToPinParameter` now sorts
+  names, so the rule is canonical for its set. M-R3a (fill narrowed back) red; M-R3b (fixed three)
+  red; M-R3c (fixed complete ten) green today, then red once an untracked file adds a function
+  with a PIN parameter, while the real code with that file stays green; M-R3d (rule from a fixed
+  list) red. Restored from a byte copy, `sha256sum -c` OK, 40/40. `typecheck` 0, `lint` 0,
+  `test:unit` 1013/1013. No e2e, db or `init`; nothing committed. Report:
+  `progress/impl_pin_auth.md` → `### Third-pass hardening`.
+- **Second review pass: CHANGES_REQUESTED on AC-8 alone.** Two clauses were unproved: a fill
+  through a variable not named like a PIN, and a literal passed to the `attempt` helper.
+  **Ruling:** the scan was strengthened rather than the promise narrowed. The repair added
+  `FILL_ANY_RECEIVER` and `CALL_TO_PIN_PARAMETER`. The latter derives the functions with a
+  `/pin/i` parameter using the TypeScript compiler API, and found 10 of them today, `attempt`
+  included. **Third pass: APPROVED, and #21 APPROVED overall, 47 of 47.** Its two non-blocking
+  observations were folded in before the commit: a literal in any argument of `.fill(`, and the
+  scan's name set asserted equal to a fresh derivation. Unit 1013/1013.
+- **Final gate on the repaired tree** (`scratchpad/gate21final.txt`): `init` exit 0 in 20.9 min,
+  unit 1013, e2e 111 + 139 with 0 flaky, 0 failed and 0 retries, db 535, `[OK] Environment
+  ready` with the database checks executed, 0 connection errors, dev census identical. **#21 is
+  ready for the owner's sign-off.**

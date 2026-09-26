@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import type { BrowserContext } from "@playwright/test";
 
+import { PROTECTED_PATHS } from "@/lib/auth-config";
 import { signDeviceToken, verifyDeviceToken } from "@/server/auth/password";
 import { DEVICE_COOKIE } from "@/server/auth/sign-in-codes";
 
@@ -60,7 +61,8 @@ function expectDeviceCookieShape(
   expect(cookie?.httpOnly, label).toBe(true);
   expect(cookie?.sameSite, label).toBe("Lax");
   expect(cookie?.path, label).toBe("/");
-  // Served over http here, so not Secure; over https the attribute is set (AC-16).
+  // Served over http here, so not Secure. The https branch is proved on the options
+  // themselves, in src/server/auth/sign-in-codes.test.ts (AC-16).
   expect(cookie?.secure, label).toBe(false);
   const lifetime = (cookie?.expires ?? 0) - Date.now() / 1000;
   expect(Math.abs(lifetime - MAX_AGE_SECONDS), label).toBeLessThan(120);
@@ -125,7 +127,9 @@ test("AC-16: a request carrying only a valid device cookie is not signed in", as
   ]);
 
   expect((await page.request.get("/api/session")).status()).toBe(401);
-  for (const path of ["/stock-entry", "/stock-takes", "/analysis", "/item-master"]) {
+  // The list the middleware itself reads, so every protected path, and every later one, is here.
+  expect(PROTECTED_PATHS).toContain("/profiles");
+  for (const path of PROTECTED_PATHS) {
     const response = await page.request.get(path, { maxRedirects: 0 });
     expect([302, 307], path).toContain(response.status());
     expect(response.headers().location, path).toContain("/sign-in");

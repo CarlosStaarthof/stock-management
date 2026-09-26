@@ -147,14 +147,15 @@ async function newUser(
 }
 
 /**
- * AC-20's LEVER, and it is the email's CONTENT rather than the session's role.
+ * AC-20's LEVER, and it is the display name's CONTENT rather than the session's role.
  *
- * `createTestUser` builds `${label}-${16 hex}@macroads-e2e.invalid`, and every other label
- * in this suite is full of hyphens — browsers take a line break AFTER a hyphen, so the
- * longest unbreakable run an ordinary fixture email can produce is about 25 characters,
- * which fits at 320 px. That is why a page with this defect passed a no-sideways-scroll
- * assertion on three routes for three features (010's fifth and sixth amendments, and the
- * third instance is exactly this page).
+ * `createTestUser` builds the name `${label}-` followed by 16 letters `a`–`p` (021 AC-40;
+ * before #21 it built an email address), and every other label in this suite is full of
+ * hyphens — browsers take a line break AFTER a hyphen, so the longest unbreakable run an
+ * ordinary fixture name can produce is its 16-letter suffix, which fits at 320 px. That is
+ * why a page with this defect passed a no-sideways-scroll assertion on three routes for
+ * three features (010's fifth and sixth amendments, and the third instance is exactly this
+ * page).
  *
  * HYPHEN-FREE, DOT-FREE AND 61 CHARACTERS: one unbreakable token, wider than a 390 px
  * viewport. DO NOT "tidy" this into a hyphenated label — doing so leaves the test green
@@ -167,8 +168,8 @@ async function newUser(
  * token is the label plus the hyphen after it, so 51 characters (a 52-character run, ~371
  * px) is the shortest label that overflows and 50 fits exactly. At 320 px it is 42. The
  * unfixed page measured `scrollWidth` 478 against both viewports with the 61 below — 88 px
- * of sideways scroll at the WIDER one — while an ordinary hyphenated fixture email measured
- * exactly 390 and exactly 320 on the same page. The full sweep is in
+ * of sideways scroll at the WIDER one — while an ordinary hyphenated fixture (an email
+ * address then) measured exactly 390 and exactly 320 on the same page. The full sweep is in
  * `progress/impl_analysis.md`.
  *
  * The guard is set at that measured 51 rather than at the 61 actually used, so a future

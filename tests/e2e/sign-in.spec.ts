@@ -1,7 +1,7 @@
 import { randomBytes, randomInt } from "node:crypto";
 
 import { encode } from "next-auth/jwt";
-import type { BrowserContext, Page } from "@playwright/test";
+import type { BrowserContext, Page, Response } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 
 import {
@@ -175,33 +175,92 @@ test("AC-9: the username typed in capitals, or with spaces around it, signs in t
   }
 });
 
-test("AC-9: from a callbackUrl an ADMIN lands there, and an off-site callbackUrl is ignored", async ({
-  browser,
-}) => {
-  const admin = await newUser("ADMIN");
+/** A host of this run's making, under `.invalid`, so nothing could ever answer for it. */
+function foreignHost(): string {
+  return `offsite-${randomBytes(6).toString("hex")}.invalid`;
+}
 
-  const context = await browser.newContext();
-  const page = await context.newPage();
-  await page.goto("/analysis");
-  expect(page.url()).toContain("/sign-in?callbackUrl=%2Fanalysis");
-  await addKnownDevice(page);
-  await enterCredentials(page, admin);
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Analysis");
-  expect(new URL(page.url()).pathname).toBe("/analysis");
-  await context.close();
+/**
+ * AC-9's four off-site shapes, built at runtime around a fresh foreign host. The first two
+ * begin with one slash, and a browser still resolves each of them to that host.
+ */
+function offsiteCallbacks(): [string, string][] {
+  const host = foreignHost();
+  return [
+    ["a slash then a backslash", ["/", "\\", host, "/x"].join("")],
+    ["a slash, a tab and a second slash", ["/", "\t", "/", host, "/x"].join("")],
+    ["the // form", `//${host}/x`],
+    ["the https:// form", `https://${host}/x`],
+  ];
+}
 
-  for (const offsite of ["//evil.example/x", "https://evil.example/x"]) {
-    const other = await browser.newContext();
-    const otherPage = await other.newPage();
-    await otherPage.goto(`/sign-in?callbackUrl=${encodeURIComponent(offsite)}`);
-    await addKnownDevice(otherPage);
-    await enterCredentials(otherPage, admin);
-    await otherPage.waitForURL((url) => url.pathname !== "/sign-in");
-    expect(otherPage.url(), offsite).not.toContain("evil.example");
-    expect(new URL(otherPage.url()).pathname, offsite).toBe("/stock-takes");
-    await other.close();
-  }
-});
+/** The sign-in form's POST, whichever way it is sent: a server-action fetch, or a plain form. */
+function signInPost(page: Page): Promise<Response> {
+  return page.waitForResponse(
+    (candidate) =>
+      candidate.request().method() === "POST" && new URL(candidate.url()).pathname === "/sign-in",
+  );
+}
+
+for (const javaScriptEnabled of [true, false]) {
+  const mode = javaScriptEnabled ? "with JavaScript" : "without JavaScript";
+
+  test(`AC-9: ${mode}, an ADMIN sent to sign in from /analysis lands on /analysis`, async ({
+    browser,
+    baseURL,
+  }) => {
+    const admin = await newUser("ADMIN");
+    const origin = new URL(baseURL as string).origin;
+    const context = await browser.newContext({ javaScriptEnabled });
+    const page = await context.newPage();
+
+    await page.goto("/analysis");
+    expect(page.url()).toContain("/sign-in?callbackUrl=%2Fanalysis");
+    await addKnownDevice(page);
+    const posted = signInPost(page);
+    await enterCredentials(page, admin);
+    const response = await posted;
+
+    if (!javaScriptEnabled) {
+      // A plain form is answered with a redirect the browser follows as written.
+      const location = response.headers().location ?? "";
+      expect(new URL(location, origin).origin, `Location: ${location}`).toBe(origin);
+      expect(new URL(location, origin).pathname, `Location: ${location}`).toBe("/analysis");
+    }
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Analysis");
+    expect(new URL(page.url()).origin).toBe(origin);
+    expect(new URL(page.url()).pathname).toBe("/analysis");
+    await context.close();
+  });
+
+  test(`AC-9: ${mode}, a callbackUrl of any of the four off-site shapes is ignored, and an ADMIN lands on /stock-takes`, async ({
+    browser,
+    baseURL,
+  }) => {
+    const admin = await newUser("ADMIN");
+    const origin = new URL(baseURL as string).origin;
+
+    for (const [label, callback] of offsiteCallbacks()) {
+      const context = await browser.newContext({ javaScriptEnabled });
+      const page = await context.newPage();
+      await page.goto(`/sign-in?callbackUrl=${encodeURIComponent(callback)}`);
+      await addKnownDevice(page);
+      const posted = signInPost(page);
+      await enterCredentials(page, admin);
+      const response = await posted;
+
+      if (!javaScriptEnabled) {
+        const location = response.headers().location ?? "";
+        expect(new URL(location, origin).origin, `${label}: Location ${location}`).toBe(origin);
+      }
+      await page.waitForURL((url) => url.pathname !== "/sign-in");
+      expect(new URL(page.url()).origin, label).toBe(origin);
+      expect(new URL(page.url()).pathname, label).toBe("/stock-takes");
+      await expect(page.getByTestId("signed-in-name"), label).toHaveText(admin.name);
+      await context.close();
+    }
+  });
+}
 
 test("AC-9: the form has exactly two text-entry controls, username and pin, and nothing named email or password", async ({
   page,

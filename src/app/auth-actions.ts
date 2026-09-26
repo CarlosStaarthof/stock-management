@@ -4,23 +4,12 @@ import { AuthError, CredentialsSignin } from "next-auth";
 import { redirect } from "next/navigation";
 
 import { INCORRECT_SIGN_IN_MESSAGE } from "@/lib/auth-messages";
+import { safeCallbackPath } from "@/lib/callback-path";
 import { signIn, signOut } from "@/server/auth/next-auth";
 import { refusalMessage } from "@/server/auth/sign-in-codes";
 import { landingPathForUsername } from "@/server/auth/user-service";
 
 import type { SignInState } from "@/app/sign-in/form-state";
-
-/**
- * A relative path of our own, or nothing.
- *
- * `//evil.example` and `https://evil.example` are both rejected: a callbackUrl is a
- * redirect target an attacker can put in a link, so only a single-slash path survives.
- */
-function safeCallbackPath(value: FormDataEntryValue | null): string | null {
-  if (typeof value !== "string") return null;
-  if (!value.startsWith("/") || value.startsWith("//")) return null;
-  return value;
-}
 
 /**
  * The sign-in form's action. It evaluates nothing itself: `signIn` reaches the credentials
@@ -29,7 +18,9 @@ function safeCallbackPath(value: FormDataEntryValue | null): string | null {
  * `CredentialsSignin` whose code names which of the four answers to render.
  *
  * The landing path depends on the role, which is known only once the PIN has matched, so
- * the redirect is made here after a successful sign-in rather than handed to `signIn`.
+ * the redirect is made here after a successful sign-in rather than handed to `signIn`. That
+ * redirect reaches `Location` as given, so a `callbackUrl` is honoured only as the same-origin
+ * path and query `safeCallbackPath` rebuilds from it (AC-9).
  */
 export async function signInAction(
   previous: SignInState,

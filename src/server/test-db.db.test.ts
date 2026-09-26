@@ -183,7 +183,7 @@ describe("two statements per reset, counted rather than timed", () => {
     }
   });
 
-  it("AC-2: the first statement is the TRUNCATE of exactly the eight tables", async () => {
+  it("AC-2: the first statement is the TRUNCATE of exactly the tables in TRUNCATED_TABLES", async () => {
     const [truncate = ""] = await statementsSentBy(seedEverything, resetTestDb);
 
     expect(truncate.trim()).toMatch(/^TRUNCATE TABLE /);

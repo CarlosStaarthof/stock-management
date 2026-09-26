@@ -99,17 +99,18 @@ async function newUser(
 }
 
 /**
- * AC-19's LEVER, and it is the email's content rather than the session's role.
+ * AC-19's LEVER, and it is the display name's content rather than the session's role.
  *
- * `createTestUser` builds `${label}-${16 hex}@macroads-e2e.invalid`. Every other label in
- * this suite is full of hyphens - `stock-takes-calendar`, `stock-takes-count` - and browsers
- * take a line break AFTER a hyphen, so the longest unbreakable run a normal fixture email can
- * produce is about 25 characters, which fits at 320 px. That is why both roles measure the
- * same and why a role repetition alone cannot see the defect.
+ * `createTestUser` builds the name `${label}-` followed by 16 letters `a`-`p` (021 AC-40;
+ * before #21 it built an email address). Every other label in this suite is full of hyphens -
+ * `stock-takes-calendar`, `stock-takes-count` - and browsers take a line break AFTER a
+ * hyphen, so the longest unbreakable run a normal fixture name can produce is its 16-letter
+ * suffix, which fits at 320 px. That is why both roles measure the same and why a role
+ * repetition alone cannot see the defect.
  *
  * THIS LABEL IS DELIBERATELY HYPHEN-FREE, DOT-FREE AND 61 CHARACTERS LONG: one unbreakable
  * token, wider than a 390 px viewport. It is the only thing in the suite that pressures the
- * identity header, which renders `{user.email}` OUTSIDE `stock-takes-body` - so AC-13's byte
+ * identity header, which renders `{user.name}` OUTSIDE `stock-takes-body` - so AC-13's byte
  * equality cannot cover it - and which overflowed the document at 390 px before
  * `break-words` was added to it. DO NOT "tidy" this back to a hyphenated label: doing so
  * leaves the test green and the guarantee gone. Spec: 010 AC-19 and its fifth amendment.
@@ -567,7 +568,7 @@ test("AC-19: the calendar never scrolls sideways at 390 px or 320 px, in any sco
 }) => {
   // AC-19 takes every measurement in BOTH sessions. It is not a formality on this page:
   // the identity header sits OUTSIDE `stock-takes-body`, so AC-13's byte equality does not
-  // cover it, and `{user.email}` is one unbreakable token whose length varies per session -
+  // cover it, and `{user.name}` holds an unbreakable run whose length varies per session -
   // the only part of this page that does. At 320 px that is exactly what would push
   // `scrollWidth` past `clientWidth`, and nothing else in the suite measures it for an
   // administrator. Same shape as the AC-14 test above.
@@ -579,11 +580,11 @@ test("AC-19: the calendar never scrolls sideways at 390 px or 320 px, in any sco
   ).toMatch(/^[a-z0-9]{56,}$/);
 
   for (const role of ["YARD_STAFF", "ADMIN"] as const) {
-    // The STAFF pass carries the long email: it is the first iteration, so an overflow
+    // The STAFF pass carries the long name: it is the first iteration, so an overflow
     // regression aborts at the very first measurement rather than after a full second
     // session, and it costs no extra context, user or navigation. The ADMIN pass keeps an
-    // ordinary hyphenated email, which leaves it as the plain-email control B1 asked for -
-    // so a failure on one pass and not the other names the email's CONTENT as the cause.
+    // ordinary hyphenated name, which leaves it as the plain-name control B1 asked for -
+    // so a failure on one pass and not the other names the name's CONTENT as the cause.
     const signedIn = await browser.newContext();
     const helper = await signedIn.newPage();
     await signIn(helper, await newUser(role, role === "YARD_STAFF" ? UNBREAKABLE_LABEL : undefined));

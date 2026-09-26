@@ -13,7 +13,8 @@ import {
   verifyDeviceToken,
   verifyPin,
 } from "@/server/auth/password";
-import { resetProfilePin } from "@/server/auth/profile-admin-service";
+import { rejectProfile, resetProfilePin } from "@/server/auth/profile-admin-service";
+import { requestProfile } from "@/server/auth/profile-request-service";
 import type { Role } from "@/server/auth/roles";
 import type { SessionUser } from "@/server/auth/session-user";
 import { attemptSignIn } from "@/server/auth/sign-in-service";
@@ -160,15 +161,33 @@ describe("021 AC-10: every failure is one answer, and costs the same work", () =
       data: { status: "DEACTIVATED", pinHash: null, pinKeyId: null },
     });
 
+    // (e) through the real flow: requested with Create profile's service, refused with the
+    // admin's, then attempted with the username and PIN the person chose (the review's
+    // observation 2).
     const rejectedUsername = newUsername();
-    await db.user.create({ data: { name: "Rejected request", status: "REJECTED" } });
+    const rejectedPin = generatePin(6);
+    expect(
+      await requestProfile(
+        { name: "Rejected request", username: rejectedUsername, pin: rejectedPin, pinAgain: rejectedPin },
+        knownDevice(),
+      ),
+    ).toEqual({ outcome: "SENT" });
+    const requested = await db.user.findFirstOrThrow({
+      where: { requestedUsername: rejectedUsername, status: "PENDING" },
+      select: { id: true },
+    });
+    const admin = await activeProfile("ADMIN");
+    await rejectProfile(admin.user, requested.id);
+    expect(
+      await db.user.findUniqueOrThrow({ where: { id: requested.id }, select: { status: true } }),
+    ).toEqual({ status: "REJECTED" });
 
     const cases: [string, string, string][] = [
       ["(a) a username no profile holds", newUsername(), generatePin(6)],
       ["(b) an ACTIVE profile with a wrong PIN", active.user.username, wrongPin(active.pin)],
       ["(c) a PENDING request", pendingUsername, pendingPin],
       ["(d) a DEACTIVATED profile's former PIN", leaver.user.username, leaver.pin],
-      ["(e) a REJECTED request", rejectedUsername, generatePin(6)],
+      ["(e) a REJECTED request", rejectedUsername, rejectedPin],
     ];
 
     const sequences: string[][] = [];
@@ -364,17 +383,26 @@ describe("021 AC-14: a spent budget refuses before anything is read", () => {
 
   it("AC-14: the bookkeeping holds ids, kinds, bucket forms, hex keys and times — never a PIN or a username", async () => {
     const { user, pin } = await activeProfile();
-    const typed: string[] = [user.username, pin];
     const device = knownDevice();
+    const usernames: string[] = [user.username];
+    const pins: string[] = [pin];
+    // The usernames that reach step 4, and so have an account key.
+    const keyed: string[] = [user.username];
     for (let attempt = 0; attempt < 3; attempt += 1) {
       const username = attempt === 0 ? user.username : newUsername();
       const guess = generatePin(6);
-      typed.push(username, guess);
+      usernames.push(username);
+      keyed.push(username);
+      pins.push(guess);
       await attemptSignIn(username, guess, attempt === 2 ? NEW_DEVICE : device);
     }
     const malformedUsername = `9${hex(5)}`;
-    typed.push(malformedUsername);
-    await attemptSignIn(malformedUsername, generatePin(4), device);
+    // Six digits, like every PIN here: a four-digit one could turn up by chance inside a
+    // random 25-character id about once in ten thousand runs.
+    const malformedPin = generatePin(6);
+    usernames.push(malformedUsername);
+    pins.push(malformedPin);
+    await attemptSignIn(malformedUsername, malformedPin, device);
     await attemptSignIn(user.username, pin, device);
 
     const events = await db.authEvent.findMany();
@@ -382,16 +410,59 @@ describe("021 AC-14: a spent budget refuses before anything is read", () => {
     expect(events.length).toBeGreaterThanOrEqual(4);
     expect(locks.length).toBeGreaterThanOrEqual(3);
 
-    const BUCKET = /^(pin:new-devices|pin:device:[0-9a-f]{32}|request:new-devices|request:device:[0-9a-f]{32}|setup)$/;
+    // Column by column. A hex column is checked for being a key this run can derive, never
+    // searched for a typed value: a random PIN can turn up inside random hex by chance (the
+    // review's observation 6). Every other column is searched for every typed value. The
+    // labels name the column and never the value, so a failure prints no PIN.
+    const typed = [...usernames.map((value) => ["username", value]), ...pins.map((value) => ["PIN", value])];
+    const expectNoTypedValue = (column: string, text: string): void => {
+      for (const [kind, value] of typed) {
+        expect(text.includes(value ?? ""), `${column} holds a typed ${kind}`).toBe(false);
+      }
+    };
+    const expectNoTypedNumber = (column: string, count: number): void => {
+      expect(Number.isInteger(count), column).toBe(true);
+      expectNoTypedValue(column, String(count));
+    };
+    const keys = new Set(keyed.map((username) => accountKey(username)));
+    const deviceIds = new Set([verifyDeviceToken(device.deviceToken)]);
+    const BUCKET =
+      /^(?:pin:new-devices|pin:device:([0-9a-f]{32})|request:new-devices|request:device:([0-9a-f]{32})|setup)$/;
+    const KINDS = ["PIN_FAILURE", "PROFILE_REQUEST", "SETUP_FAILURE", "BUDGET_RESET"];
+
     for (const event of events) {
       expect(Object.keys(event).sort()).toEqual(["accountKey", "at", "bucket", "id", "kind"]);
-      expect(event.bucket).toMatch(BUCKET);
-      expect(event.accountKey === null || /^[0-9a-f]{64}$/.test(event.accountKey)).toBe(true);
+      expectNoTypedValue("AuthEvent.id", event.id);
+      expect(KINDS, "AuthEvent.kind").toContain(event.kind);
+      expectNoTypedValue("AuthEvent.kind", event.kind);
+
+      const bucket = BUCKET.exec(event.bucket);
+      expect(bucket, "AuthEvent.bucket is one of the documented forms").not.toBeNull();
+      const deviceId = bucket?.[1] ?? bucket?.[2];
+      if (deviceId !== undefined) {
+        expect(deviceIds.has(deviceId), "AuthEvent.bucket names this run's device").toBe(true);
+      }
+      expectNoTypedValue("AuthEvent.bucket, its device id removed", event.bucket.replace(deviceId ?? "", ""));
+
+      if (event.accountKey !== null) {
+        expect(keys.has(event.accountKey), "AuthEvent.accountKey is a typed username's key").toBe(true);
+      }
+      expect(event.at).toBeInstanceOf(Date);
     }
 
-    const stored = JSON.stringify([events, locks]);
-    for (const value of typed) {
-      expect(stored).not.toContain(value);
+    for (const lock of locks) {
+      expect(Object.keys(lock).sort()).toEqual([
+        "accountKey",
+        "consecutiveFailures",
+        "level",
+        "lockedUntil",
+        "updatedAt",
+      ]);
+      expect(keys.has(lock.accountKey), "AccountLock.accountKey is a typed username's key").toBe(true);
+      expectNoTypedNumber("AccountLock.consecutiveFailures", lock.consecutiveFailures);
+      expectNoTypedNumber("AccountLock.level", lock.level);
+      expect(lock.lockedUntil === null || lock.lockedUntil instanceof Date, "AccountLock.lockedUntil").toBe(true);
+      expect(lock.updatedAt).toBeInstanceOf(Date);
     }
   });
 

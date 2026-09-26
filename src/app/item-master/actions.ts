@@ -94,7 +94,7 @@ function outcomePath(path: string, doneKey: string, error: string | null): strin
 /**
  * Where a yard-sheet control returns to. It is a form field, so it is something the
  * sender chooses — and a redirect target an attacker can put in a link is exactly the
- * shape `safeCallbackPath` in `src/app/auth-actions.ts` already refuses. Only a path
+ * shape `safeCallbackPath` in `src/lib/callback-path.ts` already refuses. Only a path
  * INSIDE this feature survives; anything else falls back to the item.
  */
 function itemPath(itemId: string): string {
