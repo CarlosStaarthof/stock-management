@@ -1461,3 +1461,11 @@ rulings in 021 → *The review's findings, ruled by the coordinator*. Nothing is
   straight after passed. It has now failed three times, never in a gate. Still deferred and not
   a feature's. The fix direction is to take ESLint's cold start out of a unit test's time
   budget, **never** to raise the timeout.
+- **Development database: the 33 leftover e2e profiles were deleted**, 2026-09-26, on the owner's
+  instruction. They were 25 `E2E Yard Staff` and 8 `E2E Administrator` rows created between
+  2026-09-14 and 2026-09-24, none with a username, PIN or requested username, and none
+  referenced by any stock count or setup claim. The deletion was one transaction that required
+  exactly 33 matches (`scratchpad/delete-e2e-users.cjs`). Census afterwards: users 0, admins 0,
+  and stock data unchanged (140/19/10/129/152). **`/setup` is now available on the development
+  database until the owner completes it.** Until then, don't run e2e there:
+  `pin-setup.spec.ts` expects a 404, and the suite assumes a permanent `ADMIN` exists.
