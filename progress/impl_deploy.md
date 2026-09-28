@@ -1273,3 +1273,37 @@ cases each reached it.
 `typecheck` 0 and `lint` 0. I ran no e2e, no database file and no `init`, and committed
 nothing. I did not touch `tests/e2e/**`, `tests/unit/price-token.test.ts` or the other agents'
 uncommitted changes. The unit totals include those in-flight tests (1225 = 1169 + theirs).
+
+## Phase B: go-live record (coordinator)
+
+### AC-19: the take-over, 2026-09-28
+- Vercel refused Branch Tracking = `production` while the branch did not exist on GitHub.
+- The owner's screenshots showed **no project variable and no shared variable**, so the live
+  deployment never held a database setting.
+- An anonymous probe of `/` returned "Database configuration missing."; `/api/session` 401,
+  `/setup` 404, `/sign-in` 200.
+- `git push origin main` (`6c4ca87`) deployed nothing: no GitHub deployment, no Vercel status,
+  and the live `/api/version` stayed 404.
+- `git push origin f3518a0:refs/heads/production` created the branch. Vercel made no deployment
+  for it, because the commit had already arrived with the skipped `main` push.
+- The owner saved Branch Tracking = `production`, and after a reload it read *"Every commit pushed
+  to the `production` branch will create a Production Deployment"* (answer "A"). The red notice
+  "No deployments found for production" only meant the branch had no deployment yet.
+
+### AC-20: the audit, 2026-09-28, for the release commit `6c4ca87`
+- `git ls-files`: **0** paths ending in `.env`, `.pem`, `.key`, `.p12` or `.pfx`.
+- **The credential scan:** repo-hygiene's shape was run over all **1,408** objects reachable from
+  `6c4ca87` (`scratchpad/release-scan.cjs`, classes only). All **172** matches have placeholder
+  user-info and an unresolvable or placeholder host. There was none other.
+- **`npm audit --omit=dev`:** 4 high, 3 moderate, 0 critical.
+
+  | Advisory | Package path | Runs | Reachable from request input |
+  |---|---|---|---|
+  | GHSA-ggr8-5vv4-36mx, stack exhaustion merging recursive objects (high; also reported as `@prisma/config` and `prisma`, high) | `prisma@6.19.3` → `@prisma/config` → `deepmerge-ts@7.1.5` | Prisma's CLI config loader: `migrate deploy` in the build, and operator scripts | **No.** It merges local configuration only, and the app's runtime uses `@prisma/client` |
+  | GHSA-qx2v-qp2m-jg93, GHSA-6g55-p6wh-862q, GHSA-fxqj-rqcc-2cmp, GHSA-r28c-9q8g-f849 (high; `next` itself reported moderate) | `next@15.5.25` → `postcss@8.4.31` | At build, over the repository's own CSS | **No.** No request runs PostCSS, and the CSS is ours |
+  | GHSA-w5hq-g745-h8pq (moderate) | `exceljs@4.4.0` → `uuid@8.3.2` | Reading the committed workbook (seed) | **No** |
+
+  Every fix npm offers is a semver-major change, so the upgrades become their own feature, per
+  Q6's recommendation.
+- **The owner's decision (Q6, 2026-09-28): "Go Live".** It was conditional on this assessment
+  finding nothing reachable from request input, and it found nothing. **Go.**

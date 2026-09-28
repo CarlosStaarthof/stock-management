@@ -434,12 +434,12 @@ it was read, or, for a fact still to confirm, by when.
 | F1 | Neon's plan | Free | 2026-09-28 |
 | F2 | The history (restore) window | 6 hours | 2026-09-28 |
 | F3 | A branch can be created from `production` as of a past time within F2 | to confirm | before the history drill |
-| F4 | `production` can be restored in place to a past time, and whether a copy of the state before is kept | to confirm | before go-live |
-| F5 | The branch limit (in use: `production`, `dev`, `test`) | to confirm | before the copy drill |
+| F4 | `production` can be restored in place to a past time, and whether a copy of the state before is kept | **restore in place: yes.** *Backup & Restore → Restore from history* restores the branch to any point in the 6-hour window, with *Preview data* first. Whether a copy of the prior state is kept: to confirm, from the restore dialog's own text, without confirming a restore. **Also offered on Free: manual snapshots** (*Create snapshot*; only scheduled ones need an upgrade). | 2026-09-28 for the restore; the copy before go-live |
+| F5 | The branch limit (in use: `production`, `dev`, `test`) | 3 branches in use; the limit to confirm | 2026-09-28 for the three; the limit before the copy drill |
 | F6 | The compute allowance, whether branches share it, and whether usage on `dev` and `test` can suspend `production` | usage since 1 September: 5.37 CU-hours, 34.19 MB storage, 340.58 MB network; the rest to confirm | 2026-09-28 for the usage; the rest before go-live |
-| F7 | `production`'s compute size and autosuspend delay | 0.25 to 2 CU; the delay to confirm | 2026-09-28 for the size |
-| F8 | Region, Postgres version, default branch, storage limit, and whether `production` holds any table | AWS Europe West 2 (London), Postgres 18, `production` is the default branch; the storage limit and the table check to confirm | 2026-09-28 for the first three; the rest before go-live |
-| F9 | A new, empty database can be created inside a branch | to confirm | before the copy drill |
+| F7 | `production`'s compute size and autosuspend delay | 0.25 to 2 CU (the primary compute); the delay to confirm in *Computes → Edit* | 2026-09-28 for the size |
+| F8 | Region, Postgres version, default branch, storage limit, and whether `production` holds any table | AWS Europe West 2 (London), Postgres 18, `production` is the default branch. **`production` is not empty:** its database `neondb` holds ten tables, plus two `_prisma_migrations` rows finished on 2026-09-08 and 2026-09-09. That is the app's early state from #3 and #4, before `dev` existed, with none of #21's tables. **Owner decision OD5:** the app uses a **new, empty database** created inside `production` (see spec 016), and `neondb` is left untouched. The storage limit is still to confirm. | 2026-09-28 |
+| F9 | A new, empty database can be created inside a branch | **yes:** *Databases → Add database* | 2026-09-28 |
 | V1 | Vercel's plan | Hobby, team "MacRoads" (OD1) | 2026-09-28 |
 | V2 | The production branch can be changed to `production` | the setting exists at *Environments → Production → Branch Tracking*; that it accepts `production` is confirmed at go-live step 1 | 2026-09-28 for the setting |
 | V3 | What Instant Rollback on Hobby can target, and whether it stops promoting new pushes until undone | to confirm | before the rollback drill |

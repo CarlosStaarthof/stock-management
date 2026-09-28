@@ -1785,3 +1785,16 @@ count: users 1, counts 0, lock rows 1, auth events 1.
   `stock-entry-quantities.spec.ts` now uses `bodyShowsPrice` within its `applicationMarkup`
   scope. A bare `<price>.00` turns it red, where the old rule stayed green, so #8's check is
   strictly stronger.
+- **Go-live, 2026-09-28: the take-over (AC-19).**
+  - Vercel refused a production branch that did not exist ("Branch "production" not found"), so
+    the approved plan created the branch first.
+  - The owner's screenshots showed **no environment variable at all**, project or shared. The live
+    site never held a database setting and never exposed `dev`. An anonymous probe of `/` returned
+    "Database configuration missing.", so AC-19's proof state already held and no deletion or
+    redeploy was needed.
+  - `git push origin main` (`6c4ca87`) **deployed nothing**. GitHub recorded no new deployment,
+    the commit has no Vercel status, and the live `/api/version` is still 404 (old code).
+  - `git push origin f3518a0:refs/heads/production` created the branch one commit behind `main`,
+    so the first production release will be a real fast-forward to `6c4ca87`.
+  - **Pending:** the owner removes any preview Vercel makes for `production`, then saves Branch
+    Tracking = `production`.
