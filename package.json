@@ -10,6 +10,7 @@
     "dev": "next dev --port 3000",
     "build": "next build",
     "start": "next start --port 3000",
+    "build:vercel": "tsx scripts/vercel-build.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src tests --max-warnings 0",
     "test:unit": "vitest run",
@@ -17,6 +18,11 @@
     "test:e2e": "node scripts/run-e2e.mjs",
     "pin:reset": "tsx scripts/pin-reset.ts",
     "seed:workbook": "tsx scripts/seed-workbook.ts",
+    "db:census": "tsx scripts/db-census.ts",
+    "db:export": "tsx scripts/db-export.ts",
+    "db:restore": "tsx scripts/db-restore.ts",
+    "operator:production": "node scripts/operator-production.mjs",
+    "verify:deploy": "tsx scripts/verify-deployment.ts",
     "postinstall": "prisma generate"
   },
   "dependencies": {

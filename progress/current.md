@@ -1510,3 +1510,94 @@ rulings in 021 → *The review's findings, ruled by the coordinator*. Nothing is
   the owner's Hobby and Neon Free decisions. **#16 is now `in_progress`.** Phase A is repository
   work proved by `init`, and the spec suggests building it in two parts. Phase B is go-live,
   with the owner.
+
+## Implementer — #16 `deploy`, Phase A1 (AC-1 to AC-10), started 2026-09-28
+
+Brief: `scratchpad/impl16-a1.md`. Report: `progress/impl_deploy.md` → `## Phase A1`.
+No push, no commit, no Vercel/Neon/live database; db tests one file at a time on the test
+database; dev census before and after.
+
+**Files I expect to touch**
+- new: `vercel.json`; `src/server/deploy/build-plan.ts`, `census.ts`, `export.ts`,
+  `restore.ts`, `target-schema.ts`; `src/server/items/item-master-seed.ts`;
+  `scripts/vercel-build.ts`, `seed-if-empty.ts`, `db-census.ts`, `db-export.ts`,
+  `db-restore.ts`, `operator-production.mjs`; tests `tests/unit/deploy-config.test.ts`,
+  `vercel-build.test.ts`, `operator-production.test.ts`,
+  `src/server/items/item-master-seed.db.test.ts`, `src/server/deploy/census.db.test.ts`,
+  `export.db.test.ts`, `restore.db.test.ts`, `operator-production.db.test.ts`.
+- modified: `package.json` (six scripts; `build` unchanged).
+
+**Approach**
+- Build plan and both guards are pure functions over a given env; one orchestrator takes an
+  injected step runner, so the refusals are proved in-process without spawning `next build`.
+- Export/restore are generic over `information_schema`; rows are rendered and parsed by
+  Postgres (`json_agg`, `json_populate_recordset`), never by JS numbers, so every Decimal
+  digit survives. Only `pinHash`/`pinKeyId` are named.
+- Launcher is a plain Node ESM file with an injectable `run`/input/output for unit tests; the
+  real run spawns tsx/prisma with the answers in the child's env only.
+
+### Work log
+- 2026-09-28, A1: census service + `scripts/db-census.ts` written first so the baseline could
+  be taken with it. **Dev census BEFORE anything else ran** (read-only, `npm run db:census`):
+  locations 2, suppliers 10, item types 19, items 140 (15 need review), prices 129, yard
+  links 152, profiles `ADMIN ACTIVE 1`, stock counts `DRAFT 1`, count lines 82, migrations 3
+  (latest `20260925120000_pin_profiles`), pins 1 of 1. `package.json`: six scripts added.
+- A1: build plan (`src/server/deploy/build-plan.ts`) + runner (`scripts/vercel-build.ts`),
+  `vercel.json`, seed-if-empty service/script, target-schema/export/restore services and
+  scripts, launcher `.mjs`. Unit files `deploy-config`, `vercel-build`, `operator-production`
+  green (59 tests). `typecheck` 0. Next: the five db test files, one at a time.
+- A1: db files green, each run once, one at a time, on the test database:
+  `item-master-seed` 6/6 (27 s), `census` 3/3, `export` 9/9 (26 s), `restore` 9/9 (61 s),
+  `operator-production` 1/1. Shared test helpers: `tests/support/run-script.ts`,
+  `tests/support/export-fixture.ts`.
+- **FINDING (spec conflict, for a ruling):** the pin_profiles migration's CHECK requires a
+  PENDING `User` row to hold a non-null `pinHash`; D20/AC-9 write every `pinHash` as null. So a
+  copy taken while any profile request is PENDING cannot be restored (AC-10 would roll back).
+  AC-9's fixture has no PENDING row, so the tests are green. To be proved by a throwaway probe
+  and reported, not worked around.
+- A1: **finding proved** with a throwaway probe (a `*.db.test.ts` created, run once, deleted):
+  AC-9's fixture plus one PENDING profile request, exported, then restored into a throwaway
+  schema → `db:restore` exit 1, `PrismaClientKnownRequestError (P2010)`, 0 `User` rows in the
+  target (rolled back). The same fixture without the PENDING row restores identical. Reported;
+  not worked around.
+- A1 mutations, each on a byte copy, run, restored, `sha256sum` OK (copies in
+  `scratchpad/a1-mut/`): M1 preview guard off → 5 AC-3 tests red; M2 required-setting check off →
+  2 AC-4 tests red; M3 seed imports into a full master → the renamed-item SKIPPED/deep-equal test
+  red; M4 export keeps `pinHash` → the null/omitted test red (made count-only first: the first
+  red run's assertion would have printed a fixture hash to the log); M5 restore skips the
+  empty-schema refusal → both refusal tests red (added a *migrated*-schema case: the "Occupied"
+  table alone was also stopped by Prisma's own P3005); M6a launcher accepts `.env`'s value →
+  red; M6b uses `.env`'s value → red (launcher test assertions made value-free); M6c fills an
+  empty answer from `.env` → red in the real-process test (and the equality refusal catches it).
+  `restore.db.test.ts` green again after, 10/10 (73 s).
+- A1: full `test:unit` first found two scans red on my new text: (1) no-default-password read
+  the launcher's question texts and one `SETUP_CODE` assignment in a test as written-down
+  values → questions now built from name/hint pairs, test uses a variable; (2) 021 AC-31: the
+  shared export fixture (not a test file) imported operator-service → it now writes profiles
+  with `hashPin` directly. Unit 1072/1072 after. M6a/M6b repeated on the final launcher: red,
+  restored, sha OK. Export 9/9, launcher 1/1 re-run green on the new fixture.
+- A1 **complete** (2026-09-28): report `progress/impl_deploy.md` → `## Phase A1`. Final:
+  typecheck 0, lint 0, unit 1072/1072, build exit 0 with an unreachable database, five db files
+  green on the final code, dev census identical before/after. Not run, per brief: `init`, full
+  `test:db`, full `test:e2e`. Open for the coordinator: F1 (PENDING rows vs D20, needs a
+  ruling), F2 (`verify:deploy` file comes in A2), F3 (confirm Vercel's deploymentEnabled page),
+  F4 (port 3000 held by a `next dev` from 2026-09-26, not mine; `.next` rebuilt under it).
+- A1 after ruling A1-F1 (2026-09-28): export leaves `PENDING` `User` rows out and records
+  `omittedPendingRequests` (count line printed); restore requires the field. Fixture gains a
+  `requestProfile` request. export 10/10, restore 11/11 (round trip now restores with a pending
+  request in the source; the second copy differs only in `exportedAt` and the count — flagged
+  for AC-10's wording). M7 (export keeps PENDING) → both round-trip tests red; restored, sha OK.
+  typecheck 0, lint 0, unit 1072/1072 on re-run (first run: lint-fence 16.4 s timeout, the known
+  intermittent). Dev census unchanged. Report: `progress/impl_deploy.md` → `### After ruling A1-F1`.
+- **#16 Phase A1 built.** AC-1 to AC-10, plus ruling A1-F1: the export leaves out `PENDING` rows
+  and counts them. F3 was confirmed against Vercel's *Git Configuration* documentation: any
+  `true` rule deploys, so `"**": false` plus `"production": true` deploys only `production`.
+- **The A1 gate's only failure was environmental.** `stock-entry-start.spec.ts:148` uses 007
+  AC-7's own literal date, which is Dublin, period September 2026. The owner's manual test count
+  on `dev` was exactly that (DRAFT, dated 2026-09-26). The gate was otherwise green: unit 1072,
+  e2e 111 + 138, db 566, 0 connection errors.
+  - On the owner's instruction, that one count and its 82 lines were deleted, in one transaction
+    requiring exactly one match. Nothing else changed.
+  - **Operating note: never create a Dublin September-2026 count on the development database.**
+    007 AC-7's e2e test uses that period. A durable fix, amending 007 AC-7 to a reserved year, is
+    deferred.
