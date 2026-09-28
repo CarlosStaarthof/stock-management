@@ -1746,3 +1746,42 @@ count: users 1, counts 0, lock rows 1, auth events 1.
   errors, dev census identical. The run before it (`gate16rep3.txt`) **skipped** its database
   checks after a probe blip and was not accepted. All three URLs were probed reachable before the
   re-run.
+- **#16 Phase A second review: APPROVED for go-live** (`progress/review_deploy.md` → *Second
+  pass*). It raised one non-blocking finding, **H1**, which is **a coordinator error**. The
+  price-token brief claimed that "nothing is weaker", but `bodyShowsPrice` misses a decimal price
+  in its padded forms (`€37.80`, `37.80000000`), because `Decimal#toString()` drops trailing zeros.
+  That claim holds only for integer prices; the one the specs use today, `890`, is an integer. A
+  follow-up `fix(harness)` is running: trailing zeros are absorbed, and
+  `stock-entry-quantities.spec.ts` moves onto the shared helper. Observations S2 (both strings
+  pooled fails closed) and S3 (a misnamed database fails on connection first) are recorded.
+- 2026-09-28 21:21, implementer: **harness follow-up H1** (coordinator message; finding H1 in
+  `progress/review_deploy.md` -> *Second pass*). Plan:
+  - `bodyShowsPrice`: when the price text has a `.`, match `<price>0*` before the trailing
+    boundary. `Decimal#toString()` drops trailing zeros, but the display and the column pad them.
+  - Unit tests: a one-decimal and a two-decimal price drawn at runtime, plus the coordinator's
+    literal decimal, with padded shapes under *still caught*. Integers get no absorption.
+    `<p>9` and `1<p>` stay not found. Correct the two "nothing is weaker" comments.
+  - `stock-entry-quantities.spec.ts`: its five `priceSightings` assertions move onto
+    `bodyShowsPrice`, keeping the `applicationMarkup` scope and the action-key self-tests.
+    `priceSightings` is removed.
+  - Mutations: absorption removed (unit); a bare price on the staff count page (e2e), and a bare
+    `<price>.00`, run against both the new and the old quantities spec.
+  - Then `test:unit` and the six specs once. No commit.
+- 2026-09-28 21:25, implementer: H1 helper change, the unit test (129, green) and the quantities
+  move are done. H1-M1 to M4 were each red, then restored with sha OK. typecheck 0, lint 0. Now
+  the e2e breaches on the staff count page: A is a bare price, B is a bare `<price>.00` run
+  against the new and the old quantities spec. Copies and `SHA256SUMS` are in
+  `scratchpad/price-token-mut/h1/breach/`. If this session dies, restore from them first.
+- 2026-09-28 21:38, implementer: H1 follow-up **complete**.
+  - Breach A (a bare price) and breach B (a bare `<price>.00`) were each red at
+    `stock-entry-quantities.spec.ts:618`. The old spec was green under breach B, which is the gap.
+    Everything was restored with sha OK.
+  - `test:unit` 84 / 1298. Six files once: `183 passed (4.9m)`.
+  - Dev census and row counts are unchanged, and port 3000 is free.
+  - Report: `progress/impl_deploy.md` -> `### Follow-up: H1`. Not committed.
+- **H1 follow-up green** (`scratchpad/gate-h1.txt`): `init` exit 0 in 24.1 min, unit 1298, e2e
+  116 + 139 with 0 flaky and 0 failed, db 572, database checks executed, dev census identical. A
+  decimal price absorbs trailing zeros; removing that turns 11 unit tests red.
+  `stock-entry-quantities.spec.ts` now uses `bodyShowsPrice` within its `applicationMarkup`
+  scope. A bare `<price>.00` turns it red, where the old rule stayed green, so #8's check is
+  strictly stronger.

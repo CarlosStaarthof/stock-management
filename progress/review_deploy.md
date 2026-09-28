@@ -189,3 +189,116 @@ I did not read `.env`, contact the live site or contact any database. I wrote on
    - The file lists, the `1152` unit count, the eight forms and each refusal all match.
    - The mutation copies in `scratchpad/a2-mut/` equal HEAD.
    - The "Deviations" sections of `impl_deploy.md` are accurate, except that Observation 3's extra line appears in the A1-F1 work log (`:297-298`) and not among the deviations.
+
+## Second pass, 2026-09-28
+
+**Verdict:** APPROVED. **Phase A (AC-1 to AC-18) is APPROVED for go-live.**
+**Scope:** the repairs only, `git diff 74ab531..HEAD`:
+- `cd85783` spec(#16), the rulings;
+- `a5adc65` fix(harness);
+- `f3518a0` fix(#16).
+
+**init:** green (`scratchpad/gate16rep4.txt`, the coordinator's run; I did not run it)
+
+Every required change is done and proved by a test. A mutation turns each proof red. The two clauses that failed the first pass (AC-10's read-back, AC-15's `staff-role` stop) are now proven, and C2.4 is closed.
+
+The harness fix does not weaken the check for the price the six assertions use today. That price is an integer, and for an integer every displayed and JSON form is still caught. It is weaker for a price with decimals (Finding H1). H1 does not block go-live, for the reasons given there. It should be closed with a one-token follow-up.
+
+### What I ran
+
+| Run | Result |
+|---|---|
+| Read `gate16rep4.txt`, converted from UTF-16 in the scratchpad | typecheck and lint `[ok]` (lines 17, 19). Unit `84 passed`, `1225 passed` (204-205). e2e `116 passed (2.4m)` (1064) and `139 passed (4.4m)` (1237). `[ok] database reachable` (1243). `[ok] prisma migrate status` (1251). db `32 passed`, `572 passed` (2125-2126). `[OK] Environment ready` (2132), **not** "database checks skipped". A grep for `flaky`, `Retry #`, `P1001`, `P1017` and `Can't reach` finds nothing. The file was written at 21:10:28; both repair commits are at 21:11. |
+| `npm run test:unit` on HEAD | **84 files, 1225/1225**, 43.8 s |
+| `git diff --quiet 74ab531..HEAD` over the paths the repairs must not touch | Untouched: `scripts/verify/`, `src/app`, `src/components`, `src/lib`, `prisma`, `Samples`, and `tests/e2e/stock-entry-quantities.spec.ts`. The five e2e specs change only their `bodyShowsPrice` import and the six price assertions, and each loop still asserts no `€` and no `unitPrice` (checked in all five). |
+| `feature_list.json` #16 against the spec, whitespace-normalised | 31 of 31 identical, AC-9's ratified print rule included. `in_progress`. |
+| A probe, `scratchpad/probe16c.ts`: prices of five shapes built at run time, stored as `Decimal(18, 8)` text. The price text is taken exactly as `anyUnitPriceText()` does (`Prisma.Decimal#toString`). Bodies are built with the app's own `formatPriceExact` and `roundHalfUp`, and as JSON. The old substring check is compared with `bodyShowsPrice`. | Integer: all six bodies caught by both. **One decimal** (`37.8`): the app's own display `€37.80`, the same without `€`, `37.80` from `roundHalfUp`, and the stored text `37.80000000` in JSON were **caught before and missed now**. Two decimals: only the stored text in JSON is newly missed. Eight decimals: no change. 1000 or more: the app's `€1,447.00` is missed by both, old and new, so that gap was already there. |
+| A probe, `scratchpad/probe16d.mjs`: the same rule, but letting a price with a `.` absorb trailing zeros (`<price>0*`) | It catches every newly missed shape above. It still does **not** trip on `<p>9`, `1<p>`, a `kc…aba` action key or a `cmx…` cuid. |
+| A probe, `scratchpad/probe16e.ts`: `restoreSchema` on Neon-shaped strings built at run time | The pooled and unpooled strings of one endpoint and one database are accepted. `DIRECT_URL` left on `neondb`, or `DATABASE_URL` left on `neondb`, is **refused, different databases**. Another branch's endpoint is **refused, different hosts**. An upper-case host is accepted. Both strings pooled is accepted (Observation S2). No message names a host or a database. |
+
+I did not read `.env`, contact the live site or contact any database. I wrote only this section and scratchpad files.
+
+### The required changes
+
+| # | Status | Evidence |
+|---|---|---|
+| R1 | DONE | `restore.db.test.ts:190`. After a real restore it updates an `AuthEvent`, deletes the `AccountLock` row and inserts a `Supplier`. `compareWithFile` then reports exactly those three not identical, with exact numbers: AuthEvent `identical n-1`; AccountLock `restored 0, identical 0`; Supplier `restored n+1`. The other nine stay identical. Mutation MR1 (`isIdentical` forced `true`) turned it red (`impl_deploy.md:815`). **AC-10 now PASS.** |
+| R2 | DONE | `export.db.test.ts:246` (no `_prisma_migrations`), `:256` (a table with no primary key), `:269` (`db:export` via `?schema=` exits non-zero and writes no file). `src/server/deploy/restore.test.ts:48`, `:57`, `:65` (a cycle throws `ConflictError` naming both tables). Throwaway schemas are dropped in `afterEach`. **C2.4 now [x].** |
+| R3 | DONE | `verify-deployment.test.ts:943-1045`, on a stand-in browser; `signed-in-pass.ts` is unchanged. The tests cover: non-vacuity (`:943`); an empty scan (`:961`); a start page landing on `/sign-in` (`:976`); an unreadable body (`:992`); its complement, where a re-read body is scanned and a `€` in it still fails (`:1012`); and a non-staff or missing role, which gives exactly one `staff-role` FAIL, clicks sign-out once, reads no cookie and opens no staff page (`:1029`). Mutations R3-M1 (line 292 deleted) and R3-M2 (the role gate deleted) each turned one test red (`impl_deploy.md:713-719`). **AC-15 now PASS.** |
+| R4 | DONE | `operator-production.mjs:70-73` and `:276`: the notice is chosen by `terminal`, and printed before the first question. `NOT_A_TERMINAL_NOTICE` says input is not a terminal, answers are read one per line and may be visible, stop with Ctrl+C, and use PowerShell or Windows Terminal. What is read is unchanged. Tests: `operator-production.test.ts:302` (terminal: no warning), `:316` (piped: the warning, each phrase, the answers still reach the command), `:336` (the real process with piped stdin). MR4 turned two of them red. `docs/operations.md` → *Operator commands* names the terminals. |
+
+### The observations taken in
+
+- **1, the seed gap.** A comment at `item-master-seed.ts:61-67` gives the four reasons. No behaviour changed.
+- **2, one target for a restore.**
+  - `target-schema.ts:52-78` refuses, before anything connects, strings that name different hosts once `-pooler` is removed, or different databases. It reuses the build's rule: `sameEndpoint` is now exported from `build-plan.ts`, and `productionSettingsProblems` uses it with the same semantics (the AC-4 tests are unchanged and green).
+  - Proven by `target-schema.test.ts:48-97`, with no host or database name in any refusal, and by the pre-connection refusals at `restore.db.test.ts:323` and `:339`, where the target schema holds no table afterwards. MO2 turned all four red.
+  - **MO2's finding matters.** With the rule removed, `prisma migrate deploy` *created* the missing database that `DIRECT_URL` named (`impl_deploy.md:819-830`). My first-pass trace missed that. So the slip I rated harmless could have left a stray database on the `production` branch. The new rule refuses it before anything connects.
+  - The test now drops any database it names (`restore.db.test.ts:38-55`). The names are random `other_<hex>` only.
+- **3, the `omittedPendingRequests` line.** Ratified in AC-9's print rule, in the spec and `feature_list.json` alike. **AC-9 PASS**, with no deviation left.
+- **4, relaying the build log.** Go-live step 12 and R3 in `docs/operations.md` now ask for the prefixed lines only, never Prisma's `Datasource … at "<host>"` line.
+
+### AC-5's dry-run redesign still proves AC-5
+
+`vercel-build.test.ts:425-474`:
+- `production`, the longest plan, runs through the literal `npm run --silent build:vercel -- --dry-run` (`:445`).
+- The other four environments run `node --import tsx scripts/vercel-build.ts --dry-run` (`:464`). That is the same file by the same loader, with the same argument and a fresh environment each time.
+
+This still proves AC-5's "dry run under each `VERCEL_ENV` of AC-2", for three reasons:
+- `npm run` adds only argument forwarding, and the production case proves that end to end.
+- `deploy-config.test.ts` pins `build:vercel` to exactly `tsx scripts/vercel-build.ts`, so the two entries cannot drift apart.
+- The per-environment plan is also proved in process by `vercelBuild` (AC-2, AC-5 above).
+
+What did not change:
+- The 12 s kill switch is unchanged, and no budget was raised.
+- The block is `describe.sequential`.
+- Each case now also asserts `result.error` is undefined, so a kill cannot pass for a status.
+- The spawned env still deletes the four database settings, so even a broken dry run would stop at `check-settings`.
+
+The recorded runs under load peak at 4.4 s (`impl_deploy.md:1112-1128`). The gate's unit run is green.
+
+### Finding H1 on the harness fix (`a5adc65`), non-blocking, with a follow-up
+
+**The breach evidence is sound for what it tested.** `impl_deploy.md:983-1007`:
+- The real price was rendered as a bare number with no euro sign.
+- All six edited assertions were seen red (B1 at five lines, B2 at `stock-takes-count.spec.ts:514`), each with its message unchanged.
+- The files were restored byte for byte.
+
+My probe agrees that for an **integer** price every displayed and JSON form is still caught: `€<p>.00`, bare, `"<p>"`, a JSON number, and the stored `<p>.00000000`. By the coordinator's brief (`scratchpad/fix-price-token.md`), the price the specs use reads `890`, and both collisions held those digits.
+
+**But "nothing is weaker" does not hold in general.**
+- **The problem.** `bodyShowsPrice` (`tests/e2e/support/stock-entry.ts:228-234`) takes `Decimal#toString()`, which drops trailing zeros, and then treats a following digit as "another number". For a price with decimals, the forms the app itself produces carry trailing zeros:
+  - `formatPriceExact` pads a one-decimal price to two places (`37.8` becomes `€37.80`);
+  - a `Decimal(18, 8)` column's own text is `37.80000000`.
+
+  The old substring check caught both; the new one catches neither. `price-token.test.ts:98-103` ("applies the boundary at both ends", with `${price}9`) and the doc comments at `stock-entry.ts:218-223` and `price-token.test.ts:13` describe the rule as losing nothing, which is true only for integers.
+- **Why it does not block go-live.**
+  - No application code changed.
+  - The price in use is an integer, so today's six checks lost only the false positives they were meant to lose.
+  - Every one of those loops still asserts no `€` and no `unitPrice`, and the app's formatter always prints `€`.
+  - #16's own live scanner (AC-16) is independent of this helper.
+- **Follow-up, as a `fix(harness)`, before the e2e price source can change.**
+  - Let a price that contains `.` absorb trailing zeros: `` `(?<![0-9A-Za-z])${escaped}${price.includes(".") ? "0*" : ""}(?![0-9A-Za-z])` ``. `probe16d.mjs` shows this restores every lost shape, and none of the fixed false positives come back.
+  - Add a one-decimal price built at run time to `PRICES` in `price-token.test.ts`, with the `€<p>0` and `<p>0000000` shapes under *still caught*.
+  - Correct the two "nothing is weaker" comments.
+  - Optionally, also match the thousands-grouped form (`1,447`), which neither the old nor the new check finds.
+
+**`stock-entry-quantities.spec.ts`**, left on its own `priceSightings` rule, is recorded as deferred. I agree that deferring it is in scope. As the implementer notes (`impl_deploy.md:924-928`), that rule counts `.` as breaking the boundary, so a bare integer price followed by `.00` is not a sighting there. It should move onto the shared helper, once H1's fix is in.
+
+### Observations (second pass, non-blocking)
+
+- **S1, the development census.** The "for the coordinator" alarm at `impl_deploy.md:866-883` reports the owner's draft count gone. The A2 baseline had already recorded it before any repair: `impl_deploy.md:399-404` says "stock counts none … The owner's test count had already been deleted, as the coordinator said." It is not a repair side effect.
+- **S2, both strings pooled.** `restoreSchema` accepts two pooled strings of one endpoint (probe). `migrate deploy` through the pooler then fails before any row is written, so this fails closed. For symmetry with `check-settings`, the restore could also require `-pooler` on `DATABASE_URL` only.
+- **S3, a database named by both strings that does not exist.** `relationsInSchema` connects through `DATABASE_URL` first (`db-restore.ts:91`), before `migrate()` (`:99`). So a database misnamed identically in both strings fails on connection before Prisma could create it. I read this from the code order; no test covers it.
+- The first pass's Observations 5 to 8 stand as ruled.
+
+### Checkpoints, changes since the first pass
+
+- C1.3 [x]: AC-1 to AC-18 all PASS. AC-10 and AC-15 are now proven; AC-9's print rule is ratified. Phase B is out of scope.
+- C2.1 [x]: `gate16rep4.txt`, `[OK] Environment ready` with the database checks executed. `gate16rep3.txt`, which skipped them, was rightly not accepted.
+- C2.4 [x]: `compareWithFile`/`isIdentical`, `exportDatabase` and `foreignKeyOrder` each now have a failure test.
+- Every other box is as in the first pass, re-checked on the repair diff:
+  - C3.4: no new cycle. `target-schema` → `build-plan` → `auth/*`, and nothing points back.
+  - C4.8: `Samples/` is untouched.
+  - C5: no secret in the added lines. The new tests build every string at run time under `.invalid`.
+  - C6.2: the tree is clean.

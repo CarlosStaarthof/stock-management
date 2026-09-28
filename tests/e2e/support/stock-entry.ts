@@ -215,22 +215,36 @@ export async function anyUnitPriceText(): Promise<string | null> {
  * change - so a build either always failed or always passed, for a reason that had nothing to
  * do with money. Count cuids, bundle hashes and RSC module references carry the same risk.
  *
- * Everything a leaked price actually looks like is still found, because a currency sign, a
- * space, a quote, a colon, an angle bracket, a comma or a decimal point is not a letter or a
- * digit: `€<price>.00`, `€ <price>`, `"<price>"`, `"unitPrice":"<price>"`, `><price><`,
- * `<price>,00`, and the price at the very start or end of the body. What is no longer found is
- * the same digits inside a longer run of letters and digits - an identifier, or a different
- * number such as `1<price>` or `<price>5`.
+ * A currency sign, a space, a quote, a colon, an angle bracket, a comma and a decimal point
+ * are not letters or digits. So an INTEGER price is still found in every shape the old search
+ * found it in: `€<price>.00`, `€ <price>`, `"<price>"`, `"unitPrice":"<price>"`, `><price><`,
+ * `<price>,00`, the column's own `<price>.00000000`, and the price at the very start or end of
+ * the body. What is no longer found is the same digits inside a longer run of letters and
+ * digits: an identifier, or a different number such as `1<price>` or `<price>5`.
  *
- * A decimal price's text is taken whole, its `.` literally, and the same rule applies at both
- * of its ends. Coordinator ruling of 2026-09-28; proven by `tests/unit/price-token.test.ts`.
+ * A DECIMAL PRICE ABSORBS TRAILING ZEROS (review finding H1). `price` comes from
+ * `Decimal#toString()`, which drops them: a `Decimal(18, 8)` holding 37.8 reads `37.8`. The
+ * application's own forms keep them, though. `formatPriceExact` prints `€37.80`, and the
+ * column's text is `37.80000000`. Without the absorption, the digit after `37.8` would make
+ * both of those look like "another number" and neither would be found. So when `price` holds
+ * a `.`, the token is `price` followed by any number of `0`s, and the boundary is tested after
+ * them. `37.89` and `37.801` are still other numbers. An integer absorbs nothing, because
+ * `<price>0` is ten times the price.
+ *
+ * WHAT IS STILL NOT FOUND, by this search or by the substring search before it: a price of
+ * 1,000 or more in `formatPriceExact`'s thousands-grouped form, `€1,234.00`. That shape is
+ * covered by the euro-sign assertions in the same tests.
+ *
+ * The rest of a decimal price's text is taken literally, including its `.`. Coordinator
+ * rulings of 2026-09-28; proven by `tests/unit/price-token.test.ts`.
  */
 export function bodyShowsPrice(body: string, price: string): boolean {
   // An empty price would "match" between any two non-alphanumerics and assert nothing real.
   if (price === "") throw new Error('bodyShowsPrice needs a price to look for, not "".');
 
   const escaped = price.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return new RegExp(`(?<![0-9A-Za-z])${escaped}(?![0-9A-Za-z])`).test(body);
+  const trailingZeros = price.includes(".") ? "0*" : "";
+  return new RegExp(`(?<![0-9A-Za-z])${escaped}${trailingZeros}(?![0-9A-Za-z])`).test(body);
 }
 
 /* ------------------------------------------------------------------ #8, the counting */

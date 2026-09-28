@@ -19,6 +19,7 @@ import { databaseIsReachable, skipWithoutDatabase } from "./support/database";
 import {
   RESERVED_YEAR,
   anyUnitPriceText,
+  bodyShowsPrice,
   clearReservedYear,
   markPastDraft,
   quantitiesByItem,
@@ -584,25 +585,18 @@ function applicationMarkup(html: string): string {
     .replace(/\s(?:class|id)="[^"]*"/gi, " ");
 }
 
-/**
- * Every place `price` appears as a NUMBER OF ITS OWN, with the sixty characters either
- * side of it so a failure says where.
+/*
+ * WHAT COUNTS AS THE PRICE is decided by the shared `bodyShowsPrice` (`./support/stock-entry`),
+ * the same rule as every other "no price in the body" check (review finding H1).
  *
- * A price is a token: something that is not a digit, a letter or a decimal point stands on
- * each side of it. `890` inside `…f36a890835f…` is part of a longer run and is not a
- * sighting; `>890<`, `="890"` and ` 890 ` are. The boundary is what tells a price from a
- * hash - and it is not the whole answer on its own, which is why the caller searches the
+ * This file used to have its own rule, `priceSightings`. That rule also counted a `.` as
+ * breaking the boundary, so a bare integer price followed by `.00` was not a sighting here,
+ * although the other specs' checks found it.
+ *
+ * `applicationMarkup` above still decides WHAT is searched. The boundary tells a price from a
+ * hash, but it is not the whole answer on its own, which is why this test searches the
  * application's own markup rather than the raw response.
  */
-function priceSightings(text: string, price: string): string[] {
-  const escaped = price.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const standalone = new RegExp(`(?<![0-9A-Za-z.])${escaped}(?![0-9A-Za-z.])`, "g");
-
-  return [...text.matchAll(standalone)].map((match) => {
-    const at = match.index ?? 0;
-    return text.slice(Math.max(0, at - 60), at + price.length + 60);
-  });
-}
 
 test("AC-17: a YARD_STAFF session can obtain no price from this screen, and an ADMIN no total", async ({
   page,
@@ -621,26 +615,24 @@ test("AC-17: a YARD_STAFF session can obtain no price from this screen, and an A
 
   if (aRealPrice !== null) {
     // A REAL PRICE, AS A NUMBER OF ITS OWN, IN THE MARKUP THIS APPLICATION WROTE.
-    expect(priceSightings(applicationMarkup(staffBody), aRealPrice), "staff response").toEqual(
-      [],
-    );
+    expect(bodyShowsPrice(applicationMarkup(staffBody), aRealPrice), "staff response").toBe(false);
 
     // THE SEARCH IS NOT VACUOUS, IN BOTH DIRECTIONS, ON THE BYTES THAT MADE IT FLAKY.
     // A price in a cell is found; the same three digits inside a server action's hash are
     // not - and neither is a hash sitting in ordinary text, so it is the BOUNDARY and not
     // only the removal that distinguishes them.
     expect(
-      priceSightings(applicationMarkup(`<td data-testid="x">${aRealPrice}</td>`), aRealPrice),
-    ).toHaveLength(1);
+      bodyShowsPrice(applicationMarkup(`<td data-testid="x">${aRealPrice}</td>`), aRealPrice),
+    ).toBe(true);
     expect(
-      priceSightings(
+      bodyShowsPrice(
         applicationMarkup(
           '<input type="hidden" name="$ACTION_KEY" value="k934edebf36a890835fd557e0f4833e0b"/>',
         ),
         "890",
       ),
-    ).toEqual([]);
-    expect(priceSightings("<p>k934edebf36a890835fd557e0f4833e0b</p>", "890")).toEqual([]);
+    ).toBe(false);
+    expect(bodyShowsPrice("<p>k934edebf36a890835fd557e0f4833e0b</p>", "890")).toBe(false);
 
     // AND THE FILTER DID NOT QUIETLY EMPTY THE DOCUMENT: the rows are still in what was
     // searched, and the field whose hash collided is really there to be excluded.
@@ -660,7 +652,7 @@ test("AC-17: a YARD_STAFF session can obtain no price from this screen, and an A
       for (const node of copy.querySelectorAll("script, style")) node.remove();
       return copy.textContent ?? "";
     });
-    expect(priceSightings(readable, aRealPrice), "rendered text").toEqual([]);
+    expect(bodyShowsPrice(readable, aRealPrice), "rendered text").toBe(false);
   }
 
   // The ADMIN gets #7's sentence and otherwise the same markup — and still no euro.

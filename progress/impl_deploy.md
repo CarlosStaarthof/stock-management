@@ -1077,6 +1077,148 @@ files are byte-identical to their copies.
 - Logs and copies are in `scratchpad/price-token-mut/`: `breach-run.log`, `breach2-run.log`,
   `green-run.log`, `breach/` and `specs-before/`.
 
+### Follow-up: H1
+
+**Finding:** `progress/review_deploy.md` → *Second pass* → *Finding H1*. I followed the
+coordinator's follow-up message of 2026-09-28.
+**Status:** complete. Nothing is committed. The coordinator commits it as `fix(harness)`.
+
+**The gap was real, and it was mine as well as the brief's.** `anyUnitPriceText()` returns
+`Decimal#toString()`, which drops trailing zeros. `formatPriceExact` and the `Decimal(18, 8)`
+column's own text keep them. So for a price with decimals, the boundary treated the padding as
+"another number" and the padded forms went unfound. My earlier claim that every leaked shape is
+still found held only for integers. The price the specs use today is an integer, so today's
+checks lost nothing in practice.
+
+#### What changed
+
+- **`tests/e2e/support/stock-entry.ts`: `bodyShowsPrice`.**
+  - When the price text contains a `.`, the token is `<price>0*` and the boundary is tested
+    after the zeros.
+  - An integer absorbs nothing, because `<price>0` is ten times the price.
+  - The doc comment now says what an integer keeps, why a decimal absorbs zeros, and what is
+    still not found.
+  - **Still not found, by the old substring search or the new one:** a price of 1,000 or more
+    in `formatPriceExact`'s thousands-grouped form, `€1,234.00`. The euro-sign assertions in the
+    same tests cover that shape. The review's optional grouped-form match was not in the
+    coordinator's list, so I did not build it.
+- **`tests/unit/price-token.test.ts`: 56 tests become 129.**
+  - The header no longer says "nothing is weaker". It states the rule, the H1 reason, and the
+    grouped form that is still missed.
+  - Prices: two integers (the brief's literal and a runtime draw) and three decimals (the
+    review's one-decimal example and two runtime draws, one with one decimal place and one with
+    two). Each runtime decimal is built the way `Decimal#toString()` prints one, with a non-zero
+    last digit.
+  - New *still caught* shapes, for all five prices:
+    - `€<p>` padded to two places, as `formatPriceExact` prints it;
+    - the padded form bare, with no euro;
+    - the unpadded form bare;
+    - the column's own text, to 8 places.
+  - New *not tripped* shapes: `<p>9` and `<p>07`, beside the existing `1<p>`, `<p>5`, the
+    action key, the test name and the cuid.
+  - The review's two missed shapes are written out literally: the display form and the 8-place
+    column text of its example.
+  - New decimal tests: the price absorbs any number of trailing zeros, and a non-zero digit
+    after them is another number (`<p>01`, `<p>` padded to 8 places plus `1`, and `<p>0k`).
+  - New integer tests: `<p>0` and `<p>00` are not found, and `<p>.00` and `<p>.00000000` still
+    are.
+- **`tests/e2e/stock-entry-quantities.spec.ts`: moved onto the shared helper.**
+  - `priceSightings` is deleted, and a short comment says why.
+  - `applicationMarkup(...)` is unchanged, so the spec still searches only the application's
+    own markup.
+  - The spec's five price `expect(`s now call `bodyShowsPrice` and nothing else:
+    - `staff response`: `toBe(false)`;
+    - the non-vacuity self-test, a price in a cell: `toBe(true)`, where it was `toHaveLength(1)`;
+    - the self-test against a server-action key inside `applicationMarkup`: `toBe(false)`;
+    - the same key as ordinary text: `toBe(false)`;
+    - `rendered text`: `toBe(false)`.
+  - The euro, `unitPrice`, `No price`, `$ACTION` and `count-line` assertions are untouched. No
+    changed line mentions any of them.
+
+#### Proof 1: the unit test and its mutations
+
+Each mutation was made on a byte copy and restored. The final sha256 matched the copy,
+`a564010a…`. After all the runs, I changed one word in a comment in the helper and one in the
+unit test's header: the grouped-form example now uses a neutral figure. The helper's hash is
+now `c48925d7…`. The price-token file (129) and eslint on the three files were re-run after
+that edit, and both are green.
+
+| # | Mutation | Result |
+|---|---|---|
+| H1-M1 | **Trailing-zero absorption removed** | **11 red**: every padded shape for the review's example and the one-decimal draw; the 8-place shape for the two-decimal draw; "absorbs trailing zeros" ×3; the review's two shapes written out |
+| H1-M2 | Absorption applied to integers too | 2 red: "absorbs nothing: `<p>0` and `<p>00`" for both integers |
+| H1-M3 | Absorbs any digit (`[0-9]*`), not only zeros | 15 red: `<p>5`, `<p>9` and `<p>07` for all three decimals; "absorbs only zeros" ×3; "the boundary at both ends" ×3 |
+| H1-M4 | The old `priceSightings` boundary, which counts `.` as breaking it | 8 red: every padded integer shape, and "still found before a point", for both integers |
+
+M4 is the gap the quantities move closes, now shown in the unit suite.
+
+#### Proof 2: the breach on the staff count page
+
+I made byte copies of `src/server/counts/count-service.ts`, `src/app/stock-entry/counts/[id]/page.tsx`
+and the new quantities spec, with `SHA256SUMS` in `scratchpad/price-token-mut/h1/breach/`. The
+probe is the one from before: the first price, read by the same query as `anyUnitPriceText()`
+and rendered in a `<p>` in the page header. It has no euro sign, so the euro, `unitPrice` and
+`No price` checks all pass before it. Each run built the app and ran only the quantities AC-17
+test (`--project=chromium-stock-entry --no-deps -g`).
+
+| Run | Rendered on the staff page | Quantities spec | Result |
+|---|---|---|---|
+| A | the bare price | new | **red at `stock-entry-quantities.spec.ts:618`**, `Error: staff response`, `Expected: false`, `Received: true` |
+| B | the bare price followed by `.00` | new | **red at the same line**, with the same message |
+| B | the same | **old**, `HEAD`'s byte copy, on `priceSightings` | **green**, 1 passed. The old rule saw nothing: this is the gap the review named |
+
+**Restoring the files.** After run B I put back the app files and then the new spec, all from
+the copies. `sha256sum -c` gave OK for all three files. `git status` shows `src/app` and
+`src/server/counts` clean.
+
+#### Proof 3: the suites the coordinator asked for
+
+I ran each suite once, with port 3000 free and nothing else running.
+
+```
+$ npm run typecheck        -> exit 0
+$ npm run lint             -> exit 0
+$ npx vitest run tests/unit/price-token.test.ts
+      Tests  129 passed (129)
+$ npm run test:unit
+ Test Files  84 passed (84)
+      Tests  1298 passed (1298)
+$ npm run test:e2e -- tests/e2e/stock-entry-access.spec.ts tests/e2e/stock-entry-quantities.spec.ts \
+    tests/e2e/stock-entry-filters.spec.ts tests/e2e/stock-entry-submit.spec.ts \
+    tests/e2e/stock-takes-count.spec.ts tests/e2e/stock-takes-calendar.spec.ts
+Running 183 tests using 3 workers
+  183 passed (4.9m)
+exit=0
+```
+
+- The unit total is the previous 1225 plus the 73 new cases.
+- The e2e total breaks down the same way as before:
+  - the six files: access 9, quantities 12, filters 6, submit 6, takes-count 17 and calendar 17;
+  - the `chromium` prerequisite project, run whole: 116.
+- 0 failed, 0 skipped and 0 flaky.
+- **Quantities' price checks are green on today's data under the stricter rule.** The rule
+  now finds the price after a `.` as well as before one.
+- I did not run `init` or the full suites, and I committed nothing.
+
+**Development database after the runs, read-only:**
+- `npm run db:census` is identical to the one above;
+- row counts: users 1, lock rows 1, auth events 1, counts 0 and count lines 0.
+
+Port 3000 has no listener. The only `node` process is one that was running before this session.
+
+#### Notes for the reviewer
+
+- **A red quantities run no longer prints where the price was.** `priceSightings` returned 60
+  characters on each side of every sighting, so a failure echoed the price and its surroundings
+  into the log. Now a failure shows `true`/`false` and the message, like the other five specs.
+  That gives less to locate a failure by, and it prints no price.
+- **The quantities rule is now stricter on one side.** The old rule ignored a price with a `.`
+  immediately before it, as in `.<p>`; the shared rule finds it. That could, in principle, add a
+  false positive the old rule avoided. Today's six-file run is green with it.
+- **Logs and copies** are in `scratchpad/price-token-mut/h1/`:
+  - `breachA.log`, `breachB-new.log`, `breachB-old.log` and `green-run.log`;
+  - `quantities-HEAD.spec.ts`, `quantities-NEW.spec.ts` and `breach/`.
+
 ### Gate fix: AC-5 dry-run tests under load
 
 **The failure:** the full gate (`scratchpad/gate16rep2.txt`) failed three unit tests, and only
