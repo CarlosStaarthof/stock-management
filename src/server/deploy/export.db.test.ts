@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { db } from "@/server/db";
+import { ConflictError } from "@/server/errors";
 import { EXPORT_FORMAT, exportDatabase } from "@/server/deploy/export";
 import { resetTestDb } from "@/server/test-db";
 import { buildExportFixture, QUANTITY, schemaModels, SNAPSHOT } from "../../../tests/support/export-fixture";
@@ -30,17 +31,31 @@ type ExportFile = {
 };
 
 let scratch = "";
+/** Throwaway schemas a test created in the TEST database, dropped after it. */
+let schemas: string[] = [];
 
 beforeEach(async () => {
   await resetTestDb();
   scratch = mkdtempSync(join(tmpdir(), "macroads-export-"));
+  schemas = [];
   vi.stubEnv("AUTH_SECRET", randomBytes(32).toString("base64"));
 });
 
-afterEach(() => {
+afterEach(async () => {
   vi.unstubAllEnvs();
   rmSync(scratch, { recursive: true, force: true });
+  for (const schema of schemas) {
+    await db.$executeRawUnsafe(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
+  }
 });
+
+/** A new schema in the test database, holding only what the test puts in it. */
+async function throwawaySchema(): Promise<string> {
+  const schema = `export_${randomBytes(6).toString("hex")}`;
+  schemas.push(schema);
+  await db.$executeRawUnsafe(`CREATE SCHEMA "${schema}"`);
+  return schema;
+}
 
 /** The values of the five settings, as this test's environment holds them. */
 function settingValues(): string[] {
@@ -224,5 +239,45 @@ describe("016 AC-9: the refusals, made before connecting", () => {
 
     expect(run.status).not.toBe(0);
     expect(run.stderr).toContain("usage: npm run db:export");
+  });
+});
+
+describe("016 AC-9 (review R2): the export refuses a schema it cannot copy faithfully", () => {
+  it("R2: exportDatabase rejects with ConflictError for a schema with no _prisma_migrations", async () => {
+    const schema = await throwawaySchema();
+    await db.$executeRawUnsafe(`CREATE TABLE "${schema}"."Lonely" ("id" int PRIMARY KEY)`);
+
+    const attempt = exportDatabase(schema);
+
+    await expect(attempt).rejects.toBeInstanceOf(ConflictError);
+    await expect(attempt).rejects.toThrow(/no _prisma_migrations table/);
+  });
+
+  it("R2: exportDatabase rejects with ConflictError for a table with no primary key", async () => {
+    const schema = await throwawaySchema();
+    await db.$executeRawUnsafe(
+      `CREATE TABLE "${schema}"."_prisma_migrations" ("migration_name" text PRIMARY KEY, "finished_at" timestamptz, "rolled_back_at" timestamptz)`,
+    );
+    await db.$executeRawUnsafe(`CREATE TABLE "${schema}"."Keyless" ("value" int)`);
+
+    const attempt = exportDatabase(schema);
+
+    await expect(attempt).rejects.toBeInstanceOf(ConflictError);
+    await expect(attempt).rejects.toThrow(/Keyless has no primary key/);
+  });
+
+  it("R2: db:export pointed at that schema through ?schema= exits non-zero and writes no file", async () => {
+    const schema = await throwawaySchema();
+    await db.$executeRawUnsafe(`CREATE TABLE "${schema}"."Lonely" ("id" int PRIMARY KEY)`);
+    const url = new URL(process.env.DATABASE_URL ?? "");
+    url.searchParams.set("schema", schema);
+    const out = join(scratch, "copy.json");
+
+    const run = runScript("scripts/db-export.ts", ["--out", out], { ...process.env, DATABASE_URL: url.toString() });
+
+    expect(run.status).not.toBe(0);
+    expect(run.stderr).toMatch(/no _prisma_migrations table/);
+    expect(run.stdout).not.toContain("[db:export] wrote");
+    expect(existsSync(out)).toBe(false);
   });
 });

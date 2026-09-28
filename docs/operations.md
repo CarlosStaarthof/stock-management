@@ -354,7 +354,7 @@ kept: every production value is made new.
 | 9 | Owner | Enter the six Production settings. Preview and Development stay empty. Confirm V4 and V7. |
 | 10 | Coordinator | `git push origin <the step-5 commit>:refs/heads/production` |
 | 11 | Vercel's build | `check-settings`, `next-build`, `migrate-deploy` (three migrations), `seed-if-empty` (`SEEDED`), `census`; then released. |
-| 12 | Owner | Relay the `[vercel-build]`, `[seed]` and `[db:census]` lines. **If the first seed says `SKIPPED`, stop:** the settings point at a database that already holds an item master, so they are not the empty `production` branch. |
+| 12 | Owner | Relay only the lines that begin `[vercel-build]`, `[seed]` or `[db:census]`, never Prisma's `Datasource … at "<host>"` line, which names the database host. **If the first seed says `SKIPPED`, stop:** the settings point at a database that already holds an item master, so they are not the empty `production` branch. |
 | 13 | Owner | Open `https://stock-management-zeta-one.vercel.app/setup` straight away, create the first `ADMIN`, then sign in. |
 | 14 | Coordinator | The anonymous pass, while `SETUP_CODE` is still set. |
 | 15 | Owner | Delete `SETUP_CODE` from Vercel. It takes effect at the next deployment. |
@@ -401,7 +401,9 @@ closes the window. `--expect-commit` belongs to the anonymous pass and is refuse
 ### Operator commands: `npm run operator:production`
 
 Every command against a live database goes through this launcher. It asks for the settings at a
-prompt and never reads them from a file; on a terminal, nothing typed is shown. It refuses an
+prompt and never reads them from a file; on a terminal, nothing typed is shown. Run it in
+PowerShell or Windows Terminal: in a window Node does not see as a terminal, such as Git Bash's
+default mintty, the launcher warns that answers may be visible, and you stop with Ctrl+C. It refuses an
 empty answer, and an answer equal to what `.env` holds for the same name, so a development value
 cannot reach production. Anything but these eight forms is refused before anything is asked:
 
@@ -564,8 +566,10 @@ The app is rolled back in Vercel's dashboard; the schema only ever moves forward
 - **R3, a migration that failed.** The build fails and the previous release keeps serving.
   Prisma records the failure, and every later production build fails at `migrate-deploy` until
   it is resolved.
-  - The owner relays the failing statement and error code from the build log.
-  - The owner runs `npm run operator:production -- migrate:status`.
+  - The owner relays the failing statement and error code from the build log, and the
+    `[vercel-build]` lines, never Prisma's `Datasource … at "<host>"` line.
+  - The owner runs `npm run operator:production -- migrate:status`, and relays the migration
+    status lines it prints, again without the `Datasource` line.
   - A migration that left nothing applied is marked with
     `npm run operator:production -- migrate:resolve --rolled-back <migration>`, corrected, gated
     and released.

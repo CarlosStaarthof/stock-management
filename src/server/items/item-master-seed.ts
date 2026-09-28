@@ -58,6 +58,13 @@ export async function seedItemMasterIfEmpty(input: {
     );
   }
 
+  // The count above and the import below are two transactions, because `importWorkbook` owns
+  // its own. The gap is accepted, as the Phase A review analysed it (Observation 1): at go-live
+  // no writer can fill the item master in between. Go-live step 3 leaves the old deployment
+  // with no database setting; no ADMIN exists before the first build; Hobby builds one at a
+  // time; and a second import running at once would collide on the unique `Supplier.name`,
+  // `ItemType.code` and `Item(description, supplierId)` keys and roll back whole, rather than
+  // duplicate anything.
   const { created } = await importWorkbook({ fileName: input.fileName, bytes: input.bytes });
   return { outcome: "SEEDED", counts: created };
 }

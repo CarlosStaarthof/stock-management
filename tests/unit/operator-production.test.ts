@@ -34,6 +34,8 @@ type Io = {
 type Launcher = {
   ACCEPTED_FORMS: string[];
   PROMPTED_NAMES: string[];
+  TERMINAL_NOTICE: string;
+  NOT_A_TERMINAL_NOTICE: string;
   planCommand: (argv: string[]) => Plan | null;
   runLauncher: (io: Io) => Promise<number>;
 };
@@ -293,6 +295,53 @@ describe("016 AC-8: the prompt", () => {
     expect(cancelled.code).not.toBe(0);
     expect(cancelled.calls).toEqual([]);
     expect(cancelled.terminal.rawModes).toEqual([true, false]);
+  });
+});
+
+describe("016 AC-8 (review R4): a hidden prompt is promised only on a terminal", () => {
+  it("R4: on a terminal it says nothing typed is shown, and gives no warning", async () => {
+    const { TERMINAL_NOTICE, NOT_A_TERMINAL_NOTICE } = await launcher();
+    const answers = answersFor(["DATABASE_URL", "DIRECT_URL"]);
+
+    const run = await typed(["migrate:status"], [answers.DATABASE_URL ?? "", answers.DIRECT_URL ?? ""], {
+      sentinels: Object.values(answers),
+    });
+
+    expect(run.code).toBe(0);
+    expect(run.printed).toContain(`[operator:production] migrate:status: ${TERMINAL_NOTICE}\n`);
+    expect(run.printed).not.toContain(NOT_A_TERMINAL_NOTICE);
+    expect(run.printed).not.toMatch(/not a terminal|may be visible/);
+  });
+
+  it("R4: from input that is not a terminal it says so, that answers may be visible, to stop with Ctrl+C, and which terminals to use, and it still reads one answer per line", async () => {
+    const { TERMINAL_NOTICE, NOT_A_TERMINAL_NOTICE } = await launcher();
+    const answers = answersFor(["DATABASE_URL", "DIRECT_URL"]);
+
+    const run = await launch(["migrate:status"], piped([answers.DATABASE_URL ?? "", answers.DIRECT_URL ?? ""]), {
+      sentinels: Object.values(answers),
+    });
+
+    expect(run.code).toBe(0);
+    expect(run.printed).toContain(`[operator:production] migrate:status: ${NOT_A_TERMINAL_NOTICE}\n`);
+    expect(run.printed).not.toContain(TERMINAL_NOTICE);
+    expect(run.printed).not.toMatch(/Nothing you type is shown/);
+    for (const phrase of [/not a terminal/, /one per line/, /may be visible/, /Ctrl\+C/, /PowerShell/, /Windows Terminal/]) {
+      expect(NOT_A_TERMINAL_NOTICE).toMatch(phrase);
+    }
+    for (const name of ["DATABASE_URL", "DIRECT_URL"]) {
+      expect(run.calls[0]?.env[name] === answers[name], name).toBe(true);
+    }
+  });
+
+  it("R4: started for real with piped input, it prints the not-a-terminal notice", async () => {
+    const { NOT_A_TERMINAL_NOTICE } = await launcher();
+    const env: NodeJS.ProcessEnv = { ...process.env };
+    for (const name of ["DATABASE_URL", "DIRECT_URL", "PIN_PEPPER", "NEW_PIN"]) delete env[name];
+
+    const result = spawnSync(process.execPath, [LAUNCHER, "migrate:status"], { encoding: "utf8", env, input: "\n" });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain(NOT_A_TERMINAL_NOTICE);
   });
 });
 

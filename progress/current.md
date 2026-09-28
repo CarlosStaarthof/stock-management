@@ -1679,3 +1679,70 @@ count: users 1, counts 0, lock rows 1, auth events 1.
   0 flaky and 0 failed, db 566, database checks executed, 0 connection errors, dev census identical.
   **Phase A is complete.** Phase B, go-live, is next, with the owner. Pushing stays paused until
   AC-19's take-over steps say to resume.
+- A2 review repair R3 (2026-09-28): stand-in browser in `tests/unit/verify-deployment.test.ts`, six tests for the signed-in pass's fail-closed branches (empty scan, start page on /sign-in, body unreadable after re-asking, non-YARD_STAFF role signs out and stops). The pass itself is unchanged. Mutations R3-M1 (line 292 deleted) and R3-M2 (role gate deleted) each red, restored, sha OK. typecheck 0, lint 0, unit 1161/1161. Report: `progress/impl_deploy.md` -> `### Review repairs (A2 side)`.
+- A1 review repairs (2026-09-28): R1 read-back detection test; R2 export failure tests, the
+  db:export refusal and `foreignKeyOrder` unit tests; R4 launcher notice by input mode plus a
+  runbook sentence; Obs 1 comment; Obs 2 restore needs one host (the build's rule), one database
+  and one schema; Obs 4 runbook relays the prefixed lines only. MR1, MR4 and MO2 red, restored,
+  sha OK. MO2 showed that `migrate deploy` creates a missing database named by DIRECT_URL: one
+  stray test-branch database was dropped by a throwaway probe, and the test now drops what it
+  names. typecheck 0, lint 0, unit 1169/1169, export 13/13, restore 14/14. **The dev census
+  changed, not by me:** stock counts none, count lines 0 (was DRAFT 1 / 82). Reported for the
+  owner.
+- **#16 Phase A review: CHANGES_REQUESTED** (`progress/review_deploy.md`). Every item was a
+  test or a message; none changed behaviour. The rulings are in 016 → *The Phase A review's
+  findings*. Two agents did the repairs. MO2 found that `prisma migrate deploy` **creates** a
+  missing database named by `DIRECT_URL`, and the restore's new same-host-and-database rule now
+  blocks that.
+- **Repaired-tree gate** (`scratchpad/gate16rep.txt`): unit 1169, e2e 116 + 138 with **1 failed**,
+  db 572, 0 connection errors, dev census identical. The failure is
+  `stock-entry-submit.spec.ts:404`, 009 AC-21's "no euro", which asserts that the body does not
+  contain the first price's digits (`890`). This build's Next server-action key was
+  `kc890aba4ec2…` in a hidden `$ACTION_KEY` input. That is the same class of collision as C2-4, now
+  from the framework. **Ruling, a harness fix:** in the six specs that use `anyUnitPriceText()`, the
+  price must not appear as a **number token**, meaning no letter or digit immediately around it.
+  A leaked price stays caught. A random identifier and a different number (`1890`) no longer trip
+  it. It is being implemented, with a leaked-price mutation required to stay red.
+- 2026-09-28 19:34, implementer: **harness fix, price as a number token** (brief
+  `scratchpad/fix-price-token.md`, report `progress/impl_deploy.md` -> `## Harness fix: price as
+  a number token`). Plan: `bodyShowsPrice(body, price)` beside `anyUnitPriceText` in
+  `tests/e2e/support/stock-entry.ts` (no ASCII letter or digit either side of the whole price
+  string); a unit test `tests/unit/price-token.test.ts` for every case the brief lists; the six
+  `not.toContain(<price>)` assertions become `expect(bodyShowsPrice(...), <same message>).toBe(false)`
+  in access, filters, submit, takes-count (two) and takes-calendar. `stock-entry-quantities` has
+  no such assertion (it already uses its own boundary search, `priceSightings`) and is left alone.
+  Then a leaked-price mutation on a staff page, red at the new assertion, restored by byte copy
+  and `sha256sum -c`; then the six files once. Port 3000 was free at the start. No commit.
+- 2026-09-28 19:41, implementer: price-token helper, unit test (56 cases, green; 6 helper
+  mutations each red, restored, sha OK) and the six assertion edits are in. typecheck 0, lint 0,
+  unit 84 files / 1225. Now the e2e breach mutation: a probe in `count-service.ts` rendering the
+  first price as a bare number on the stock-entry count page and both stock-takes pages. Byte
+  copies and `SHA256SUMS` in `scratchpad/price-token-mut/breach/`; restore by copy before
+  anything else if this session dies.
+- 2026-09-28 19:46, implementer: breach run 1 (probe on three staff pages) -> 6 of 6 price tests
+  red, the five edited ones at their new `bodyShowsPrice` lines. Breach run 2 (probe outside
+  `stock-takes-body`) -> takes-count red at the sixth edited line, the `html` one. Both
+  restored from copies, `sha256sum -c` OK x4, `git status` clean for `src/app` and
+  `src/server/counts`, port 3000 has no listener. Next: the six files once on the restored build.
+- 2026-09-28 19:59, implementer: harness fix **complete**. Six files once on the restored build:
+  `183 passed (6.6m)`, 67 of them the six files and 116 the `chromium` dependency project, 0
+  failed. Dev census unchanged; users 1, lock rows 1, auth events 1, counts 0. Port 3000 free.
+  Report: `progress/impl_deploy.md` -> `## Harness fix: price as a number token`. Not committed.
+- A1 gate fix (2026-09-28): AC-5's five real dry runs hit the 12 s kill switch under the full
+  gate. Now one real `npm run build:vercel -- --dry-run` (production) plus four runs of the same
+  script via `node --import tsx`, in a sequential block; the kill switch is unchanged. Full unit
+  3x in a row: 1225/1225 each, slowest 4.0 s (npm case). Beside a concurrent suite: slowest 4.4 s.
+- **Harness fix: price as a number token** (`progress/impl_deploy.md`). Five specs moved to
+  `bodyShowsPrice`, and 56 unit tests cover the helper. A breach run put a bare price on each page,
+  and all six price checks went red. `stock-entry-quantities.spec.ts` was left alone: it already
+  has its own self-tested boundary search. Its `.` rule differs slightly from the shared helper;
+  unifying the two is deferred.
+- **Gate fix: AC-5's dry-run tests under load.** Three timed out at the 12 s kill switch when
+  the suite's workers saturated the CPU. The fix redesigned the test rather than raising the
+  budget: one real `npm run`, and the rest through `node --import tsx`, run one after another.
+  Three full unit runs in a row passed 1225/1225, with the slowest at 4.0 s.
+- **Final gate for the repairs** (`scratchpad/gate16rep4.txt`): `init` exit 0 in 24.6 min, unit
+  1225, e2e 116 + 139 with 0 flaky and 0 failed, db 572, database checks executed, 0 connection
+  errors, dev census identical. The run before it (`gate16rep3.txt`) **skipped** its database
+  checks after a probe blip and was not accepted. All three URLs were probed reachable before the
+  re-run.

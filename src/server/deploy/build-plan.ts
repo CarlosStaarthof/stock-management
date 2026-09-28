@@ -87,13 +87,22 @@ const AUTH_SECRET_MIN_LENGTH = 32;
 const POOLER_MARK = "-pooler";
 
 /** The host of a connection string, or `null` when the value is not a URL with a host. */
-function hostOf(value: string): string | null {
+export function hostOf(value: string): string | null {
   try {
     const host = new URL(value).hostname;
     return host === "" ? null : host.toLowerCase();
   } catch {
     return null;
   }
+}
+
+/**
+ * The host rule: a pooled and an unpooled host name one database endpoint when they are
+ * equal once `-pooler` is removed. The production build checks the two settings with it, and
+ * so does a restore (`target-schema.ts`), so the two can never disagree about it.
+ */
+export function sameEndpoint(pooledHost: string, directHost: string): boolean {
+  return pooledHost.replaceAll(POOLER_MARK, "") === directHost.replaceAll(POOLER_MARK, "");
 }
 
 /** `value` is exactly an `https:` origin: no path, query, fragment or user-info. */
@@ -140,11 +149,7 @@ export function productionSettingsProblems(env: Env): string[] {
   if (directHost !== null && directHost.includes(POOLER_MARK)) {
     problems.push(`DIRECT_URL must be the unpooled connection: its host must not contain ${POOLER_MARK}.`);
   }
-  if (
-    pooledHost !== null &&
-    directHost !== null &&
-    pooledHost.replaceAll(POOLER_MARK, "") !== directHost.replaceAll(POOLER_MARK, "")
-  ) {
+  if (pooledHost !== null && directHost !== null && !sameEndpoint(pooledHost, directHost)) {
     problems.push(
       `DATABASE_URL and DIRECT_URL must name the same database: their hosts differ once ${POOLER_MARK} is removed.`,
     );

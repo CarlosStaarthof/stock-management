@@ -401,9 +401,59 @@ describe("016 AC-5: the build stops at the first failed step", () => {
   });
 });
 
-describe("016 AC-5: npm run build:vercel -- --dry-run, for real, under each VERCEL_ENV of AC-2", () => {
+/**
+ * AC-5's dry run, for real, under each VERCEL_ENV of AC-2.
+ *
+ * Why it is built this way. The first version spawned `npm run build:vercel -- --dry-run` five
+ * times. On Windows each one starts a shell, npm, the `tsx` CLI and the Node it launches, about
+ * 1.8 s on a quiet machine. Under the full gate, the unit suite's parallel workers saturate the
+ * CPU, and three of those five start-ups ran into the kill switch at 12 s. The kill switch is not
+ * raised: it exists so that a broken dry run cannot start a real `next build` under a blocked
+ * worker. The cost is cut instead:
+ *
+ * - ONE case goes through the literal `npm run build:vercel -- --dry-run`. That proves the npm
+ *   entry end to end, and it takes production, the plan with the most steps.
+ * - The other four run the SAME script by the same code path, `scripts/vercel-build.ts` under
+ *   tsx's loader: `node --import tsx scripts/vercel-build.ts --dry-run`. That is one process,
+ *   about 0.55 s on a quiet machine. `deploy-config.test.ts` pins `build:vercel` to exactly
+ *   `tsx scripts/vercel-build.ts`, so the two entries cannot drift apart.
+ * - The describe block is sequential, so no two of these spawns ever overlap each other.
+ *
+ * The plan for every environment is also proved in-process, by `vercelBuild` above; these runs
+ * prove the wiring of the real entry.
+ */
+describe.sequential("016 AC-5: npm run build:vercel -- --dry-run, for real, under each VERCEL_ENV of AC-2", () => {
+  // The kill switch, for a broken dry run only. Not a budget, and never raised.
+  const KILL_SWITCH_MS = 12_000;
+
+  function dryRunEnv(vercelEnv: string | undefined): NodeJS.ProcessEnv {
+    const env: NodeJS.ProcessEnv = { ...process.env, VERCEL: "1", VERCEL_ENV: vercelEnv };
+    if (vercelEnv === undefined) delete env.VERCEL_ENV;
+    for (const name of DATABASE_SETTINGS) delete env[name];
+    return env;
+  }
+
+  function expectDryRun(result: ReturnType<typeof spawnSync>, plan: string): void {
+    const stdout = String(result.stdout ?? "");
+    expect(result.error, "the run was not killed and did start").toBeUndefined();
+    expect(result.status).toBe(0);
+    expect(stdout).toContain(`[vercel-build] plan: ${plan}\n`);
+    expect(stdout).toContain("[vercel-build] dry run: nothing was run.");
+    expect(stdout).not.toMatch(/ ok$/m);
+  }
+
+  it("AC-5: VERCEL_ENV production, through npm run build:vercel -- --dry-run itself, prints its plan and runs nothing", () => {
+    const result = spawnSync("npm run --silent build:vercel -- --dry-run", {
+      shell: true,
+      encoding: "utf8",
+      env: { ...dryRunEnv("production"), npm_config_update_notifier: "false" },
+      timeout: KILL_SWITCH_MS,
+    });
+
+    expectDryRun(result, "check-settings, next-build, migrate-deploy, seed-if-empty, census");
+  });
+
   const cases: [string | undefined, string][] = [
-    ["production", "check-settings, next-build, migrate-deploy, seed-if-empty, census"],
     ["preview", "next-build"],
     ["development", "next-build"],
     ["staging", "next-build"],
@@ -411,23 +461,14 @@ describe("016 AC-5: npm run build:vercel -- --dry-run, for real, under each VERC
   ];
 
   for (const [vercelEnv, plan] of cases) {
-    it(`AC-5: VERCEL_ENV ${vercelEnv ?? "unset"} prints its plan and runs nothing`, () => {
-      const env: NodeJS.ProcessEnv = { ...process.env, VERCEL: "1", VERCEL_ENV: vercelEnv };
-      if (vercelEnv === undefined) delete env.VERCEL_ENV;
-      for (const name of DATABASE_SETTINGS) delete env[name];
-
-      // The kill switch is for a broken dry run, which would otherwise start a real build.
-      const result = spawnSync("npm run --silent build:vercel -- --dry-run", {
-        shell: true,
+    it(`AC-5: VERCEL_ENV ${vercelEnv ?? "unset"}, through the same script under tsx's loader, prints its plan and runs nothing`, () => {
+      const result = spawnSync(process.execPath, ["--import", "tsx", "scripts/vercel-build.ts", "--dry-run"], {
         encoding: "utf8",
-        env,
-        timeout: 12_000,
+        env: dryRunEnv(vercelEnv),
+        timeout: KILL_SWITCH_MS,
       });
 
-      expect(result.status).toBe(0);
-      expect(result.stdout).toContain(`[vercel-build] plan: ${plan}\n`);
-      expect(result.stdout).toContain("[vercel-build] dry run: nothing was run.");
-      expect(result.stdout).not.toMatch(/ ok$/m);
+      expectDryRun(result, plan);
     });
   }
 });

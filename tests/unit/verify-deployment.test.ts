@@ -7,6 +7,7 @@ import type { AddressInfo } from "node:net";
 import { createRequire } from "node:module";
 import { dirname, join, posix } from "node:path";
 
+import type { Browser } from "@playwright/test";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { PROTECTED_PATHS } from "@/lib/auth-config";
@@ -14,6 +15,7 @@ import { PROTECTED_PATHS } from "@/lib/auth-config";
 import { anonymousCheckNames, functionRegion } from "../../scripts/verify/anonymous-pass";
 import { main, parseArguments } from "../../scripts/verify/cli";
 import { cookieFlags } from "../../scripts/verify/common";
+import type { CheckResult } from "../../scripts/verify/common";
 import {
   assertSessionSupplierAllowed,
   isCountPage,
@@ -800,6 +802,245 @@ describe("016 AC-15: the signed-in pass, the parts that need no browser", () => 
     expect(entry).toContain("chromium.launch({ headless: false })");
     expect(readFileSync("scripts/verify/cli.ts", "utf8")).toContain("await browser.close()");
     expect(readFileSync("scripts/verify/signed-in-pass.ts", "utf8")).toContain("browser.newContext()");
+  });
+});
+
+/* ------------------------------------------ AC-15: the fail-closed branches (review R3) */
+
+/**
+ * A stand-in for the browser the signed-in pass drives: one context, one page, and a session
+ * that answers `/api/session` with `role` until the page's sign-out control is clicked. Each
+ * navigation emits the responses configured for its path, the way a page emits them, and the
+ * stand-in records what the pass did: every navigation, every click, every cookie read and
+ * every repeated request. Nothing here reaches a network, a browser or a database.
+ */
+type StandInResponse = {
+  path: string;
+  type: string;
+  body?: string;
+  /** The browser no longer holds the body, as for a prefetch a navigation cancelled. */
+  dropped?: boolean;
+  /** When `dropped`: whether asking for it again, in the same session, fails too. */
+  readAgainFails?: boolean;
+};
+
+type StandIn = {
+  browser: Browser;
+  navigations: string[];
+  clicks: string[];
+  cookieReads: number;
+  askedAgain: string[];
+  /** The header names each repeated request carried. */
+  askedAgainWith: string[][];
+};
+
+function standInBrowser(options: {
+  role?: unknown;
+  responses?: readonly StandInResponse[];
+  /** Where a navigation to `path` lands; by default, on `path` itself. */
+  landOn?: (path: string) => string;
+}): StandIn {
+  const origin = "http://localhost:3000";
+  const record: StandIn = { browser: undefined as unknown as Browser, navigations: [], clicks: [], cookieReads: 0, askedAgain: [], askedAgainWith: [] };
+  const listeners: ((response: unknown) => void)[] = [];
+  let current = `${origin}/`;
+  let signedIn = true;
+
+  const responseFor = (entry: StandInResponse): unknown => ({
+    url: () => `${origin}${entry.path}`,
+    status: () => 200,
+    headers: () => ({ "content-type": entry.type }),
+    text: async () => {
+      if (entry.dropped === true) throw new Error("No resource with given identifier found");
+      return entry.body ?? "";
+    },
+    request: () => ({
+      method: () => "GET",
+      url: () => `${origin}${entry.path}`,
+      allHeaders: async () => ({ rsc: "1", cookie: "never-copied" }),
+    }),
+  });
+
+  const page = {
+    on: (_event: string, listener: (response: unknown) => void) => {
+      listeners.push(listener);
+    },
+    off: (_event: string, listener: (response: unknown) => void) => {
+      listeners.splice(listeners.indexOf(listener), 1);
+    },
+    goto: async (href: string) => {
+      const path = new URL(href).pathname;
+      record.navigations.push(path);
+      current = `${origin}${options.landOn?.(path) ?? path}`;
+      for (const entry of options.responses ?? []) {
+        if (entry.path === path) for (const listener of [...listeners]) listener(responseFor(entry));
+      }
+      return null;
+    },
+    waitForLoadState: async () => undefined,
+    url: () => current,
+    $$eval: async () => [] as string[],
+    getByTestId: (id: string) => ({
+      click: async () => {
+        record.clicks.push(id);
+        signedIn = false;
+      },
+    }),
+    waitForURL: async () => undefined,
+    context: () => context,
+  };
+
+  const context = {
+    newPage: async () => page,
+    cookies: async () => {
+      record.cookieReads += 1;
+      return [];
+    },
+    close: async () => undefined,
+    request: {
+      get: async (href: string, init?: { headers?: Record<string, string> }) => {
+        const path = new URL(href).pathname;
+        if (path === "/api/session") {
+          return {
+            status: () => (signedIn ? 200 : 401),
+            json: async () => ({ role: options.role }),
+            dispose: async () => undefined,
+          };
+        }
+        record.askedAgain.push(path);
+        record.askedAgainWith.push(Object.keys(init?.headers ?? {}));
+        const entry = (options.responses ?? []).find((candidate) => candidate.path === path);
+        if (entry === undefined || entry.readAgainFails === true) throw new Error("request failed");
+        return { text: async () => entry.body ?? "", dispose: async () => undefined };
+      },
+    },
+  };
+
+  record.browser = { newContext: async () => context } as unknown as Browser;
+  return record;
+}
+
+async function runStandIn(standIn: StandIn): Promise<{ results: CheckResult[]; lines: string[] }> {
+  const lines: string[] = [];
+  const results = await signedInPass({
+    origin: new URL("http://localhost:3000"),
+    browser: standIn.browser,
+    print: (line) => {
+      lines.push(line);
+    },
+    signInWaitMs: 2_000,
+  });
+  return { results, lines };
+}
+
+function resultOf(results: readonly CheckResult[], name: string): CheckResult | undefined {
+  return results.find((result) => result.name === name);
+}
+
+const CLEAN_PAGE = { path: "/stock-takes", type: "text/html; charset=utf-8", body: "<main>Item, 3, tonne</main>" };
+
+describe("016 AC-15: the signed-in pass fails closed (review R3), on a stand-in browser", () => {
+  it("AC-15 (non-vacuity): with a YARD_STAFF session and a clean page, staff-no-money passes on the stand-in", async () => {
+    const standIn = standInBrowser({ role: "YARD_STAFF", responses: [CLEAN_PAGE] });
+
+    const { results, lines } = await runStandIn(standIn);
+
+    expect(resultOf(results, "staff-no-money")).toEqual({ name: "staff-no-money", passed: true });
+    expect(lines).toContain(
+      "[verify] staff-no-money: scanned 1 responses (0 asked for again); opened 0 linked pages, 0 of them count pages",
+    );
+    expect(results.map((result) => result.name)).toEqual([
+      "staff-role",
+      "device-cookie-secure",
+      "session-cookie-secure",
+      "staff-no-money",
+      "signed-out",
+    ]);
+  });
+
+  it("AC-15: staff-no-money FAILs when no response was scanned", async () => {
+    // Every page loads, none lands on the sign-in page, and nothing carries money: the only
+    // thing wrong is that the scan saw nothing, so it cannot say the session was sent none.
+    const standIn = standInBrowser({ role: "YARD_STAFF", responses: [] });
+
+    const { results } = await runStandIn(standIn);
+
+    expect(resultOf(results, "staff-no-money")).toEqual({
+      name: "staff-no-money",
+      passed: false,
+      reason: "no response was scanned",
+    });
+    expect(standIn.navigations).toEqual(expect.arrayContaining(["/stock-entry", "/stock-takes", "/analysis", "/api/users"]));
+  });
+
+  it("AC-15: staff-no-money FAILs when a start page lands on /sign-in, even with a clean scan", async () => {
+    const standIn = standInBrowser({
+      role: "YARD_STAFF",
+      responses: [CLEAN_PAGE],
+      landOn: (path) => (path === "/stock-entry" ? "/sign-in" : path),
+    });
+
+    const { results } = await runStandIn(standIn);
+
+    expect(resultOf(results, "staff-no-money")).toEqual({
+      name: "staff-no-money",
+      passed: false,
+      reason: "/stock-entry: answered with the sign-in page",
+    });
+  });
+
+  it("AC-15: staff-no-money FAILs when a body cannot be read even when asked for again", async () => {
+    const standIn = standInBrowser({
+      role: "YARD_STAFF",
+      responses: [
+        CLEAN_PAGE,
+        { path: "/stock-entry", type: "text/x-component", body: "clean", dropped: true, readAgainFails: true },
+      ],
+    });
+
+    const { results, lines } = await runStandIn(standIn);
+
+    expect(standIn.askedAgain).toEqual(["/stock-entry"]);
+    expect(resultOf(results, "staff-no-money")).toEqual({
+      name: "staff-no-money",
+      passed: false,
+      reason: "money found in /stock-entry (body unreadable)",
+    });
+    expect(lines.some((line) => line.includes("(0 asked for again)"))).toBe(true);
+  });
+
+  it("AC-15: a dropped body that reads on the second asking is scanned, not failed, and is scanned for money", async () => {
+    const dropped = { path: "/stock-entry", type: "text/x-component", dropped: true };
+
+    const cleanStandIn = standInBrowser({ role: "YARD_STAFF", responses: [{ ...dropped, body: "clean" }] });
+    const clean = { ...(await runStandIn(cleanStandIn)), standIn: cleanStandIn };
+    const priced = await runStandIn(
+      standInBrowser({ role: "YARD_STAFF", responses: [{ ...dropped, body: "€ 4.20" }] }),
+    );
+
+    expect(resultOf(clean.results, "staff-no-money")?.passed).toBe(true);
+    // Asked again with the browser's own headers, but never its cookie header: the session
+    // travels in the context, as it did the first time.
+    expect(clean.standIn.askedAgainWith).toEqual([["rsc"]]);
+    expect(clean.lines.some((line) => line.includes("scanned 1 responses (1 asked for again)"))).toBe(true);
+    expect(resultOf(priced.results, "staff-no-money")?.reason).toBe("money found in /stock-entry (euro-sign)");
+  });
+
+  it("AC-15: a session whose role is not YARD_STAFF fails staff-role, clicks the sign-out control, and runs no later check", async () => {
+    for (const role of ["ADMIN", undefined]) {
+      const standIn = standInBrowser({ role, responses: [CLEAN_PAGE] });
+
+      const { results } = await runStandIn(standIn);
+
+      expect(results, String(role)).toEqual([
+        { name: "staff-role", passed: false, reason: "/api/session: the session's role is not YARD_STAFF" },
+      ]);
+      expect(standIn.clicks, String(role)).toEqual(["sign-out"]);
+      // No cookie was read and no staff page was opened: the only navigations are the sign-in
+      // page the pass opens, and the page whose sign-out control it clicks.
+      expect(standIn.cookieReads, String(role)).toBe(0);
+      expect(standIn.navigations, String(role)).toEqual(["/sign-in", "/stock-entry"]);
+    }
   });
 });
 

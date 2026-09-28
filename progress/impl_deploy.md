@@ -668,3 +668,466 @@ $ npm run db:census   (development, read-only; before and after, identical)
   its command line, and stopped it.
 - **Cost.** The token cost of this task cannot be measured from inside the agent; read it from
   the transcript.
+
+### Review repairs (A2 side)
+
+**Scope:** R3 of `progress/review_deploy.md` → *Required changes*, as ruled in the spec → *The
+Phase A review's findings, ruled by the coordinator*. R1, R2 and R4 and `docs/operations.md`
+belong to another agent and were not touched.
+**Status:** complete. Only tests changed; the signed-in pass is byte-identical to the reviewed
+version, so no e2e test was run, as the brief says.
+
+#### Work log
+
+Each line records a step that was finished and verified.
+
+- 2026-09-28: read R3, the ruling, and the reviewer's `scratchpad/probe16.ts`.
+- I chose a stand-in browser over exporting the verdict, so `scripts/verify/signed-in-pass.ts`
+  is unchanged and the AC-15 e2e test cannot be affected. `standInBrowser` in
+  `tests/unit/verify-deployment.test.ts` provides one context and one page, plus a session that
+  answers `/api/session` with a given role until the sign-out control is clicked. Each
+  navigation emits the responses configured for its path. It records every navigation, click,
+  cookie read and repeated request, together with the header names that request carried. It
+  reaches no network, browser or database.
+- Six tests added under "016 AC-15: the signed-in pass fails closed (review R3), on a stand-in
+  browser":
+  - *non-vacuity:* with a `YARD_STAFF` session and a clean page, `staff-no-money` passes. It
+    prints "scanned 1 responses (0 asked for again)", and all five checks run in order.
+  - `staff-no-money` FAILs with "no response was scanned" when every page loads, none lands on
+    sign-in, and nothing is emitted (`signed-in-pass.ts:292`).
+  - `staff-no-money` FAILs with "/stock-entry: answered with the sign-in page" when
+    `/stock-entry` lands on `/sign-in`, even though the scan was clean (`:291`).
+  - `staff-no-money` FAILs with "money found in /stock-entry (body unreadable)" when the
+    browser dropped a body and asking again fails too. The body is asked for once, and the
+    count of re-read bodies stays 0 (`:202-205`).
+  - The complement: a dropped body that reads on the second asking is scanned, not failed. The
+    repeated request carried the browser's headers but not its cookie header, and a euro sign
+    in the re-read body still fails, as `euro-sign`.
+  - With a session whose role is `ADMIN`, or has no role at all, the results are exactly one
+    `staff-role` FAIL. The sign-out control was clicked once. No cookie was read. The only
+    navigations are `/sign-in` and the `/stock-entry` the sign-out uses, so no later check ran
+    (`:336-345`).
+- `verify-deployment` 48 of 48 (it was 42).
+- **Mutations**, each on a byte copy of `scripts/verify/signed-in-pass.ts` (sha prefix
+  `9eb85b2fd6025afa`, copy and `R3.SHA256` in `scratchpad/a2-mut/`):
+  - **R3-M1: line 292 deleted** (`if (scan.responses === 0) return "no response was scanned";`).
+    "staff-no-money FAILs when no response was scanned" went red, 1 of 48. Restored from the
+    copy: `sha256sum -c` OK.
+  - **R3-M2: the role gate deleted** (`:342-345`, the `if (!role.passed) { … return results; }`
+    block). "a session whose role is not YARD_STAFF fails staff-role, clicks the sign-out
+    control, and runs no later check" went red, 1 of 48. Restored from the copy: `sha256sum -c`
+    OK.
+- `typecheck` 0, `lint` 0, **`test:unit` 81 files, 1161 of 1161**. The count includes the other
+  agent's additions at the time of the run.
+
+#### Files modified (this step)
+
+- `tests/unit/verify-deployment.test.ts`: `standInBrowser`, `runStandIn`, and the six tests
+  above. It also adds type-only imports of `Browser` and `CheckResult`.
+
+#### Verification output
+
+```
+$ npm run typecheck        -> exit 0
+$ npm run lint             -> exit 0
+$ npx vitest run tests/unit/verify-deployment.test.ts
+      Tests  48 passed (48)
+$ npm run test:unit
+ Test Files  81 passed (81)
+      Tests  1161 passed (1161)
+$ sha256sum -c R3.SHA256   (after each mutation)
+scripts/verify/signed-in-pass.ts: OK
+```
+
+### Review repairs (A1 side)
+
+This section covers the A1-side items of `progress/review_deploy.md`, as the coordinator ruled
+them in the spec → *The Phase A review's findings, ruled by the coordinator*: R1, R2, R4 and
+Observations 1, 2 and 4. I did not touch R3's files (`tests/unit/verify-deployment.test.ts`,
+`scripts/verify/**`).
+
+#### Work log
+
+Each line records a step that was finished and verified.
+
+- **R1.** `restore.db.test.ts` has a new test: "R1: after a restore, an updated, a deleted and
+  an extra row make exactly their three tables not identical, with the expected numbers". It
+  restores AC-9's fixture into a throwaway schema, then writes straight into the target:
+  - it changes one `AuthEvent.bucket`;
+  - it deletes the `AccountLock` row;
+  - it inserts one extra `Supplier`.
+
+  `compareWithFile` then finds exactly `AccountLock`, `AuthEvent` and `Supplier` not identical:
+  - `AuthEvent`: restored n, identical n − 1;
+  - `AccountLock`: expected 1, restored 0, identical 0;
+  - `Supplier`: restored n + 1, identical n.
+
+  The other nine tables are identical, 12 in all.
+- **R2:**
+  - `export.db.test.ts`: `exportDatabase` rejects with `ConflictError` for a throwaway schema
+    with no `_prisma_migrations`, and for a table with no primary key.
+  - `db:export`, pointed at the first schema through `?schema=`, exits non-zero, prints no
+    `wrote` line, and leaves no file.
+  - The file now drops the throwaway schemas it creates in `afterEach`.
+  - A new unit file, `src/server/deploy/restore.test.ts`, covers `foreignKeyOrder`: parents
+    before children for the schema's own ten foreign keys, given children first; a parent
+    outside the list holds nothing back; and a two-table cycle throws `ConflictError` naming
+    both tables.
+- **R4.** The launcher's first line now depends on whether stdin is a terminal:
+  - `TERMINAL_NOTICE` on a terminal;
+  - otherwise `NOT_A_TERMINAL_NOTICE`: input is not a terminal, answers are read one per line
+    and may be visible, and the person should stop with Ctrl+C and use PowerShell or Windows
+    Terminal.
+
+  What the launcher reads is unchanged. `operator-production.test.ts` gains three tests: the
+  terminal stand-in, the piped input (which still reads one answer per line), and the real
+  process with piped stdin. `docs/operations.md` → *Operator commands* gains one sentence that
+  names PowerShell or Windows Terminal and says what Git Bash's default mintty does.
+- **Observation 1.** A comment above the `importWorkbook` call in `item-master-seed.ts` gives
+  the review's four reasons why the two-transaction gap is accepted.
+- **Observation 2:**
+  - `build-plan.ts` now exports `hostOf` and `sameEndpoint`, the build's host rule, and
+    `productionSettingsProblems` uses it unchanged.
+  - `target-schema.ts` → `restoreSchema` now refuses, before connecting, unless both strings
+    name the same host once `-pooler` is removed, the same database and the same schema. The
+    messages name neither a host nor a database.
+  - A new unit file, `src/server/deploy/target-schema.test.ts`, has five tests. It accepts the
+    pooled plus unpooled pair of one endpoint, and refuses a different host, a different
+    database or a different schema, with every part of both strings asserted absent from the
+    message.
+  - `restore.db.test.ts` gains two refusals made before connecting, for another database on
+    the same host and for another host. In both, the target schema holds no table afterwards.
+  - Every existing restore test still passes.
+- **Observation 4.** `docs/operations.md` has two changes:
+  - Go-live step 12 asks for only the lines that begin `[vercel-build]`, `[seed]` or
+    `[db:census]`, never Prisma's datasource line, which names the host.
+  - R3, a failed migration, asks for the failing statement, the error code and the
+    `[vercel-build]` lines, and for `migrate:status`'s status lines, again without the
+    datasource line.
+
+#### Mutations
+
+Byte copies are in `scratchpad/a1-review/`. After each run the file was restored from its copy,
+and `sha256sum -c` gave OK.
+
+| # | Mutation | File | Result |
+|---|---|---|---|
+| MR1 | `isIdentical` forced `true` | `restore.ts` | The R1 test went red: `expected [] to deeply equal [ 'AccountLock', 'AuthEvent', …(1) ]`. |
+| MR4 | The launcher prints `TERMINAL_NOTICE` whatever the input | `operator-production.mjs` | 2 R4 tests went red: piped input, and the real process. |
+| MO2 | The restore's host and database checks forced to pass | `target-schema.ts` | Both unit refusals went red, and both database refusals went red. |
+
+**MO2 found something worse than the review traced.** With the rule mutated away, a
+`DIRECT_URL` naming another database on the same host did not stop at `restoreRows`: first,
+**`prisma migrate deploy` created that database and migrated it.** On the test branch this left
+one stray database.
+- I dropped it with a throwaway `*.db.test.ts`, which found 1, dropped 1 and left 0. I then
+  deleted that file.
+- The test now records any database it names and drops it in `afterEach`. I re-ran MO2 to
+  prove it: both tests red, then a throwaway check found 0 such databases left, and that check
+  was deleted too.
+
+So the slip the rule now refuses could have created a database on the production branch. It
+could not have written a row there.
+
+#### Files modified (this step)
+
+- `scripts/operator-production.mjs`: the two notices, chosen by input mode.
+- `src/server/deploy/build-plan.ts`: exports `hostOf` and `sameEndpoint`, and uses the latter.
+- `src/server/deploy/target-schema.ts`: the host and database rule in `restoreSchema`.
+- `src/server/items/item-master-seed.ts`: the Observation 1 comment.
+- `docs/operations.md`: *Operator commands* gains the terminal sentence; go-live step 12 and
+  R3 say which lines to relay.
+- `src/server/deploy/export.db.test.ts`, `src/server/deploy/restore.db.test.ts` and
+  `tests/unit/operator-production.test.ts`: the tests above.
+
+#### Files created (this step)
+
+- `src/server/deploy/restore.test.ts`: `foreignKeyOrder` (R2).
+- `src/server/deploy/target-schema.test.ts`: the one-target rule (Observation 2).
+
+#### Verification output
+
+```
+$ npm run typecheck        -> exit 0
+$ npm run lint             -> exit 0
+$ npm run test:unit
+ Test Files  83 passed (83)
+      Tests  1169 passed (1169)
+$ npm run test:db -- src/server/deploy/export.db.test.ts
+ ✓ src/server/deploy/export.db.test.ts (13 tests) 55520ms
+$ npm run test:db -- src/server/deploy/restore.db.test.ts   (final code)
+ ✓ src/server/deploy/restore.db.test.ts (14 tests) 134550ms
+```
+
+The unit count includes whatever the R3 agent had in the tree when I ran it: 11 of the new
+tests are mine, and the rest are R3's. The database files took about twice as long as this
+morning, on every test alike. No run failed or timed out.
+
+#### For the coordinator: the development census has changed, and not by me
+
+- **Development census now:** 2 locations, 10 suppliers, 19 item types, 140 items with 15
+  needing review, 129 prices, 152 yard links, profiles `ADMIN ACTIVE 1`, **stock counts
+  `none`, count lines 0**, 3 migrations, pins 1 of 1.
+- **At my last check, after ruling A1-F1:** stock counts `DRAFT 1` and 82 count lines.
+  **The owner's draft count and its 82 lines are no longer in the development database.**
+- **What I ran against development, this step and the one before:** the read-only
+  `npm run db:census` only.
+  - Every database test ran through `npm run test:db`, which binds both strings to the
+    **test** database. Each child I started was given those strings, or a `.invalid` host.
+  - The two throwaway probes ran on the test branch, where `pg_database` cannot see
+    development's databases.
+  - The launcher's real-process tests all refuse before running any command.
+- **Who else was active:** the owner's `next dev` on port 3000 is running against
+  development, and the R3 agent was working at the same time.
+- **I have not looked further.** Anything beyond the census would be reading development's
+  rows. Please check with the owner whether they discarded the draft.
+
+## Harness fix: price as a number token
+
+**Brief:** `scratchpad/fix-price-token.md`, the coordinator's ruling of 2026-09-28. This is not a
+#16 criterion. It repairs shipped e2e tests of #8, #9 and #10.
+**Status:** complete. Nothing is committed: the coordinator commits it as `fix(harness)`.
+
+### What the fix does
+
+`bodyShowsPrice(body, price)` now sits beside `anyUnitPriceText` in
+`tests/e2e/support/stock-entry.ts`. It is `true` only when the whole price text appears with no
+ASCII letter or digit immediately before or after it. A decimal price's `.` is escaped, so the
+whole text is one token, and the rule applies at both of its ends. The six
+`expect(<body>, <message>).not.toContain(<price>)` assertions are now
+`expect(bodyShowsPrice(<body>, <price>), <same message>).toBe(false)`.
+
+| Spec | Line | Body searched | Message (unchanged) |
+|---|---|---|---|
+| `tests/e2e/stock-entry-access.spec.ts` | 189 | raw response | `` `${url} carries a real price` `` |
+| `tests/e2e/stock-entry-filters.spec.ts` | 413 | raw response | `` `${url} carries a real price` `` |
+| `tests/e2e/stock-entry-submit.spec.ts` | 456 | raw response | `url` |
+| `tests/e2e/stock-takes-count.spec.ts` | 506 | `stock-takes-body`, both roles | `url` |
+| `tests/e2e/stock-takes-count.spec.ts` | 514 | the admin's whole `page.content()` | `url` |
+| `tests/e2e/stock-takes-calendar.spec.ts` | 389 | `stock-takes-body`, both roles | `url` |
+
+No other `expect(` changed. In the spec diff, 12 lines with an `expect(` changed: 6 removed and
+6 added. No changed line mentions the euro sign, `unitPrice` or `No price`. The only other edit
+in each file adds `bodyShowsPrice` to its existing import list.
+
+### A gap in the brief, settled by its own rules
+
+The brief lists six specs, including `stock-entry-quantities.spec.ts:613`, and says to use the
+helper in all six. **That spec has no `not.toContain(<price>)` to change.** Its AC-17 test already
+has its own boundary search, `priceSightings`, over `applicationMarkup(...)`, which strips
+scripts, styles, `$ACTION` inputs, `/_next/` URLs and `class`/`id`. It also self-tests against a
+server-action key. The six `not.toContain(<price>)` assertions are in the other five files, two
+of them in `stock-takes-count`. The Rules section says to change only those six and no other
+`expect(`, so I **left `stock-entry-quantities.spec.ts` byte-identical**. It is still one of the
+six files in the green run below.
+
+**For the coordinator to rule on, not acted on:** that spec's local rule is not the one in the
+ruling. `priceSightings` also counts `.` as a character that breaks the boundary. So a price
+followed by `.00` with no euro sign is not a sighting there, although `bodyShowsPrice` finds it.
+The euro, `unitPrice` and `No price` assertions in the same test still cover the shapes they
+name. Bringing the spec onto the shared helper would change `expect(`s that this brief excluded.
+
+### Files created
+
+- `tests/unit/price-token.test.ts`: 56 tests for the helper. Its import of the support module
+  opens no database connection, because `db` is a lazy proxy.
+
+### Files modified
+
+- `tests/e2e/support/stock-entry.ts`: `bodyShowsPrice`, with the reason for it in its doc comment.
+- `tests/e2e/stock-entry-access.spec.ts`, `stock-entry-filters.spec.ts`,
+  `stock-entry-submit.spec.ts`, `stock-takes-count.spec.ts` and `stock-takes-calendar.spec.ts`:
+  the import and the assertions in the table.
+- `progress/current.md`: work-log lines appended at the end. Nobody else's lines were touched.
+
+### Proof 1: the unit test
+
+Every case runs against three prices:
+- the literal the brief names;
+- an integer drawn at runtime, from 100 to 99 999;
+- a decimal drawn at runtime.
+
+Each body is built around the price itself. A letter sits within the first two and the last two
+characters of every identifier, so the expected result holds whatever digits are drawn.
+
+- **Still caught, 10 shapes × 3 prices:**
+  - `€<p>.00`, `€ <p>`, `"<p>"`, `"unitPrice":"<p>"`, `><p><` and `<p>,00`;
+  - the body that is only the price, the price at the very start, and the price at the very end;
+  - a real sighting that comes after an identifier also holding the digits.
+- **No longer tripped, 6 shapes × 3 prices:**
+  - a `$ACTION_KEY` hidden input whose value is `kc<p>aba…`;
+  - a test name `…5f41bdc1<p>dade2`;
+  - a count link `cmx<p>…`;
+  - `1<p>` and `<p>5`;
+  - letters on both sides.
+- **No match at all, 3 tests:** a body without the digits, once per price.
+- **A decimal is one token, 4 tests:**
+  - it is caught after `€` and before a space;
+  - its `.` is literal: `<whole>x<fraction>` and `<whole>0<fraction>` are not found;
+  - the boundary holds at both ends, against a digit and against a letter;
+  - its whole part alone is not found.
+- **An empty price, 1 test:** it throws instead of matching everywhere.
+
+**Mutations of the helper.** Each was made on a byte copy and restored, and the final sha256
+matched the copy, `f194ec2a…820b`.
+
+| # | Mutation | Result |
+|---|---|---|
+| U1 | Plain `body.includes(price)`, the old behaviour | 19 red: every "no longer tripped" case, and the decimal's both-ends test |
+| U2 | `.` counted as a boundary-breaking character, the `priceSightings` rule | 3 red: `€<p>.00` for all three prices |
+| U3 | The price not escaped, so `.` matches any character | 1 red: "reads its `.` literally" |
+| U4 | No trailing boundary | 4 red: `<p>5` ×3, and the decimal's both-ends test |
+| U5 | No leading boundary | 4 red: `1<p>` ×3, and the decimal's both-ends test |
+| U6 | Empty-price guard deleted | 1 red: the empty-price test |
+
+### Proof 2: the guard still bites in e2e
+
+I made byte copies of four files, with `SHA256SUMS`, in `scratchpad/price-token-mut/breach/`. I
+appended a probe, `breachPriceText()`, to `src/server/counts/count-service.ts`. It runs the same
+query as `anyUnitPriceText()`, so it renders the price the specs look for. The breach renders it
+as a **bare number with no euro sign**, in a `<p>`, so every euro, `unitPrice` and `No price`
+assertion before it still passes, and the first red is the price assertion itself.
+
+- **B1:** the probe went into the header of `src/app/stock-entry/counts/[id]/page.tsx`. It also
+  went in as the first child of `stock-takes-body` on `src/app/stock-takes/counts/[id]/page.tsx`
+  and on `src/app/stock-takes/page.tsx`. After a rebuild, I ran the six price tests
+  (`--project=chromium-stock-entry --no-deps -g …`): **6 of 6 red.**
+  - Five failed at the new lines: access 189, filters 413, submit 456, takes-count 506 and
+    calendar 389.
+  - Each failure was `Expected: false, Received: true`, and each message was unchanged. For
+    example: `Error: /stock-entry/counts/<id> carries a real price`.
+  - Quantities failed at its own `priceSightings` check, line 624, `staff response`.
+- **B2:** line 514 can't be reached while 506 is red, so I moved the probe **outside**
+  `stock-takes-body` on the stock-takes count page. `bodyOf` can't see it there, but the admin's
+  `page.content()` can. After a rebuild: **red at `stock-takes-count.spec.ts:514`**,
+  `Expected: false, Received: true`.
+- **Restored after each run:** from the copies. `sha256sum -c` gave OK for all four files, and
+  `git status` shows `src/app` and `src/server/counts` clean.
+
+**All six edited assertions have been seen red**, not just one of them.
+
+### Proof 3: the six files, on the restored build
+
+I ran exactly the brief's command once, with port 3000 free and nothing else running. The
+restored code was built fresh by the run itself.
+
+```
+$ npm run test:e2e -- tests/e2e/stock-entry-access.spec.ts tests/e2e/stock-entry-quantities.spec.ts \
+    tests/e2e/stock-entry-filters.spec.ts tests/e2e/stock-entry-submit.spec.ts \
+    tests/e2e/stock-takes-count.spec.ts tests/e2e/stock-takes-calendar.spec.ts
+Running 183 tests using 3 workers
+  183 passed (6.6m)
+exit=0
+```
+
+- 67 of the tests are the six files: access 9, quantities 12, filters 6, submit 6, takes-count 17
+  and calendar 17.
+- The other 116 are the `chromium` project. Its specs are the prerequisite of
+  `chromium-stock-entry`, and Playwright runs that project whole. That matches the 155-test
+  targeted run in A2 above.
+- 0 failed, 0 skipped and 0 flaky.
+- The `[WebServer]` `JWTSessionError` and `auth.pin_failed` lines in the log are the auth
+  specs' own expected refusals.
+
+### Verification output
+
+```
+$ npm run typecheck        -> exit 0
+$ npm run lint             -> exit 0
+$ npx vitest run tests/unit/price-token.test.ts
+      Tests  56 passed (56)
+$ npm run test:unit
+ Test Files  84 passed (84)
+      Tests  1225 passed (1225)
+$ npm run test:e2e -- <the six files>      (see Proof 3)
+  183 passed (6.6m)
+```
+
+The unit total is 1169 from the A1 repairs plus these 56. I did not run `init`, the full
+`test:db` or the full `test:e2e`, because the coordinator runs the gate.
+
+**Development database after the runs, read-only:**
+- `npm run db:census`: the same census the A1 repair recorded, including `profiles: ADMIN ACTIVE 1`
+  and `stock counts: none`;
+- row counts: users 1, lock rows 1, auth events 1, counts 0 and count lines 0. These are the
+  owner's rows and nothing else.
+
+Port 3000 has no listener, only `TimeWait` sockets, with owning process 0. The four mutated
+files are byte-identical to their copies.
+
+### Deviations from the brief
+
+- `stock-entry-quantities.spec.ts` is unchanged, as explained above.
+- `bodyShowsPrice` throws on an empty price. With an empty price the pattern would match between
+  any two characters and turn the check into a false red. The brief doesn't cover this case.
+- The mutation proof ran through `node scripts/run-e2e.mjs`, which is what `npm run test:e2e`
+  calls, with `--project=chromium-stock-entry --no-deps -g <the six titles>`. That kept the
+  `-g` pattern out of `cmd` quoting and skipped the #6 project. The green run used the brief's
+  command exactly.
+
+### Notes for the reviewer
+
+- The probe used `findFirst` with no `orderBy`, as `anyUnitPriceText` does. Every price
+  assertion went red in both builds, so the page carried the spec's price as a token each time.
+  The green run on the restored build shows the token is not there without the probe.
+- The failure messages print a URL and nothing else. A red `bodyShowsPrice` shows only
+  `true`/`false`, so a failing run never echoes a body that holds a price.
+- In the unit test, a failure prints the constructed body as the message. That body is built
+  from the runtime price or from the literal the brief names, never from the database.
+- Logs and copies are in `scratchpad/price-token-mut/`: `breach-run.log`, `breach2-run.log`,
+  `green-run.log`, `breach/` and `specs-before/`.
+
+### Gate fix: AC-5 dry-run tests under load
+
+**The failure:** the full gate (`scratchpad/gate16rep2.txt`) failed three unit tests, and only
+these. They were the production, staging and unset cases of "016 AC-5: npm run build:vercel --
+--dry-run, for real, under each VERCEL_ENV", each at about 12.1 s: the `spawnSync` kill switch
+at 12 s. Run alone, they pass. Under the gate, the unit workers saturate the CPU, and five
+`npm` → `tsx` start-ups in a row became too slow.
+
+**The fix is to the test's design, not its budget.** The kill switch stays at 12 s, and no
+timeout was raised. Only `tests/unit/vercel-build.test.ts` changed:
+- **One case keeps the literal `npm run build:vercel -- --dry-run`:** production, the longest
+  plan.
+- **The other four run the same script by the same code path, as one process:**
+  `node --import tsx scripts/vercel-build.ts --dry-run`, under `process.execPath`, with no
+  shell. On a quiet machine this costs about 0.55 s, against about 1.8 s through npm. The two
+  entries cannot drift apart, because `deploy-config.test.ts` pins `build:vercel` to exactly
+  `tsx scripts/vercel-build.ts`.
+- **The block is `describe.sequential`,** so none of these spawns overlaps another.
+- **Each case now also asserts that the run was not killed** (`result.error` is undefined),
+  so a kill reads as what it is.
+- **The npm case sets `npm_config_update_notifier=false`,** so npm's update check is no part
+  of its cost.
+- **The test's comment explains all of this:** why it is structured that way, why the kill
+  switch exists, and that the per-environment plan is also proved in-process by `vercelBuild`.
+
+No flag was added to the script. The spec's `--dry-run` is unchanged.
+
+#### Proof under load
+
+In three full `npm run test:unit` runs in a row, with the verbose reporter, every run passed,
+and the slowest dry-run test was the npm case:
+
+| Run | Result | Suite duration | npm case (production) | Slowest of the four `node --import tsx` cases |
+|---|---|---|---|---|
+| 1 | 84 files, 1225/1225 | 44.6 s | 3783 ms | 990 ms |
+| 2 | 84 files, 1225/1225 | 45.9 s | 4003 ms | 1448 ms |
+| 3 | 84 files, 1225/1225 | 44.7 s | 3466 ms | 1134 ms |
+
+I also ran `vercel-build.test.ts` three times while the rest of the unit suite ran in the
+background (`npm run test:unit -- --exclude tests/unit/vercel-build.test.ts`: 83 files,
+1187/1187, 48.4 s). The suite was still running at the end of each file run.
+
+| File run | Result | npm case | Slowest `node --import tsx` case |
+|---|---|---|---|
+| 1 | 38/38 | 4401 ms | 1191 ms |
+| 2 | 38/38 | 4040 ms | 1339 ms |
+| 3 (the suite's tail) | 38/38 | 1552 ms | 420 ms |
+
+The worst case seen was 4.4 s, against the 12 s kill switch. Before the fix, the three failing
+cases each reached it.
+
+`typecheck` 0 and `lint` 0. I ran no e2e, no database file and no `init`, and committed
+nothing. I did not touch `tests/e2e/**`, `tests/unit/price-token.test.ts` or the other agents'
+uncommitted changes. The unit totals include those in-flight tests (1225 = 1169 + theirs).

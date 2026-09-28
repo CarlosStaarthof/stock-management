@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { db } from "@/server/db";
 import { exportDatabase } from "@/server/deploy/export";
+import { compareWithFile, isIdentical } from "@/server/deploy/restore";
 import { resetTestDb } from "@/server/test-db";
 import { buildExportFixture, schemaModels } from "../../../tests/support/export-fixture";
 import { runPrisma, runScript } from "../../../tests/support/run-script";
@@ -34,6 +35,12 @@ const MIGRATION_COUNT = readdirSync("prisma/migrations").filter((name) =>
 
 let scratch = "";
 let schemas: string[] = [];
+/**
+ * Databases a test names on the test branch. None should ever exist: the restore refuses
+ * before connecting. But `prisma migrate deploy` creates a database it is pointed at, so a
+ * regression of that refusal would leave one behind; it is dropped after the test.
+ */
+let databases: string[] = [];
 
 beforeEach(async () => {
   await resetTestDb();
@@ -42,6 +49,10 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  for (const database of databases) {
+    await db.$executeRawUnsafe(`DROP DATABASE IF EXISTS "${database}"`);
+  }
+  databases = [];
   for (const schema of schemas) {
     await db.$executeRawUnsafe(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
   }
@@ -175,6 +186,55 @@ describe("016 AC-10: the round trip", () => {
   });
 });
 
+describe("016 AC-10 (review R1): the read-back detects a difference", () => {
+  it("R1: after a restore, an updated, a deleted and an extra row make exactly their three tables not identical, with the expected numbers", async () => {
+    const { path, text } = await exportedFixture();
+    const schema = await throwawaySchema();
+    const restored = runScript("scripts/db-restore.ts", ["--in", path], envFor(schema));
+    expect(restored.status, "the restore itself").toBe(0);
+    const file = JSON.parse(text) as ExportFile;
+    const countOf = (table: string): number => file.tables[table]?.count ?? -1;
+    expect(countOf("AuthEvent")).toBeGreaterThanOrEqual(1);
+    expect(countOf("AccountLock")).toBe(1);
+    expect(countOf("Supplier")).toBeGreaterThanOrEqual(1);
+
+    // One non-key column of one row, changed; one row of a second table, deleted; one row
+    // added to a third. Written straight into the target, behind the restore's back.
+    await db.$executeRawUnsafe(
+      `UPDATE "${schema}"."AuthEvent" SET "bucket" = $1
+        WHERE "id" = (SELECT "id" FROM "${schema}"."AuthEvent" ORDER BY "id" LIMIT 1)`,
+      `device:${randomBytes(16).toString("hex")}`,
+    );
+    await db.$executeRawUnsafe(`DELETE FROM "${schema}"."AccountLock"`);
+    await db.$executeRawUnsafe(
+      `INSERT INTO "${schema}"."Supplier" ("id", "name", "active") VALUES ($1, $2, true)`,
+      `extra_${randomBytes(6).toString("hex")}`,
+      `Extra Supplier ${randomBytes(3).toString("hex")}`,
+    );
+
+    const comparisons = await compareWithFile(schema, text);
+
+    const differing = comparisons.filter((comparison) => !isIdentical(comparison));
+    expect(differing.map((comparison) => comparison.table).sort()).toEqual(["AccountLock", "AuthEvent", "Supplier"]);
+    const byTable = new Map(comparisons.map((comparison) => [comparison.table, comparison]));
+    expect(byTable.get("AuthEvent")).toEqual({
+      table: "AuthEvent",
+      expected: countOf("AuthEvent"),
+      restored: countOf("AuthEvent"),
+      identical: countOf("AuthEvent") - 1,
+    });
+    expect(byTable.get("AccountLock")).toEqual({ table: "AccountLock", expected: 1, restored: 0, identical: 0 });
+    expect(byTable.get("Supplier")).toEqual({
+      table: "Supplier",
+      expected: countOf("Supplier"),
+      restored: countOf("Supplier") + 1,
+      identical: countOf("Supplier"),
+    });
+    expect(comparisons).toHaveLength(12);
+    expect(comparisons.filter((comparison) => isIdentical(comparison))).toHaveLength(9);
+  });
+});
+
 describe("016 AC-10: the refusals", () => {
   it("AC-10: refuses, before writing anything, a target schema that holds any table", async () => {
     const { path } = await exportedFixture();
@@ -257,6 +317,36 @@ describe("016 AC-10: the refusals", () => {
 
     expect(run.status).not.toBe(0);
     expect(run.stderr).toContain("how many pending requests it left out");
+    expect(await relationsIn(schema)).toEqual([]);
+  });
+
+  it("AC-10 (review Observation 2): refuses, before connecting, when DIRECT_URL names another database on the same host", async () => {
+    const { path } = await exportedFixture();
+    const schema = await throwawaySchema();
+    const env = envFor(schema);
+    const direct = new URL(env.DIRECT_URL ?? "");
+    const other = `other_${randomBytes(4).toString("hex")}`;
+    databases.push(other);
+    direct.pathname = `/${other}`;
+
+    const run = runScript("scripts/db-restore.ts", ["--in", path], { ...env, DIRECT_URL: direct.toString() });
+
+    expect(run.status).not.toBe(0);
+    expect(run.stderr).toContain("name different databases");
+    expect(await relationsIn(schema)).toEqual([]);
+  });
+
+  it("AC-10 (review Observation 2): refuses, before connecting, when DIRECT_URL names another host", async () => {
+    const { path } = await exportedFixture();
+    const schema = await throwawaySchema();
+    const env = envFor(schema);
+    const direct = new URL(env.DIRECT_URL ?? "");
+    direct.hostname = `ep-${randomBytes(4).toString("hex")}.${randomBytes(4).toString("hex")}.invalid`;
+
+    const run = runScript("scripts/db-restore.ts", ["--in", path], { ...env, DIRECT_URL: direct.toString() });
+
+    expect(run.status).not.toBe(0);
+    expect(run.stderr).toContain("different hosts once -pooler is removed");
     expect(await relationsIn(schema)).toEqual([]);
   });
 

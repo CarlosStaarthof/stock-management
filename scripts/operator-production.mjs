@@ -60,6 +60,18 @@ function question(name) {
   return `${name} (${HINTS.get(name)}): `;
 }
 
+/**
+ * What the launcher promises before the first question. Only a terminal Node sees as one can
+ * be put in raw mode, so only there can it promise that nothing typed is shown. Elsewhere —
+ * piped input, or a window Node does not see as a terminal, such as Git Bash's default mintty
+ * without winpty — the window itself may echo every character, so it says so, and says where
+ * to run instead. What is read is the same either way: one answer per line.
+ */
+export const TERMINAL_NOTICE = "answer each setting. Nothing you type is shown, stored or printed.";
+export const NOT_A_TERMINAL_NOTICE =
+  "input is not a terminal, so answers are read one per line and may be visible as you type. " +
+  "To type them hidden, stop now with Ctrl+C and run this in PowerShell or Windows Terminal.";
+
 /** A value argument: present, and not another flag. */
 function isValue(argument) {
   return typeof argument === "string" && argument !== "" && !argument.startsWith("-");
@@ -261,7 +273,7 @@ export async function runLauncher(io) {
   const terminal = input.isTTY === true && typeof input.setRawMode === "function";
   const reader = terminal ? terminalReader(input, output) : lineReader(input);
 
-  say(`${argv[0]}: answer each setting. Nothing you type is shown, stored or printed.`);
+  say(`${argv[0]}: ${terminal ? TERMINAL_NOTICE : NOT_A_TERMINAL_NOTICE}`);
 
   const answers = {};
   try {
