@@ -389,7 +389,7 @@ This feature adds no screen. What it adds are states of the release.
    - writes one UTF-8 JSON file holding `format` equal to `macroads-export/1`, `exportedAt`, `migrations` (the applied names, in order), and, for each table, its row `count` and its `rows`. The rows are ordered by primary key, with every value as Postgres renders it in JSON, so a `Decimal(18, 8)` price and a `Decimal(12, 4)` quantity keep every digit.
    - writes `User.pinHash` and `User.pinKeyId` as `null` in every row, and lists both under `omitted` (D20);
    - leaves out every `User` row whose `status` is `PENDING` and records their number as `omittedPendingRequests`, because a pending request holds the requester's PIN hash by the schema's own rule (ruling A1-F1); after a restore, a pending requester asks again;
-   - prints the file's path, its SHA-256 and one line per table with its count, and nothing else.
+   - prints the file's path, its SHA-256, one line per table with its count, and the `omittedPendingRequests` count (ruling A1-F1, ratified at review), and nothing else.
 
    *Proved by* `src/server/deploy/export.db.test.ts`, against a fixture with at least one row in every table. The fixture includes a profile with a PIN, an `AccountLock`, an `AuthEvent`, a `SetupClaim`, and a signed count whose lines hold the quantity `21.6128` and the snapshot `6.11764706`. The test asserts that:
    - every count equals its table's;
@@ -658,6 +658,32 @@ This feature adds no screen. What it adds are states of the release.
   file-system, process or module-loading API, or reads `process.env`.
 - **A2-F3** is an observation, recorded as it is: `test:e2e` imports the pass's modules against
   `localhost`, and nothing in the gate runs `verify:deploy` itself.
+
+### The Phase A review's findings, ruled by the coordinator, 2026-09-28
+
+The review (`progress/review_deploy.md`) returned **CHANGES_REQUESTED**. Every required change is
+a test or a message, and **none changes behaviour.**
+- **R1:** the restore's read-back is shown to detect an updated, a deleted and an extra row.
+- **R2:** failure tests for `exportDatabase` (no `_prisma_migrations`, a table with no primary
+  key) and for `foreignKeyOrder` (a cycle).
+- **R3:** the signed-in pass's fail-closed branches are proved: an empty scan, a start page that
+  lands on `/sign-in`, a body unreadable even when asked for again, and a role other than
+  `YARD_STAFF`.
+- **R4:** the launcher no longer promises a hidden prompt it cannot give. When stdin is not a
+  terminal, it says so and names the terminals to use, and the runbook does the same. On a
+  terminal Node does not see as one (Git Bash's mintty without winpty), the terminal itself would
+  echo a production string or the pepper.
+
+**Observations taken in:**
+- 1: a comment on the seed's two-transaction gap, which is accepted as analysed.
+- 2: the restore refuses unless both strings name the same host, once `-pooler` is removed, and
+  the same database. This reuses the build's host rule, and turns a harmless slip into a refusal.
+- 3: the `omittedPendingRequests` line is ratified in AC-9's print rule.
+- 4: the runbook asks the owner to relay only the prefixed lines, never Prisma's datasource line,
+  which names the host.
+
+**Observations left:** 5 (the AC-15 test's own timeout, justified), 6 and 8 (confirmations), and
+7 (`public-no-money` on an empty body, which is minor).
 
 ## Approved 2026-09-28
 
