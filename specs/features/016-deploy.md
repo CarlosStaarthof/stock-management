@@ -432,7 +432,7 @@ This feature adds no screen. What it adds are states of the release.
 
     *Proved by* `tests/unit/verify-deployment.test.ts`, which runs every check against a local stub HTTP server, once made to pass it and once made to fail it.
 14. **AC-14** — **The live check holds no secret.** `scripts/verify-deployment.ts` and every module it imports:
-    - read no `.env`: no `loadEnvFile`, no `dotenv`, and no path ending in `.env`;
+    - read no `.env`: no `loadEnvFile`, no `dotenv`, and no file-system path ending in `.env`. The URL path `/.env`, which `no-leftovers` asks of the server, is not a file path (ruling A2-F2);
     - import nothing from `@/server/` or `@prisma/client`;
     - accept no credential through an argument, a setting or a file;
     - print no cookie value, no `Set-Cookie` header and no excerpt of a response body. A failing check names the path and the rule only;
@@ -640,6 +640,24 @@ This feature adds no screen. What it adds are states of the release.
 - **A1-F2** (`verify:deploy` exists before its file, which A2 creates) and **A1-F5** (a restore
   rejects a `Location` row that differs from the migration's, which matters only once a future
   feature edits yards) are recorded as they are.
+
+### Findings from Phase A2, ruled by the coordinator, 2026-09-28
+
+- **A2-F1. The `region` check's reading of `x-vercel-id`.** Vercel's *Response headers*
+  documentation (updated 2026-08-11) says the header "contains a list of Vercel regions your request
+  hit, as well as the region the function was executed in". It does not state the order. **So it
+  was observed on the live site on 2026-09-28.** A function response (`/api/session`, `/sign-in`)
+  carried `dub1::lhr1::<request id>`, and the static `/` carried `dub1::<request id>`. The
+  function's region is therefore the last region code before the request id, which is how
+  `functionRegion` reads it. A single code fails closed. The check stays pointed at a function
+  route.
+- **A2-F2. AC-14's "no path ending in `.env`" against AC-13's `no-leftovers`.** **Ruling: AC-14 is
+  about the file system.** The URL path `/.env` in `no-leftovers` is a request to the server, not a
+  file the command opens. AC-14 now says so. The implementer's static test already allows exactly
+  that one literal, in `LEFTOVERS`. It also asserts that no module of the command imports a
+  file-system, process or module-loading API, or reads `process.env`.
+- **A2-F3** is an observation, recorded as it is: `test:e2e` imports the pass's modules against
+  `localhost`, and nothing in the gate runs `verify:deploy` itself.
 
 ## Approved 2026-09-28
 
