@@ -7,6 +7,7 @@ import { databaseIsReachable, skipWithoutDatabase } from "./support/database";
 import {
   RESERVED_YEAR,
   anyUnitPriceText,
+  bodyShowsPrice,
   clearReservedYear,
   realCountIds,
   seedCount,
@@ -185,7 +186,7 @@ test("AC-17: no page a YARD_STAFF session can obtain here carries a euro or a pr
     expect(body, `${url} names the snapshot column`).not.toContain("unitPriceSnapshot");
     if (aRealPrice !== null) {
       // A real price from the user's own master, asserted absent from the page source.
-      expect(body, `${url} carries a real price`).not.toContain(aRealPrice);
+      expect(bodyShowsPrice(body, aRealPrice), `${url} carries a real price`).toBe(false);
     }
   }
 

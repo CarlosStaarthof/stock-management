@@ -21,6 +21,7 @@ import { databaseIsReachable, skipWithoutDatabase } from "./support/database";
 import {
   RESERVED_YEAR,
   anyUnitPriceText,
+  bodyShowsPrice,
   clearReservedYear,
   realCountIds,
   seedCountWithLines,
@@ -409,7 +410,7 @@ test("AC-17: with every filter applied and with none, a staff page still carries
     expect(body, `${url} names the price column`).not.toContain("unitPrice");
     expect(body, `${url} carries a per-row price tag`).not.toContain("No price");
     if (aRealPrice !== null) {
-      expect(body, `${url} carries a real price`).not.toContain(aRealPrice);
+      expect(bodyShowsPrice(body, aRealPrice), `${url} carries a real price`).toBe(false);
     }
   }
 });

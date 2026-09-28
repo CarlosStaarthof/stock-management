@@ -205,6 +205,34 @@ export async function anyUnitPriceText(): Promise<string | null> {
   return price === null ? null : price.unitPrice.toString();
 }
 
+/**
+ * Whether `body` carries `price` AS A NUMBER OF ITS OWN: the whole of `price`, with no ASCII
+ * letter or digit immediately before it or immediately after it.
+ *
+ * A plain substring search is what the "no price in the body" checks used, and it tripped on
+ * random identifiers that happen to hold the same digits: a test name, and then Next's
+ * per-build server-action key in a hidden `$ACTION_KEY` input, which changes with every code
+ * change - so a build either always failed or always passed, for a reason that had nothing to
+ * do with money. Count cuids, bundle hashes and RSC module references carry the same risk.
+ *
+ * Everything a leaked price actually looks like is still found, because a currency sign, a
+ * space, a quote, a colon, an angle bracket, a comma or a decimal point is not a letter or a
+ * digit: `€<price>.00`, `€ <price>`, `"<price>"`, `"unitPrice":"<price>"`, `><price><`,
+ * `<price>,00`, and the price at the very start or end of the body. What is no longer found is
+ * the same digits inside a longer run of letters and digits - an identifier, or a different
+ * number such as `1<price>` or `<price>5`.
+ *
+ * A decimal price's text is taken whole, its `.` literally, and the same rule applies at both
+ * of its ends. Coordinator ruling of 2026-09-28; proven by `tests/unit/price-token.test.ts`.
+ */
+export function bodyShowsPrice(body: string, price: string): boolean {
+  // An empty price would "match" between any two non-alphanumerics and assert nothing real.
+  if (price === "") throw new Error('bodyShowsPrice needs a price to look for, not "".');
+
+  const escaped = price.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(?<![0-9A-Za-z])${escaped}(?![0-9A-Za-z])`).test(body);
+}
+
 /* ------------------------------------------------------------------ #8, the counting */
 
 /**

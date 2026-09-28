@@ -6,6 +6,7 @@ import {
   RESERVED_YEAR,
   anyUnitPriceText,
   approveAs,
+  bodyShowsPrice,
   clearReservedYear,
   fillQuantities,
   realCountIds,
@@ -502,7 +503,7 @@ test("AC-12, AC-13: for a draft, a submitted and an approved count, one body and
         expect(body, url).not.toContain("€");
         expect(body, url).not.toContain("No price");
         expect(body, url).not.toContain("unitPrice");
-        if (price !== null) expect(body, url).not.toContain(price);
+        if (price !== null) expect(bodyShowsPrice(body, price), url).toBe(false);
       }
 
       // The administrator's WHOLE response, not only the compared element: an approved
@@ -510,7 +511,7 @@ test("AC-12, AC-13: for a draft, a submitted and an approved count, one body and
       const html = await adminPage.content();
       expect(html, url).not.toContain("€");
       expect(html, url).not.toContain("unitPrice");
-      if (price !== null) expect(html, url).not.toContain(price);
+      if (price !== null) expect(bodyShowsPrice(html, price), url).toBe(false);
     }
   }
 

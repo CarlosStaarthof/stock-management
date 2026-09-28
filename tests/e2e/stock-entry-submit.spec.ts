@@ -22,6 +22,7 @@ import {
   actorFor,
   anyUnitPriceText,
   approveAs,
+  bodyShowsPrice,
   clearReservedYear,
   fillQuantities,
   lifecycleOf,
@@ -452,7 +453,7 @@ test("AC-21: neither shared screen carries a euro, for either role, in any state
         expect(body, url).not.toContain("€");
         expect(body, url).not.toContain("No price");
         expect(body, url).not.toContain("unitPrice");
-        if (aRealPrice !== null) expect(body, url).not.toContain(aRealPrice);
+        if (aRealPrice !== null) expect(bodyShowsPrice(body, aRealPrice), url).toBe(false);
       }
     }
   }

@@ -5,6 +5,7 @@ import { seededMasterCounts } from "./support/item-master";
 import {
   RESERVED_YEAR,
   anyUnitPriceText,
+  bodyShowsPrice,
   clearReservedYear,
   realCountIds,
   reservedCountTotals,
@@ -385,7 +386,7 @@ test("AC-12, AC-13: the calendar body is byte-identical between the two roles, a
       expect(body, url).not.toContain("€");
       expect(body, url).not.toContain("No price");
       expect(body, url).not.toContain("unitPrice");
-      if (price !== null) expect(body, url).not.toContain(price);
+      if (price !== null) expect(bodyShowsPrice(body, price), url).toBe(false);
     }
 
     // The whole page, not only the compared element: the euro is nowhere in the response.
