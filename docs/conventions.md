@@ -82,6 +82,17 @@ const KG_PER_FULL_BOILER = 250;
   totals drift from the file this replaces. See `specs/domain-model.md` Invariant 10.
 - Every foreign key gets an explicit `onDelete` policy. Think about it — do not accept
   the default because it is the default.
+- **After go-live, a migration must leave the previous release working** (spec 016 D8,
+  AC-17). The production build migrates before the new release is promoted, and a rollback
+  puts the previous release back on the newer schema, so every migration is additive
+  first: a new table, a nullable column, or a `NOT NULL` column with a `DEFAULT`.
+  **A destructive step ships only after the release that stopped using what it removes**:
+  dropping a table, a column or a type; renaming anything; changing a column's type; setting
+  a column `NOT NULL`; adding a `NOT NULL` column with no `DEFAULT`; adding an enum value;
+  deleting or truncating rows. Such a migration carries a line beginning `-- contract-step:`
+  that names the earlier release which stopped using it. `tests/unit/migration-safety.test.ts`
+  fails, naming the migration and the statement, for any of these shapes in a migration
+  without that line.
 
 ## Tests
 

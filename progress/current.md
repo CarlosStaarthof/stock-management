@@ -1601,3 +1601,81 @@ database; dev census before and after.
   - **Operating note: never create a Dublin September-2026 count on the development database.**
     007 AC-7's e2e test uses that period. A durable fix, amending 007 AC-7 to a reserved year, is
     deferred.
+
+## Implementer — #16 `deploy`, Phase A2 (AC-11 to AC-18), started 2026-09-28
+
+Brief: `scratchpad/impl16-a2.md`. Report: `progress/impl_deploy.md` → `## Phase A2`. No push,
+no commit, no Vercel/Neon dashboard/live database; the live check is proved against a stub
+server and a local `next start` build only. Port 3000 left free. Dev census before and after.
+
+**Dev baseline (read-only), 2026-09-28:** census 2/10/19/140 (15 review)/129/152, profiles
+`ADMIN ACTIVE 1`, stock counts none, count lines 0, 3 migrations, pins 1 of 1; plus a scratch
+count: users 1, counts 0, lock rows 1, auth events 1.
+
+**Files I expect to touch**
+- new: `src/app/api/version/route.ts`; `src/lib/deploy/money-scan.ts`;
+  `scripts/verify-deployment.ts` (CLI) plus its modules under `scripts/verify/`;
+  tests `tests/unit/security-headers.test.ts`, `src/app/api/version/route.test.ts`,
+  `tests/unit/verify-deployment.test.ts`, `src/lib/deploy/money-scan.test.ts`,
+  `tests/unit/migration-safety.test.ts`, `tests/unit/operations-runbook.test.ts`,
+  e2e `tests/e2e/deploy-verify.spec.ts`.
+- modified: `next.config.ts` (poweredByHeader false + six headers), `docs/operations.md`
+  (three sections), `docs/conventions.md` (*Database* rule).
+
+**Approach**
+- The checks are functions over an origin, a fetch with `redirect: "manual"`, GET/HEAD only,
+  printing name + rule, never a value. The anonymous pass takes an injectable http origin so
+  the stub test can serve `https-only` from a second port.
+- The signed-in pass takes a Browser; the CLI launches a headed Chromium. A session supplier
+  exists only for tests and is refused for any host but localhost/127.0.0.1.
+- The scripts read no `process.env`, import no fs/child_process/module API, so no `.env`.
+
+### Work log
+- A2: AC-11 `next.config.ts` (poweredByHeader false, six headers on `/:path*`), AC-12
+  `src/app/api/version/route.ts`, AC-16 `src/lib/deploy/money-scan.ts`, the live check
+  (`scripts/verify-deployment.ts` + `scripts/verify/{cli,common,anonymous-pass,signed-in-pass}.ts`).
+  Unit files `security-headers`, `version/route`, `money-scan`, `verify-deployment`: 63/63.
+  typecheck 0, lint 0. One fix on the way: the spawned CLI crashed on Windows at
+  `process.exit` (0xC0000409) with unread response bodies open; the request helper now reads
+  every body and the entry sets `process.exitCode`.
+- A2: AC-17 `tests/unit/migration-safety.test.ts` (7/7) + `docs/conventions.md` rule; AC-18
+  `docs/operations.md` (three sections appended) + `tests/unit/operations-runbook.test.ts`;
+  repo scans green over the new text (one fix: a sentinel written as an indexed expression in
+  the verify test read as an assigned value; now named variables). e2e
+  `tests/e2e/deploy-verify.spec.ts` 5/5 on the local build. Two fixes on the way: a body the
+  browser dropped (a prefetch cancelled by the next navigation) failed closed as unreadable;
+  the pass now asks for it again (same GET, same headers, same session) and fails only if
+  that fails too (7 of 76 re-read). The static GET-only rule was narrowed to the
+  Playwright request API (`.request.<method>(`), since `request.method()` is a read.
+- A2 mutations (byte copies + SHA256SUMS in `scratchpad/a2-mut/`), each red, restored,
+  `sha256sum -c` OK: M1 X-Frame-Options removed -> security-headers red; M2 version echoes a
+  malformed value -> route test red; M2b version adds the region -> 4 route tests red; M3
+  csrf accepts no-Secure -> csrf test red; M4 scanner drops the euro sign -> 4 red
+  (money-scan x2, public-no-money, leak test); M5a detector inverted on DROP -> 4 red; M5b any
+  comment counts as contract-step -> 2 red; M5c a temporary `prisma/migrations/2099..._a2_probe`
+  with DROP COLUMN -> main AC-17 test red naming migration + statement, green with the line,
+  directory deleted; M6a `loadEnvFile(".env")` in cli.ts -> 2 static tests red; M6b csrf prints
+  the Set-Cookie -> 2 red; M6c setup-404 quotes the body -> leak test red.
+- A2 breach run (AC-15): `src/app/stock-entry/new/page.tsx` byte-copied, made to render a euro
+  amount under its heading, rebuilt, AC-15 e2e run: `[verify] FAIL staff-no-money: money found
+  in /stock-entry/new (euro-sign)`, a page reached only through a calendar link. Restored from
+  the copy, `sha256sum -c` OK, `git status` clean for the file.
+- A2 targeted e2e after a rebuild (deploy-verify, analysis-figures, sign-in,
+  stock-entry-autosave, stock-takes-count): 155 passed, 0 failed/skipped/flaky, 6.1 min.
+  Build with an unreachable `.invalid` database: exit 0. Real command against a local
+  `next start`: 7 of 11, the four https/Vercel checks failing as expected; stopped the server.
+  typecheck 0, lint 0, unit 1152/1152. Dev census and scratch count identical to baseline.
+- **#16 Phase A2 complete** (2026-09-28): report `progress/impl_deploy.md` → `## Phase A2`.
+  Findings for the coordinator: A2-F1 (the `x-vercel-id` region format is from memory; confirm
+  before AC-24), A2-F2 (AC-14's ".env path" vs no-leftovers' `/.env` URL path, interpreted),
+  A2-F3 (the e2e runs the passes against localhost under test:e2e). Feature stays `in_progress`.
+- **#16 Phase A2 built** (AC-11 to AC-18). Rulings:
+  - A2-F1: the function region is the last region code in `x-vercel-id`. Vercel's
+    documentation doesn't state the order, so it was **observed on the live site**: `dub1::lhr1::<id>`
+    on a function, `dub1::<id>` on a static page.
+  - A2-F2: AC-14's `.env` rule is about the file system, not the URL `/.env` that the check asks of
+    the server.
+- **A2 gate** (`scratchpad/gate16a2.txt`): `init` exit 0 in 40.7 min, unit 1152, e2e 116 + 139 with
+  0 flaky and 0 failed, db 566, database checks executed, 0 connection errors, dev census identical.
+  **Phase A is complete.** Phase B, go-live, is next, with the owner. Pushing stays paused until
+  AC-19's take-over steps say to resume.

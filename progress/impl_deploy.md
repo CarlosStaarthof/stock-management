@@ -373,3 +373,298 @@ $ npm run test:unit        (second run; the first lost lint-fence to a 16.4 s ti
 - **Not re-run, because they do not touch this change:** `item-master-seed`, `census` and
   `operator-production`. The census's `profiles` line already renders any role-and-status pair
   present.
+
+## Phase A2
+
+**Scope:** AC-11 to AC-18: the security headers, `GET /api/version`, the live check (both
+passes), the money scanner, the destructive-migration guard and the runbook. AC-19 onward is
+Phase B, not built here.
+**Status:** complete. Two findings for the coordinator (A2-F1, A2-F2 below), neither blocking.
+**Brief:** `scratchpad/impl16-a2.md`. Nothing pushed, nothing committed. Nothing touched Vercel,
+Neon's dashboard, GitHub settings, the live address or any live database: the live check was
+proved against stub servers and the local production build (`next start`) only. No `.env` value
+was read into a file, a test or this report. `Samples/` and `tests/support/feature-scope.ts`
+untouched.
+
+### Work log
+
+Each line records a step that was finished and verified.
+
+- 2026-09-28, start: read the brief, the spec in full (decisions, owner decisions, both rulings,
+  contract, go-live, backup and restore, rollback, AC-11 to AC-18), `## Phase A1` of this file,
+  `docs/architecture.md`, `docs/conventions.md`, and the repository scans the new text has to
+  pass (`repo-hygiene`, `no-default-password`, 021 AC-8's line and G1 rules, 006 AC-31's
+  money-column scan). #16 was already `in_progress`. Plan written to `progress/current.md`
+  before any code.
+- **Development baseline** (read-only), before anything ran: the census printed 2 locations, 10
+  suppliers, 19 item types, 140 items with 15 needing review, 129 prices, 152 yard links,
+  profiles `ADMIN ACTIVE 1`, stock counts none, 0 count lines, 3 migrations (latest
+  `20260925120000_pin_profiles`), pins 1 of 1. A read-only scratch count, since the census does
+  not print them: 1 user, 0 counts, 1 lock row, 1 auth event. The owner's test count had already
+  been deleted, as the coordinator said. Port 3000 free.
+- AC-11, AC-12 and AC-16 written (`next.config.ts`, `src/app/api/version/route.ts`,
+  `src/lib/deploy/money-scan.ts`), then the live check: `scripts/verify-deployment.ts`, the entry,
+  over four modules in `scripts/verify/`. `typecheck` 0.
+- Unit files `security-headers`, `version/route`, `money-scan` and `verify-deployment`: first
+  run 60 passed, 3 failed, all three in my tests, not the code:
+  - the spawned command exited with Windows status 0xC0000409. `process.exit()` was called
+    while response bodies it had never read were still open. **Fixed in the code:** the request
+    helper now reads every body to its end, and the entry sets `process.exitCode` instead of
+    calling `process.exit()`;
+  - two static rules matched prose and type annotations (a comment in `auth-config.ts` naming
+    the database client; `body: string` parameters). I rewrote them to match what they are
+    about: import specifiers, and the one `fetch` call's options, which the test pins exactly.
+  - Re-run: 63 of 63. `typecheck` 0, `lint` 0.
+- AC-17: `tests/unit/migration-safety.test.ts`, 6 of 7 on its first run. The failure was the
+  rule not yet written into `docs/conventions.md` → *Database*. Wrote it: 7 of 7. The detector
+  reports the real statement, not a masked copy. The failing line reads, for example,
+  `20990101000000_a2_probe: drops a column: ALTER TABLE "User" DROP COLUMN "requestedUsername"`.
+- AC-18: three sections appended to `docs/operations.md`, plus
+  `tests/unit/operations-runbook.test.ts`. Ran it with `repo-hygiene`, `no-default-password`,
+  `pin-auth-contract`, `project-contract`, `deploy-config` and `env-file`: 96 passed, 1 failed.
+  The failure was `no-default-password`, on my own verify test: a sentinel handed to the pepper
+  setting was written as an indexed array element, which its detector does not read as code.
+  It is now a named variable. Re-run green.
+- e2e, the new spec alone (`npm run test:e2e -- tests/e2e/deploy-verify.spec.ts`, which builds
+  first): 4 passed, 1 failed. `staff-no-money` failed on `/stock-entry`. I split what the pass
+  reports by rule, and it said `body unreadable`: a response the browser no longer held, which
+  was a prefetch that the pass's next navigation cancelled. **Fixed in the pass:** such a body is
+  asked for again, with the same GET, the headers the browser sent and the same session. It
+  fails closed only if that fails too. Re-run: 5 of 5, "scanned 76 responses (7 asked for
+  again)". Then I narrowed the static GET-only rule to Playwright's request API
+  (`.request.<method>(`), since `request.method()` is a read. `verify-deployment` 42 of 42.
+- Full `test:unit`: **81 files, 1152 of 1152.**
+- Ran the mutations in the table below. For each one I made a byte copy first, with
+  `SHA256SUMS` in `scratchpad/a2-mut/`, watched the test go red, restored the copy, and got
+  `sha256sum -c` OK for all seven files.
+- **The breach run (AC-15).** I made a byte copy of `src/app/stock-entry/new/page.tsx` and made
+  the page render a euro amount under its heading. That page is reached only through a calendar
+  link. I rebuilt, then ran the AC-15 test:
+  `[verify] FAIL staff-no-money: money found in /stock-entry/new (euro-sign)`, and the test went
+  red. Restored from the copy: `sha256sum -c` OK, and `git status` shows the file clean.
+- **Targeted e2e, after a rebuild, with nothing else running:** `deploy-verify`,
+  `analysis-figures`, `sign-in`, `stock-entry-autosave` and `stock-takes-count`. **155 passed in
+  6.1 min: 0 failed, 0 skipped, 0 flaky.** In that run the signed-in pass opened 41 linked
+  pages, 2 of them count pages, which another spec's fixture had put on the calendar. It scanned
+  79 responses, 14 of them asked for again. `analysis-figures` and `stock-entry-autosave` are
+  green, so hydration and #11's page still work under the headers.
+- **`npm run build` with no database** (002 AC-5): `DATABASE_URL` and `DIRECT_URL` pointed at
+  an unresolvable `.invalid` host. Exit 0, and `/api/version` is listed as dynamic.
+- **The real command, against the local production build** (`next start` on port 3000, started
+  by me and stopped by me): 7 of 11 checks passed. The four that failed are the four that need
+  HTTPS or Vercel: `https-only`, `csrf-cookie-secure`, `protected-redirects` (http Location) and
+  `region`. Exit 1, clean. `--url http://stock-management-zeta-one.vercel.app` was refused with
+  exit 2 **before any request**, so nothing reached the live address.
+- `typecheck` 0, `lint` 0, `test:unit` 1152 of 1152 on the final code.
+- **Development census after:** identical to the baseline, line for line: 1 user, 0 counts, 1
+  lock row, 1 auth event. The scratch counter was deleted. Port 3000 free.
+
+### Files created
+
+- `src/app/api/version/route.ts`: `GET` → `200`, `Cache-Control: no-store`, `{ "commit": … }`,
+  where the value is `VERCEL_GIT_COMMIT_SHA` only when it is 40 lower-case hex, else `null`
+  (AC-12). `force-dynamic`, takes no request, and reads nothing else.
+- `src/app/api/version/route.test.ts`: AC-12.
+- `src/lib/deploy/money-scan.ts`: `scanForMoney(body, contentType): Finding[]` (AC-16). It
+  reuses `moneyKeysIn` from `src/lib/money-boundary.ts` for the JSON key rule. The three field
+  names are assembled at run time.
+- `src/lib/deploy/money-scan.test.ts`: AC-16, one case per form.
+- `scripts/verify-deployment.ts`: the `npm run verify:deploy` entry. It launches a headed
+  Chromium only for `--signed-in`, and sets `process.exitCode`.
+- `scripts/verify/cli.ts`: `parseArguments` and `main(argv, dependencies)`. Exit 0 only if every
+  check passed, 1 otherwise, and 2 for refused arguments.
+- `scripts/verify/common.ts`: the one `fetch` (GET or HEAD, `redirect: "manual"`, 20 s, every
+  body read to its end), `cookieFlags`, which keeps a cookie's name and flags and drops its
+  value, `isLocalHost`, `runCheck` and `printResult`.
+- `scripts/verify/anonymous-pass.ts`: the eleven checks of AC-13 plus `commit`, in the spec's
+  order. Also `functionRegion(x-vercel-id)`.
+- `scripts/verify/signed-in-pass.ts`: AC-15. `signedInPass({ origin, browser, print,
+  supplySession? })`, `assertSessionSupplierAllowed`, `isCountPage`, and `SIGN_IN_PROMPT`.
+- `tests/unit/security-headers.test.ts`: AC-11 (the configuration's `headers()`).
+- `tests/unit/verify-deployment.test.ts`: AC-13, AC-14 and the browser-free parts of AC-15. It
+  runs two stub HTTP servers, the site and its plain-http address.
+- `tests/unit/migration-safety.test.ts`: AC-17. The detector lives in the test file, as the
+  contract names only the test.
+- `tests/unit/operations-runbook.test.ts`: AC-18.
+- `tests/e2e/deploy-verify.spec.ts`: AC-11 and AC-12 (served), AC-13 observed on the local build,
+  and AC-15 with a fixture `YARD_STAFF` session.
+
+### Files modified
+
+- `next.config.ts`: `poweredByHeader: false`, and `headers()` giving `/:path*` exactly the six
+  AC-11 headers, exported as `SECURITY_HEADERS`. `reactStrictMode` is unchanged, and there is no
+  script-source policy.
+- `docs/operations.md`: `## Production`, `## Backup and restore` and `## Rollback`, appended
+  after the existing sections, so *Environment*, which three tests parse, is untouched.
+- `docs/conventions.md` → *Database*: the rule that after go-live a migration must leave the
+  previous release working, with the `-- contract-step:` line.
+- `progress/current.md`: plan and work log.
+
+### Acceptance criteria
+
+| AC | Where it is satisfied | Test that proves it |
+|----|-----------------------|---------------------|
+| AC-11 | `next.config.ts` → `poweredByHeader`, `SECURITY_HEADERS`, `headers()` | `tests/unit/security-headers.test.ts`: "AC-11: poweredByHeader is false", "AC-11: headers() gives the source /:path* exactly the six headers, and nothing else", "AC-11 (D12): there is no script-source policy…". `tests/e2e/deploy-verify.spec.ts`: "AC-11: /sign-in on the local production build carries all six security headers and no X-Powered-By", plus "AC-11: a JSON answer, a not-found page and a sign-in redirect carry them too" |
+| AC-12 | `src/app/api/version/route.ts` | `route.test.ts`: set to a full commit; unset; malformed (8 shapes) with no echo; "no other setting reaches the answer…"; "the route reads one setting…"; "not under PROTECTED_PATHS, and the middleware does not match it". e2e: "AC-12: GET /api/version on the local build answers 200, no-store, and { commit: null }" |
+| AC-13 | `scripts/verify/anonymous-pass.ts`, `cli.ts` → `parseArguments` | `verify-deployment.test.ts`: "AC-13: runs the eleven checks in order, prints PASS for each, and exits 0"; the commit check runs last with `--expect-commit` and not without it; one "against a stub made to fail it" test per check (https-only ×4, hsts ×2, security-headers ×11, csrf ×4, session-401 ×4, api-401, protected-redirects ×4, setup-404, public-no-money ×4, no-leftovers ×5, region ×3, commit ×2), each asserting **only** that check failed and the exit was 1; a failed request names its path; the `--url` rule and argument refusals. Observed on the local build: e2e "AC-13, observed on the local build…" |
+| AC-14 | every module of the command (`scripts/verify-deployment.ts` and `scripts/verify/*`, plus the three `src/lib` modules they import) | `verify-deployment.test.ts`: a closure test pinning the eight files and the two external packages; no `loadEnvFile`, no `dotenv`, no `process.env`, no fs/child_process/module API, no `require(`; no path ending in `.env` except the URL path no-leftovers asks for; nothing from the server layer or the database client; one `fetch`, GET or HEAD, no body; Playwright's request API used for `get` only; no `unitPrice`; non-vacuity for each rule. Dynamic: "prints no cookie value, no Set-Cookie header and no body text, when every check fails as well as when every check passes", "sends only GET and HEAD, never with a body…", "a --url with a user name or password is refused, and not quoted", "accepts no other argument, and never quotes one it refuses", and "the real command, spawned with sentinel settings…" |
+| AC-15 | `scripts/verify/signed-in-pass.ts`; `scripts/verify-deployment.ts` launches `chromium.launch({ headless: false })` | e2e "AC-15: the signed-in pass, with a fixture YARD_STAFF session on the local build: staff-role, staff-no-money and signed-out pass, and over http both cookie checks fail". Unit: the prompt's exact text; a supplied session refused for every origin but `localhost` and `127.0.0.1` (5 refused, 3 allowed), and refused before any context opens; the command line never names the supplier; `isCountPage`; never types into, reads or records a field (static). **Breach run** in the work log above. |
+| AC-16 | `src/lib/deploy/money-scan.ts` | `money-scan.test.ts`: the euro sign; `&euro;` (3 cases); `&#8364;`; `&#x20ac;` (3 cases); `€` (3 cases); each field name; JSON keys at depth (4); key rule JSON-only and `+json`; a staff-shaped body reports nothing; no body in a finding; no field name in the source |
+| AC-17 | `tests/unit/migration-safety.test.ts`; `docs/conventions.md` → *Database* | the main test over every directory after `20260925120000_pin_profiles` (none yet); the anchor; non-vacuity on pin_profiles (exactly its `DROP COLUMN` statement); 20 synthetic destructive examples; 16 safe ones; the `-- contract-step:` line rule; the conventions text |
+| AC-18 | `docs/operations.md` → `## Production`, `## Backup and restore`, `## Rollback` | `operations-runbook.test.ts`: the three headings; the literals; `OD1`–`OD3`, `F1`–`F9` and `V1`–`V8`; the fact table with a *Confirmed on* cell per row; each decision with its risk; the export before a migration; the no-secret sentence; all eight operator forms and both passes; both layers, the schedule, the copy log, Drive with its SHA-256 check, the restore with the first `ADMIN`'s PIN and both drills; R1 to R3; placeholders only. The repository's own scans (`repo-hygiene`, `no-default-password`, 021 AC-8) pass over the new text in the full unit run |
+
+### Mutations
+
+Each mutation was made on a byte copy, run, and then restored from the copy, with `sha256sum -c`
+OK. The copies and `SHA256SUMS` are in `scratchpad/a2-mut/`.
+
+| # | Mutation | File | Result |
+|---|---|---|---|
+| M1 | A header removed: `X-Frame-Options` | `next.config.ts` | "headers() gives … exactly the six headers" red |
+| M2 | `/api/version` leaks an environment value: a malformed variable is echoed instead of `null` | `route.ts` | "with the variable malformed … never echoes it" red |
+| M2b | `/api/version` adds `VERCEL_REGION` | `route.ts` | 4 route tests red, on "no other key" and "no other setting" |
+| M3 | The anonymous pass accepts a CSRF cookie without `Secure` | `anonymous-pass.ts` | "csrf-cookie-secure: fails for a cookie without Secure…" red |
+| M4 | The scanner misses the euro sign itself | `money-scan.ts` | 4 red: two money-scan tests, `public-no-money`, and the all-fail leak test |
+| M4-breach | A staff page renders a price (the AC-15 breach run) | `src/app/stock-entry/new/page.tsx` | e2e AC-15 red: `FAIL staff-no-money: money found in /stock-entry/new (euro-sign)` |
+| M5a | The detector's column-drop rule inverted | `migration-safety.test.ts` | 4 non-vacuity tests red |
+| M5b | Any comment line counts as a contract step | `migration-safety.test.ts` | 2 red, including "only a line beginning with it counts" |
+| M5c | A destructive migration with no `-- contract-step:` line: a temporary directory `prisma/migrations/20990101000000_a2_probe` holding a `DROP COLUMN` | new directory | The main AC-17 test went red, naming the migration and the statement. With the line added it went green. The directory was then deleted, and `prisma/migrations` lists the three real ones only. |
+| M6a | The live check reads `.env`: a `loadEnvFile` call in `cli.ts` | `cli.ts` | 2 static tests red |
+| M6b | The live check prints a cookie value: the CSRF check's reason carries the cookie header | `anonymous-pass.ts` | 2 red: the CSRF test and the leak test |
+| M6c | A failing check quotes the body it read (`setup-404`) | `anonymous-pass.ts` | the leak test red |
+
+### Verification output
+
+As the brief says, I did not run `init`, the full `test:db` or the full `test:e2e`. What I ran:
+
+```
+$ npm run typecheck        -> exit 0
+$ npm run lint             -> exit 0
+$ npm run test:unit
+ Test Files  81 passed (81)
+      Tests  1152 passed (1152)
+   Duration  43.26s
+$ DATABASE_URL=<unresolvable .invalid host> DIRECT_URL=<same> npm run build
+ ✓ Compiled successfully in 7.6s
+├ ƒ /api/version                           142 B         103 kB
+ƒ Middleware                             87.3 kB
+build exit=0
+$ npm run test:e2e -- tests/e2e/deploy-verify.spec.ts tests/e2e/analysis-figures.spec.ts \
+    tests/e2e/sign-in.spec.ts tests/e2e/stock-entry-autosave.spec.ts tests/e2e/stock-takes-count.spec.ts
+Running 155 tests using 3 workers
+[verify] Sign in as a YARD_STAFF profile in the window that opened
+[verify] PASS staff-role
+[verify] FAIL device-cookie-secure: macroads-device: lacks Secure
+[verify] FAIL session-cookie-secure: __Secure-authjs.session-token: the browser holds no such cookie
+[verify] staff-no-money: scanned 79 responses (14 asked for again); opened 41 linked pages, 2 of them count pages
+[verify] PASS staff-no-money
+[verify] PASS signed-out
+  155 passed (6.1m)
+$ npx tsx scripts/verify-deployment.ts --url http://localhost:3000     (local next start)
+[verify] FAIL https-only: http://<host>/ does not answer 301 or 308
+[verify] PASS hsts
+[verify] PASS security-headers
+[verify] FAIL csrf-cookie-secure: /api/auth/csrf: sets no cookie named __Host-authjs.csrf-token
+[verify] PASS session-401
+[verify] PASS api-401
+[verify] FAIL protected-redirects: /stock-entry, /stock-takes, /analysis, /item-master, /profiles: does not redirect to https://<host>/sign-in?callbackUrl=<the path, encoded>
+[verify] PASS setup-404
+[verify] PASS public-no-money
+[verify] PASS no-leftovers
+[verify] FAIL region: /api/session: x-vercel-id does not name lhr1 as the region that ran the function
+[verify] 7 of 11 checks passed
+exit=1
+$ npm run db:census   (development, read-only; before and after, identical)
+[db:census] locations: 2
+[db:census] suppliers: 10
+[db:census] item types: 19
+[db:census] items: 140, 15 need review
+[db:census] prices: 129
+[db:census] yard links: 152
+[db:census] profiles: ADMIN ACTIVE 1
+[db:census] stock counts: none
+[db:census] count lines: 0
+[db:census] migrations: 3 applied, latest 20260925120000_pin_profiles
+[db:census] pins: 1 of 1 made under the given PIN_PEPPER
+(scratch, read-only) users 1, counts 0, lock rows 1, auth events 1
+```
+
+### Findings, for the coordinator
+
+- **A2-F1: the `region` check's reading of `x-vercel-id` comes from memory, not from a page
+  opened in this session.** I had no web access. The check takes the region codes in the header
+  (the `::`-separated parts shaped like `lhr1`) and treats the **last** one as the region that
+  ran the function. It requires at least two, the edge's and the function's; one alone fails.
+  If Vercel's format differs, `region` fails closed at AC-24, not open. **Before AC-24, confirm
+  against Vercel's documentation of the `x-vercel-id` header** that the function region is the
+  last region code before the request id. `functionRegion` and its unit test are the one place
+  to change.
+- **A2-F2: AC-14's "no path ending in `.env`" and AC-13's `no-leftovers` pull against each
+  other.** `no-leftovers` must request the URL path `/.env` from the server, which is itself a
+  path ending in `.env`. I read AC-14 as being about the file system. The static test allows
+  exactly one such literal: the URL path, in the `LEFTOVERS` list of
+  `scripts/verify/anonymous-pass.ts`, and asserts that it sits there. It also asserts that no
+  module of the command imports a file-system, process or module-loading API or reads
+  `process.env` at all, so nothing in the command can open a file. The spec may want to say so.
+- **A2-F3 (observation): AC-1's "no `test:*` script invokes `verify:deploy`".** AC-15 requires a
+  test that runs the signed-in pass against the local build, so `tests/e2e/deploy-verify.spec.ts`
+  imports the pass's modules and runs them against `localhost` under `test:e2e`. AC-1's test
+  checks the npm scripts and the runner files they name, and stays green. Nothing in the gate
+  runs the command itself or touches a non-local origin, and the supplier that stands in for a
+  person is refused anywhere but `localhost` and `127.0.0.1`.
+
+### Deviations from the spec
+
+- **Additions, beyond the contract:** `scripts/verify/{cli,common,anonymous-pass,signed-in-pass}.ts`.
+  The contract names only `scripts/verify-deployment.ts`. AC-14 covers "every module it imports",
+  and the closure test pins all eight files.
+- **`--expect-commit` together with `--signed-in` is refused** (exit 2, with a message naming the
+  anonymous pass). The spec's synopsis shows both flags as optional, and does not say what the
+  combination does.
+- **Exit codes:** 0 when every check passed, 1 when any check failed, and 2 for refused
+  arguments. The spec says only "non-zero".
+- **What a failure line names.** A failure names the path and the rule, as AC-14 says. For the
+  two money checks it adds the rule's kind in brackets (`euro-sign`, `field-name`, `json-key`,
+  `unreadable-json`, `body unreadable`). That is the scanner's category, never text from the
+  body. AC-15 says "names the path only"; the kind is what made the dropped-prefetch problem
+  diagnosable.
+- **The scanner has a fourth finding, `unreadable-json`:** a body whose content type says JSON
+  but which does not parse. Without it, such a body could not be shown to be free of money keys.
+- **The signed-in pass asks again for a body the browser dropped** (see the work log), and fails
+  closed if it still cannot read it. Every run so far has needed this, 6 to 14 times.
+- **`staff-no-money` also fails** when a start page answers with the sign-in page (the session
+  was lost) or when nothing was scanned, so an empty scan cannot pass.
+- **AC-17's "adds a `NOT NULL` column with no `DEFAULT` in the same statement" is judged per
+  action.** One `ALTER TABLE` holding two `ADD COLUMN`s, one with a `DEFAULT` and one without,
+  is flagged; a per-statement reading would pass it. Destructive statements inside a `DO $$`
+  block are flagged too.
+- **The runbook's F and V table** marks facts still to confirm with *when* they must be
+  confirmed (for example "before go-live"). AC-21 and AC-22 fill in the dates in Phase B.
+
+### Notes for the reviewer
+
+- **No secret, PIN or code anywhere.** Every cookie value, body text, commit and setting in the
+  tests is made at run time (random hex). The e2e staff profile's PIN comes from `generatePin`.
+  It is typed by the test standing in for the person, through the support helper's own
+  `signIn`, never by the pass, and the test asserts it is absent from the pass's output. The
+  runbook has placeholders only, and its test checks the new sections for connection strings,
+  assigned settings and quoted PIN-shaped numbers.
+- **The money boundary is unchanged.** No application file changed except `next.config.ts` and
+  the new public route. The staff pages were only read. The breach page was restored byte for
+  byte.
+- **The e2e AC-15 test sets its own timeout to 240 s.** The pass opens both start pages, up to
+  50 linked pages and four more, and waits for each to settle. That took 47.5 s in the targeted
+  run, and the suite's 45 s is for one page flow. No other timeout was raised.
+- **Why the headers cannot break hydration:** there is no script-source policy (D12).
+  `frame-ancestors`, `X-Frame-Options`, `nosniff`, the referrer policy and the permissions
+  policy do not affect a same-origin page's scripts. The HSTS header is ignored by browsers over
+  plain http, so local development is unaffected. `analysis-figures` and `stock-entry-autosave`
+  were green in the targeted run.
+- **The e2e also shows the headers on a JSON answer, a 404 page and the middleware's 307**, so
+  "every response" is observed beyond the `/sign-in` the AC names.
+- **`--url` also refuses** a URL holding a user name or password, a path, a query or a fragment,
+  and it never quotes a refused argument.
+- **Port 3000** is free. I started one `next start` for the real-command run, identified it by
+  its command line, and stopped it.
+- **Cost.** The token cost of this task cannot be measured from inside the agent; read it from
+  the transcript.
