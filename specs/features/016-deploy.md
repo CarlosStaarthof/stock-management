@@ -388,6 +388,7 @@ This feature adds no screen. What it adds are states of the release.
    - reads, in one read-only repeatable-read transaction, every table of the target schema except `_prisma_migrations`. The set it reads is asserted equal to the models of `prisma/schema.prisma`, so a table left out turns the test red.
    - writes one UTF-8 JSON file holding `format` equal to `macroads-export/1`, `exportedAt`, `migrations` (the applied names, in order), and, for each table, its row `count` and its `rows`. The rows are ordered by primary key, with every value as Postgres renders it in JSON, so a `Decimal(18, 8)` price and a `Decimal(12, 4)` quantity keep every digit.
    - writes `User.pinHash` and `User.pinKeyId` as `null` in every row, and lists both under `omitted` (D20);
+   - leaves out every `User` row whose `status` is `PENDING` and records their number as `omittedPendingRequests`, because a pending request holds the requester's PIN hash by the schema's own rule (ruling A1-F1); after a restore, a pending requester asks again;
    - prints the file's path, its SHA-256 and one line per table with its count, and nothing else.
 
    *Proved by* `src/server/deploy/export.db.test.ts`, against a fixture with at least one row in every table. The fixture includes a profile with a PIN, an `AccountLock`, an `AuthEvent`, a `SetupClaim`, and a signed count whose lines hold the quantity `21.6128` and the snapshot `6.11764706`. The test asserts that:
@@ -404,7 +405,7 @@ This feature adds no screen. What it adds are states of the release.
     - reads every table back and compares it row for row with the file, prints `[db:restore] <table>: restored <n>, identical <n>` for each, and exits 0 only when every table is identical;
     - prints no row and no value.
 
-    *Proved by* `src/server/deploy/restore.db.test.ts`, against throwaway schemas on the test database. It covers each refusal, and a round trip of AC-9's fixture, after which a second export equals the first apart from `exportedAt`. `db:census` on the restored schema then reports AC-9's counts and `pins: 0 of 0`. A file with one row tampered to break a constraint leaves no restored row in the target.
+    *Proved by* `src/server/deploy/restore.db.test.ts`, against throwaway schemas on the test database. It covers each refusal, and a round trip of AC-9's fixture, after which a second export equals the first apart from `exportedAt` and `omittedPendingRequests`, because the restored schema holds no pending request (ruling A1-F1). `db:census` on the restored schema then reports AC-9's counts, less the omitted pending requests, and `pins: 0 of 0`. A file with one row tampered to break a constraint leaves no restored row in the target.
 11. **AC-11** — **Every response carries the security headers.** `next.config.ts` sets `poweredByHeader: false` and, for the source `/:path*`, exactly these six headers:
     - `Strict-Transport-Security: max-age=63072000; includeSubDomains`
     - `X-Content-Type-Options: nosniff`
@@ -619,6 +620,26 @@ This feature adds no screen. What it adds are states of the release.
   routed through the coordinator or any connector, because the file holds all the business data. The local file
   is deleted once it has been uploaded, and the export prints the SHA-256 that the upload is checked against. The
   restore drill (AC-28) restores a copy downloaded from Drive.
+
+### Findings from Phase A1, ruled by the coordinator, 2026-09-28
+
+- **A1-F1. A copy holding a `PENDING` request could not be restored.** #21's schema requires a
+  `PENDING` row to hold the requester's PIN hash (`User_pending_shape`), but D20 writes every
+  `pinHash` as `null`. So one pending request would roll back the whole restore. **Ruling: the
+  export leaves `PENDING` rows out and counts them** (AC-9 now says so). A pending request is a
+  request, not an account: after a restore, the requester asks again.
+  - Restoring requests as `REJECTED` was rejected, because it records a decision nobody made.
+  - Relaxing the CHECK was rejected, because it weakens a #21 invariant.
+  - Keeping the hashes of pending rows only was rejected, because the copy would then hold a
+    credential.
+- **A1-F3. The deployment rule was checked against Vercel's documentation** (*Git
+  Configuration*, updated 2026-08-25). Branch keys use minimatch syntax. Quoting the page: "If a
+  branch matches multiple rules and at least one rule is `true`, a deployment will occur." With
+  `"**": false` and `"production": true`, only `production` deploys. AC-26 still observes it
+  live.
+- **A1-F2** (`verify:deploy` exists before its file, which A2 creates) and **A1-F5** (a restore
+  rejects a `Location` row that differs from the migration's, which matters only once a future
+  feature edits yards) are recorded as they are.
 
 ## Approved 2026-09-28
 
