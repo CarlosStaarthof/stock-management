@@ -685,6 +685,27 @@ a test or a message, and **none changes behaviour.**
 **Observations left:** 5 (the AC-15 test's own timeout, justified), 6 and 8 (confirmations), and
 7 (`public-no-money` on an empty body, which is minor).
 
+### Owner decision OD5: production starts in a new, empty database, 2026-09-28
+
+At go-live, the owner's Neon screenshots showed that **the `production` branch is not empty.** Its
+`neondb` holds ten tables and two `_prisma_migrations` rows, finished on 2026-09-08 and 2026-09-09.
+That is the app's early state from #3 and #4, from before the `dev` branch existed, and it holds
+none of #21's tables. This spec had assumed the branch was empty (F8, AC-21). Unchanged, the first
+build would migrate that stale database, and D9's guard would then refuse the seed (`SKIPPED`).
+
+**The owner chose, from three options, to create a new, empty database inside the `production`
+branch** (*Databases → Add database*, F9) and to point production's two connection strings at it.
+`neondb` is **left untouched**, and can be deleted later once confirmed not to matter. Emptying
+`neondb` was rejected as destructive. Counting its rows first was offered and was not needed for
+this choice.
+
+**What changes:**
+- AC-21's "the `production` branch holds no table" is read as "**the database production's
+  strings name** holds no table", which is the new one.
+- The first build migrates and seeds that database, exactly as D8 and D9 describe.
+- Nothing in the code depends on the database's name: `check-settings` judges hosts, and the
+  restore compares the two strings with each other.
+
 ## Approved 2026-09-28
 
 The owner approved this spec on 2026-09-28, after two rounds of dashboard facts and answers
