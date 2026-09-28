@@ -130,8 +130,15 @@ Six months in:
 
 ## Hosting
 
-Vercel Pro (~$20/month) with Neon Postgres — a `dev` branch for development and `main`
-for production. Vercel's free Hobby tier prohibits commercial use, which this is.
+Vercel with Neon Postgres. Neon's project has three branches: `production`, `dev` for
+development, and `test`, which `npm run test:db` empties.
+
+*Amended 2026-09-28 by the owner's decisions (#16 `deploy`, OD1 and OD2):*
+- **Vercel stays on the Hobby plan.** The brief originally chose Vercel Pro (~$20/month)
+  because Hobby's terms exclude commercial use. The owner has accepted that risk; upgrading
+  later changes nothing in the app.
+- **Neon stays on Free.** Its history window is 6 hours, so the main protection is a monthly
+  copy outside Neon, built in #16.
 Deployment happens **early**, once counting works, rather than at the end: the tool is
 tested on real phones in the real yard months before Excel export exists.
 

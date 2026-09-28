@@ -1469,3 +1469,44 @@ rulings in 021 → *The review's findings, ruled by the coordinator*. Nothing is
   and stock data unchanged (140/19/10/129/152). **`/setup` is now available on the development
   database until the owner completes it.** Until then, don't run e2e there:
   `pin-setup.spec.ts` expects a 404, and the suite assumes a permanent `ADMIN` exists.
+
+## Coordinator — #16 `deploy`: spec, owner facts and decisions, 2026-09-27 and 2026-09-28
+
+- **The code is on GitHub**, private, at `CarlosStaarthof/stock-management`, pushed 2026-09-27
+  after a scan of every historical blob for every `.env` value. Only `AUTH_URL`, which is
+  `localhost`, was found. The owner chose the name and visibility, and to keep the workbook in
+  the repository.
+- **The #16 spec is drafted** (`specs/features/016-deploy.md`, 27 criteria;
+  `progress/spec_deploy.md`).
+- **Owner facts from screenshots, 2026-09-28:**
+  - Neon: Free plan; branches `production` (the default), `dev` and `test`; London; **6-hour
+    history**.
+  - Vercel: team on **Hobby**. The project **already exists**, deploying `main` to
+    `stock-management-zeta-one.vercel.app`.
+
+  Probed anonymously, the live site answers as designed (`/setup` 404, `/api/session` 401,
+  protected routes 307). Its environment variables are unknown.
+- **Owner decisions, 2026-09-28:**
+  - stay on Vercel **Hobby**, with the terms risk accepted;
+  - stay on Neon **Free, plus a monthly copy outside Neon**, which becomes part of #16;
+  - the address is the current `vercel.app` one.
+
+  **The standing "Vercel Pro" requirement is replaced by the owner's Hobby decision.**
+- **Pushing is paused.** Vercel deploys every push to `main`, so nothing more is pushed until
+  #16's release flow (a separate `production` branch) is in place, or the owner says otherwise.
+- **#16 spec approved by the owner, 2026-09-28** (`specs/features/016-deploy.md`, 31 criteria).
+  The owner's answers:
+  - Q4: a test account;
+  - Q5: only the live site;
+  - Q6: go live;
+  - Q7: only the owner holds the secrets' copies (risk accepted);
+  - Q8: sign-off releases, and "hold" stops a release;
+  - Q9: the live site moves to Neon `production` at go-live;
+  - the monthly copy lives in the owner's Google Drive, uploaded by hand and never through a
+    connector.
+
+  V5 (`lhr1` on Hobby) was confirmed. V2 and V6 were moved to go-live by the coordinator's ruling,
+  because D3 and D18 hold their fallbacks. `specs/product-brief.md` → *Hosting* was amended to
+  the owner's Hobby and Neon Free decisions. **#16 is now `in_progress`.** Phase A is repository
+  work proved by `init`, and the spec suggests building it in two parts. Phase B is go-live,
+  with the owner.
