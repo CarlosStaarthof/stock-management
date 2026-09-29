@@ -1798,3 +1798,9 @@ count: users 1, counts 0, lock rows 1, auth events 1.
     so the first production release will be a real fast-forward to `6c4ca87`.
   - **Pending:** the owner removes any preview Vercel makes for `production`, then saves Branch
     Tracking = `production`.
+- **Go-live, first release, 2026-09-29/30.** `ed5ccf1` built and deployed, but its strings named
+  `neondb` rather than `stock`. The build migrated the stale `neondb` (pin_profiles), the seed
+  said SKIPPED (item master present), and the census showed 1 ADMIN and 1 YARD_STAFF, both old #3
+  rows with no PIN, so `/setup` stayed 404. The owner replaced both strings with `stock` ones. A
+  redeploy then rebuilt old `main` (`713b5a5`) by mistake, so the coordinator released again by
+  pushing a new commit to `production`.
