@@ -1307,3 +1307,46 @@ uncommitted changes. The unit totals include those in-flight tests (1225 = 1169 
   Q6's recommendation.
 - **The owner's decision (Q6, 2026-09-28): "Go Live".** It was conditional on this assessment
   finding nothing reachable from request input, and it found nothing. **Go.**
+
+## Harness fix: relative Location in protected-redirects
+
+**Ruling:** coordinator, 2026-09-30. **Status:** complete, not committed (the coordinator commits as `fix(#16)`).
+
+### Change
+- `scripts/verify/anonymous-pass.ts`: new `resolvedLocation(location, host)` resolves the
+  `Location` header with `new URL(location, "https://<host>/").href` inside a try/catch.
+  `protectedRedirects` compares that with the same absolute expected URL as before:
+  `https://<host>/sign-in?callbackUrl=<encoded path>`. A missing header or one that won't parse
+  gives `null`, so the path counts as wrong and nothing throws. The status rule
+  (`REDIRECT_STATUSES`) and the failure message are unchanged. No other check changed.
+- `tests/unit/verify-deployment.test.ts`: three new tests next to the existing
+  protected-redirects ones. The existing tests are unchanged.
+  - "a relative Location, as the live site sends, passes for every path": all five paths answer
+    `307 Location: /sign-in?callbackUrl=%2F...`. The check passes and the run exits 0.
+  - "an absolute same-origin https Location passes too": the absolute form, which is the
+    default passing stub.
+  - "still fails with ...": for each of these, only `protected-redirects` fails, the run exits 1,
+    and the FAIL line names the path. The cases are: no `Location`; a `200` with a correct
+    relative Location; `https://evil.example/...`; protocol-relative `//evil.example/...`;
+    `http://<host>/...`; a wrong path, relative (`/login?...`) and absolute
+    (`https://<host>/login?...`); a wrong callbackUrl (`/elsewhere`); an unencoded callbackUrl;
+    no callbackUrl (`/sign-in`); and unparseable headers `//[` and `https://%zz/sign-in`.
+
+### Deviation from the ruling's example (deliberate)
+The ruling gave `new URL(location, target.origin)` as an example. I resolve against
+`https://<target host>/` instead. In production the two are the same, because the target is
+https. They differ in the unit tests: the CLI accepts `http://127.0.0.1:<port>` for a local
+stub, so resolving against `target.origin` would turn a correct relative header into `http://...`
+and fail it. Using the https base keeps the relative form passing, and it rejects nothing the
+ruling wants rejected. An absolute `http:` header keeps its own scheme and still fails, and a
+protocol-relative `//evil.example` becomes `https://evil.example` and still fails.
+
+### Verification
+- `npx vitest run tests/unit/verify-deployment.test.ts`: 51 passed (51).
+- `npm run test:unit`: the **first** run showed `1 failed | 1300 passed (1301)`. I did not
+  capture which test failed, because the output was truncated. The two runs after it were both
+  `84 passed (84) files, 1301 passed (1301)` tests, with no code changes in between. That makes it
+  look like a flaky test, probably one of the slow timing-sensitive ones; I have not confirmed
+  that. The verify-deployment file passed in every run. The coordinator's gate run should watch
+  for it.
+- No network calls to the live site. `.env` was not read.

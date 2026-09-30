@@ -358,10 +358,10 @@ kept: every production value is made new.
 | 13 | Owner | Open `https://stock-management-zeta-one.vercel.app/setup` straight away, create the first `ADMIN`, then sign in. |
 | 14 | Coordinator | The anonymous pass, while `SETUP_CODE` is still set. |
 | 15 | Owner | Delete `SETUP_CODE` from Vercel. It takes effect at the next deployment. |
-| 16 | Owner | In `/profiles`, create the one verification `YARD_STAFF` profile, and keep it active. |
+| 16 | Owner | In `/profiles`, create the one verification `YARD_STAFF` profile, and keep it active. *Deferred (OD6): done when the first real `YARD_STAFF` profile is approved.* |
 | 17 | Owner | Check the pepper backup: `npm run operator:production -- db:census`, answering `PIN_PEPPER` from the password manager, prints `pins: n of n made under the given PIN_PEPPER`. |
 | 18 | Owner | Make the first copy and drill its restore (see *Backup and restore*). |
-| 19 | Coordinator, owner | The signed-in pass, once a count exists. |
+| 19 | Coordinator, owner | The signed-in pass, once a count exists. *Deferred with step 16 (OD6).* |
 | 20 | Owner | The history drill, the rollback drill, and the first sign-in after an hour with no traffic. |
 | 21 | Coordinator | Record the confirmed facts and the drill results here, and release them. |
 

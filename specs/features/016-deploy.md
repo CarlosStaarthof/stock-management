@@ -706,6 +706,21 @@ this choice.
 - Nothing in the code depends on the database's name: `check-settings` judges hosts, and the
   restore compares the two strings with each other.
 
+### Owner decision OD6: AC-25 is deferred until the first real `YARD_STAFF` profile, 2026-09-30
+
+The owner expects admins to do most counting, and chose not to create a verification
+`YARD_STAFF` profile in production (Q4, go-live step 16). **AC-25 is deferred, not dropped.** The
+coordinator runs the signed-in pass against production the day the first real `YARD_STAFF`
+profile is approved, and records it in `progress/impl_deploy.md`.
+
+**What changes:**
+- #16 may close with AC-25 marked *deferred (OD6)*. Go-live steps 16 and 19 wait for that day.
+- **What still stands:** the money boundary. AC-15's local proofs keep checking it, including the
+  fixture `YARD_STAFF` session, the breach run and the e2e suites, and they still run in every
+  gate.
+- **What waits:** the live check of the two cookies' `Secure` flag with a session, until the pass
+  runs. HTTPS-only and HSTS are already live and checked (AC-13).
+
 ## Approved 2026-09-28
 
 The owner approved this spec on 2026-09-28, after two rounds of dashboard facts and answers

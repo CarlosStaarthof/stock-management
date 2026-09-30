@@ -126,12 +126,28 @@ async function api401(target: AnonymousTarget): Promise<string | null> {
   return response.status === 401 ? null : `${path}: does not answer 401`;
 }
 
+/**
+ * A `Location` header resolved the way a browser would, against `https://<host>/`, so a
+ * relative `/sign-in?...` and an absolute `https://<host>/sign-in?...` compare equal. An
+ * absolute `http:` URL or another host (protocol-relative included) keeps its own origin
+ * and so still differs. A missing or unparseable header is null: wrong, never a throw.
+ */
+function resolvedLocation(location: string | null, host: string): string | null {
+  if (location === null) return null;
+  try {
+    return new URL(location, `https://${host}/`).href;
+  } catch {
+    return null;
+  }
+}
+
 async function protectedRedirects(target: AnonymousTarget): Promise<string | null> {
   const wrong: string[] = [];
   for (const path of PROTECTED_PATHS) {
     const response = await request(target.origin, path);
     const expected = `https://${target.origin.host}${SIGN_IN_PATH}?callbackUrl=${encodeURIComponent(path)}`;
-    if (!REDIRECT_STATUSES.has(response.status) || response.headers.get("location") !== expected) {
+    const location = resolvedLocation(response.headers.get("location"), target.origin.host);
+    if (!REDIRECT_STATUSES.has(response.status) || location !== expected) {
       wrong.push(path);
     }
   }

@@ -414,6 +414,56 @@ describe("016 AC-13: each check, against a stub made to fail it", () => {
     }
   });
 
+  it("AC-13 protected-redirects: a relative Location, as the live site sends, passes for every path", async () => {
+    for (const path of PROTECTED_PATHS) {
+      site.routes.set(path, {
+        status: 307,
+        headers: { Location: `/sign-in?callbackUrl=${encodeURIComponent(path)}` },
+        body: BODY_TEXT,
+      });
+    }
+    const result = await anonymous();
+
+    expect(outcomes(result)["protected-redirects"]).toBe("PASS");
+    expect(result.code).toBe(0);
+  });
+
+  it("AC-13 protected-redirects: an absolute same-origin https Location passes too", async () => {
+    // makePassing() already sends the absolute form; this pins it next to the relative one.
+    const result = await anonymous();
+
+    expect(outcomes(result)["protected-redirects"]).toBe("PASS");
+  });
+
+  it("AC-13 protected-redirects: still fails with no Location, a non-redirect, another host, http, the wrong path, a wrong or missing callbackUrl, or an unparseable header", async () => {
+    const [first] = PROTECTED_PATHS;
+    const host = site.origin.host;
+    const callback = `callbackUrl=${encodeURIComponent(first)}`;
+    const variants: Reply[] = [
+      { status: 307 },
+      { status: 200, headers: { Location: `/sign-in?${callback}` }, body: BODY_TEXT },
+      { status: 307, headers: { Location: `https://evil.example/sign-in?${callback}` } },
+      { status: 307, headers: { Location: `//evil.example/sign-in?${callback}` } },
+      { status: 307, headers: { Location: `http://${host}/sign-in?${callback}` } },
+      { status: 307, headers: { Location: `/login?${callback}` } },
+      { status: 307, headers: { Location: `https://${host}/login?${callback}` } },
+      { status: 307, headers: { Location: `/sign-in?callbackUrl=${encodeURIComponent("/elsewhere")}` } },
+      { status: 307, headers: { Location: `/sign-in?callbackUrl=${first}` } },
+      { status: 307, headers: { Location: "/sign-in" } },
+      { status: 307, headers: { Location: "//[" } },
+      { status: 307, headers: { Location: "https://%zz/sign-in" } },
+    ];
+    for (const variant of variants) {
+      makePassing();
+      site.routes.set(first, variant);
+      const result = await anonymous();
+
+      expectOnlyFailure(result, "protected-redirects");
+      const line = result.lines.find((entry) => entry.startsWith("[verify] FAIL protected-redirects"));
+      expect(line).toContain(first);
+    }
+  });
+
   it("AC-13 protected-redirects: reads the paths from src/lib/auth-config.ts, and asks every one", async () => {
     await anonymous();
 
