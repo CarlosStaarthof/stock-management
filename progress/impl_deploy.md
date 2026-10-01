@@ -1350,3 +1350,14 @@ protocol-relative `//evil.example` becomes `https://evil.example` and still fail
   that. The verify-deployment file passed in every run. The coordinator's gate run should watch
   for it.
 - No network calls to the live site. `.env` was not read.
+
+## Go-live step 17: the production pepper replaced, 2026-10-01
+
+- The first `db:census` attempts were refused by the launcher's `.env` guard: the pasted connection
+  strings and, later, the pasted pepper equalled `.env`'s. The guard worked as designed; nothing ran.
+- Vercel's `PIN_PEPPER` could not be shown to match the owner's saved copy (Sensitive values cannot
+  be read back), so the owner replaced it per *Recovery from a lost `PIN_PEPPER`*. The first
+  replacement's saved copy was not usable (not base64 of 32 bytes), so it was replaced once more,
+  with the clipboard checked as `44 chars, 32 bytes` before saving. This release carries it.
+- `.env` holds the development pepper again; `tests/unit/env-file.test.ts` passes (6/6).
+- Production has one profile (the owner's `ADMIN`), so the only cost is one `pin:reset`.
