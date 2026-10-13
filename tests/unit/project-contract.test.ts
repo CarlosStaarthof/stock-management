@@ -187,7 +187,7 @@ describe("the money boundary, and where the first monetary column may be named",
    * crosses on a field (`value`, `currentPrice`) - so the src/lib and scripts list stays at
    * zero.
    */
-  const EXPORT_SERVICE = "src/server/reporting/export-service.ts";
+  const EXPORT_SERVICE = "src/server/export/export-service.ts";
 
   const SNAPSHOT_READERS = [...LIFECYCLE_MODULES, ANALYSIS_SERVICE, EXPORT_SERVICE].sort();
 
@@ -232,6 +232,7 @@ describe("the money boundary, and where the first monetary column may be named",
       "src/components/item-master/PricePanel.tsx",
       "src/server/counts/count-lifecycle-service.ts",
       "src/server/counts/count-summary-service.ts",
+      "src/server/export/export-service.ts",
       "src/server/items/item-master-input.ts",
       "src/server/items/item-price-service.ts",
       "src/server/items/item-service.ts",
@@ -239,7 +240,6 @@ describe("the money boundary, and where the first monetary column may be named",
       "src/server/items/workbook-import-service.ts",
       "src/server/items/workbook-plan.ts",
       "src/server/reporting/analysis-service.ts",
-      "src/server/reporting/export-service.ts",
     ]);
     expect(offenders).toHaveLength(13);
   });
@@ -297,7 +297,7 @@ describe("the money boundary, and where the first monetary column may be named",
 
     // Non-vacuity, kept with the amendment: the scan must have read the tree.
     expect(shippingModules()).toContain("src/server/reporting/analysis-service.ts");
-    expect(shippingModules()).toContain("src/server/reporting/export-service.ts");
+    expect(shippingModules()).toContain("src/server/export/export-service.ts");
   });
 
   it("009 AC-26: signatureSvg is named by the lifecycle service and by nothing else", () => {

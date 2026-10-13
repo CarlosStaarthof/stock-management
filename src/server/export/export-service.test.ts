@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { exportFileName } from "@/lib/export-messages";
 import type { SessionUser } from "@/server/auth/session-user";
 import { ForbiddenError, UnauthorizedError } from "@/server/errors";
-import { exportWorkbook } from "@/server/reporting/export-service";
+import { exportWorkbook } from "@/server/export/export-service";
 
 /**
  * Spec 012 AC-8's refusal half and AC-12's file-name half, WITH NO DATABASE.
@@ -42,7 +42,7 @@ describe("012 AC-8: ADMIN only, refused in the service", () => {
   });
 
   it("AC-9: neither the service nor its messages names the signature column", () => {
-    expect(readFileSync("src/server/reporting/export-service.ts", "utf8")).not.toMatch(
+    expect(readFileSync("src/server/export/export-service.ts", "utf8")).not.toMatch(
       /signatureSvg/,
     );
     expect(readFileSync("src/lib/export-messages.ts", "utf8")).not.toMatch(/signatureSvg/);

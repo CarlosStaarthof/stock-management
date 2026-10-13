@@ -145,3 +145,41 @@ guarantee is unchanged; no #5 assertion was touched.
 - The `tests/unit/project-contract.test.ts` money-list amendments (AC-10): `unitPrice` 12 → 13,
   `unitPriceSnapshot` 3 → 4, both as literal files.
 - The full gate (AC-14).
+
+---
+
+# Round 3 — 2026-10-13 (branch `hermes/mv6xnr27`)
+
+## Done
+
+- **Move (owner-answered blocked question).** `export-service.ts`, `export-service.test.ts` and
+  `export-service.db.test.ts` moved from `src/server/reporting/` to a new `src/server/export/`
+  folder with `git mv`. Imports updated to `@/server/export/export-service`;
+  `tests/unit/project-contract.test.ts` AC-10 names the new path in all three references.
+  **011's `tests/unit/analysis-contract.test.ts` is byte-for-byte untouched and passes 23/23** —
+  the scans that failed in round 2 (`src/server/reporting/**` tree-wide) no longer see the export,
+  which is the whole point of the move.
+- **Spec 012 amended:** `## Owner rulings, 2026-10-13` corrected (R3 = single stock take per file;
+  R5 = names from the database); `### Findings, 2026-10-13` records the Cashel/Clonmel
+  contradiction; `### Implementation status` marks the R3 reshape pending; the Contract table and
+  AC-10 point at `src/server/export/export-service.ts`.
+
+## Verification
+
+- `npm run typecheck` — exit 0.
+- `npm run lint` — exit 0.
+- `npm run test:unit` — **1327 passed / 1 failed**; the failure is the pre-existing
+  `tests/unit/env-file.test.ts` (`.env` absent from this container). `export-service.test.ts`,
+  `project-contract.test.ts` and `analysis-contract.test.ts` all green.
+- `npm run test:db` — refuses before a test: `TEST_DATABASE_URL is not set` (no `.env`).
+- `npm run test:e2e` — not runnable here (no reachable branch, no browsers).
+
+## BLOCKED
+
+1. **Cashel vs Clonmel.** The owner's note directs a rename to Cashel; the read-only sample
+   workbook, the applied migration, `specs/domain-model.md`, `docs/domain-glossary.md` and the
+   approved+done specs 004/005 all say **Clonmel**. Not renamed. Evidence in the spec's
+   `### Findings, 2026-10-13`.
+2. **OQ4 — the file shape and its date.** Confirmation needed that an R3 file is one **period**
+   covering both site sheets (not one yard), and which `countDate` names `stock-YYYY-MM-DD.xlsx`
+   when the period's yards were walked on different days.

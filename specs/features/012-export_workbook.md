@@ -55,18 +55,80 @@ each names the risk it accepts.
 
 ## Owner rulings, 2026-10-13
 
-The owner answered the three open questions and fixed two more points. Each ruling is binding and
-resolves the OQ it names.
+The owner answered the three open questions and corrected two of the answer-level points. Each
+ruling is binding and resolves the OQ it names. **R3 corrects the first answer to OQ2:** an earlier
+direction ("a default export covers every approved period") is **superseded** by "one approved
+stock take per file".
 
 | # | Ruling | Consequence |
 |---|---|---|
-| R1 | **Feature #16 `deploy` is live** (`progress/impl_deploy.md`, first release). | `feature_list.json` moves #16 to `done`; it is no longer `in_progress`. |
+| R1 | **Feature #16 `deploy` is live** (`progress/impl_deploy.md`, first release). | `feature_list.json` moves #16 to `done`; it is no longer `in_progress`. (Already `done` on this branch.) |
 | R2 | **OQ1: the `AB` prints the signer's name and the signed date only, as text. The drawn stroke is NOT exported.** | No SVG rasteriser, no new dependency, and `signatureSvg` stays named by exactly `count-lifecycle-service.ts` (009 AC-26). The signer facts reach the writer through `getLifecycleFacts`, never by naming the column. AC-9 is met with name + date. |
-| R3 | **OQ2: a default export covers every approved period.** | `listApprovedPeriods` supplies the period set, ascending on the yard sheets and newest-first in `Summary`. A chosen-year filter is a later feature and adds no route parameter here (AC-12 unchanged). |
-| R4 | **OQ3: column E is the item's current price, and each period keeps its frozen value.** | Column E is `formatPriceExact` of the item's current price; a period's `Value` is `quantity × unitPriceSnapshot` from that period's `APPROVED` count. Editing a price never moves a past `Value` (Invariant 2). |
-| R5 | **The site sheets are one per active yard, named for the yard: `Dublin` and `Clonmel`.** | The writer derives the yard sheets from the active yards it is handed, so the names always match the database's `Location.name`; the sample workbook's `Clonmel ` trailing-space typo is still not reproduced (AC-1). |
+| R3 | **OQ2 (corrected): one approved stock take per file, never several periods in one workbook.** The export page defaults to the latest approved stock take and lists the earlier approved stock takes, so any one can be downloaded as its own file. The file name is `stock-YYYY-MM-DD.xlsx`, using that stock take's date. | The workbook stops carrying a period range. Every multi-period figure (MoM, YoY) and the period-range filename are dropped; the period set is no longer a parameter. This supersedes the earlier "every approved period" answer. |
+| R4 | **OQ3: column E is the item's current price, and each period keeps its frozen value.** | Column E is `formatPriceExact` of the item's current price; a `Value` is `quantity × unitPriceSnapshot` from that stock take's `APPROVED` count. Editing a price never moves a past `Value` (Invariant 2). |
+| R5 | **The site sheets are named for the yard in the database, never hard-coded.** | The writer derives each yard sheet's name from the `Location.name` it is handed, so a rename in the data moves the sheet with it. The sample workbook's `Clonmel ` trailing-space typo is still not reproduced (AC-1). |
 
-With R2 to R4, `## Open questions` below is closed. Nothing else in this spec changes.
+R2 and R4 close their `## Open questions` entries; R3 answers OQ2 with the corrected
+single-stock-take shape and raises **OQ4** (below), which is needed before the reshape can be
+coded. The reshape is **not yet in the code** — see *Implementation status* below.
+
+### Findings, 2026-10-13 — the owner's "Cashel" contradicts the source of truth
+
+The owner's covering note says the second site is **Cashel, never Clonmel**, and directs that the
+seed data, the domain model or any spec that says Clonmel be changed to Cashel. **That change is
+not made, because it is a domain fact the repository has already fixed on the other side, and
+changing it is a feature of its own rather than a line in an export:**
+
+- `Samples/Stock @ 01-Sep-2026.xlsx` — **read-only, the source of truth** — has worksheets
+  `Summary`, `Dublin`, `Clonmel ` (trailing space) and `Clonmel Trucks & Yard`. There is no
+  `Cashel` sheet.
+- `prisma/migrations/20260909135148_create_stock_domain/migration.sql` inserts
+  `('loc_clonmel', 'CLONMEL', 'Clonmel', true, 2)`. Applied migrations are history; the database
+  the product runs on holds `Clonmel`.
+- `specs/domain-model.md`, `docs/domain-glossary.md`, and the **done, approved** specs 004
+  (AC-21) and 005 seed both yards as **Dublin** and **Clonmel**.
+- `src/lib/excel/workbook-reader.ts` resolves the sheet `"Clonmel "`, and
+  `src/server/items/workbook-plan.ts` / `workbook-import-service.ts` map it to `CLONMEL`.
+
+Renaming the yard would rewrite an approved spec, add a migration, re-seed the item master and
+touch the read-only sample. **Flagged to the owner (BLOCKED) — not worked around.** Until the owner
+rules, the export keeps deriving its sheet names from `Location.name` (R5); for the data this
+product holds those names are `Dublin` and `Clonmel`.
+
+### Implementation status, 2026-10-13 (round 3)
+
+- The service has moved to its own folder: `src/server/export/export-service.ts` (with
+  `export-service.test.ts` and `export-service.db.test.ts`), out of `src/server/reporting/`.
+  `tests/unit/project-contract.test.ts` AC-10 and the Contract table below name the new path;
+  011's analysis-contract scans are untouched.
+- The **R3 single-stock-take reshape is pending.** The current writer and its tests still build
+  the superseded multi-period workbook. The feature stays `in_progress`; this is the next round's
+  work, against the ACs as amended by R3.
+
+## Amendment — the single-stock-take shape (R3)
+
+R3 replaces the multi-period contract. Where the acceptance criteria below still describe a
+period range (AC-2's "one `Qty` column and one `Value` column per exported period", AC-5's
+newest-first columns, AC-6's MoM/YoY, AC-9's "count(s)", AC-12's range filename), the following
+governs. The criteria are otherwise unchanged.
+
+- **A-1 — One approved stock take per file.** The workbook carries exactly one approved period:
+  `Summary`, then one sheet per active yard (the yard names come from `Location.name`, R5), each
+  with a single `Qty | Value` pair for that period. No other period's data appears anywhere in
+  the file, and there is no MoM or YoY row (`Summary` rows 7 and 9 are gone).
+- **A-2 — The file name is `stock-YYYY-MM-DD.xlsx`**, where the date is that stock take's date
+  (see the open question on which date when a period's yards were walked on different days).
+- **A-3 — The export page.** A page lists the approved stock takes, newest first, defaulting to
+  the latest; each entry downloads that one take as its own file. A `?period=YYYY-MM` selects one.
+- **A-4 — Held-only and `showAll`** keep their meaning (AC-7): a row is held when `quantity > 0`
+  in that one period.
+- **A-5 — ADMIN only** keeps its meaning (AC-8), in the service.
+
+**Open question OQ4 (needed before A-2 and A-3 can be implemented):** a `StockCount` is one yard
+closing one month, so a "stock take" whose file carries **both** site sheets is one **period**
+across the active yards — but the period's yards may carry different `countDate`s. Which date
+names the file: the earliest, the latest, or the only one? And does the owner confirm the file
+covers one period with both site sheets (not one yard alone)?
 
 ## User stories
 
@@ -94,12 +156,12 @@ With R2 to R4, `## Open questions` below is closed. Nothing else in this spec ch
 | Artefact | What it is |
 |---|---|
 | `src/lib/excel/workbook-writer.ts` | **New, pure.** `buildWorkbook(input: ExportInput): Promise<Buffer>`, where `ExportInput` is plain data (yards, rows, periods, per-count facts). Imports `exceljs` and `src/lib/` only; imports nothing from `src/server/` |
-| `src/server/reporting/export-service.ts` | **New.** `exportWorkbook(actor: SessionUser \| null, options: { showAll: boolean }): Promise<{ fileName: string; bytes: Buffer }>`. Asserts `ADMIN` first (OD, 003 AC-16), reads the database, maps to `ExportInput` field by field, calls the writer. Every euro crosses the boundary on a field the `ExportInput` shape declares |
+| `src/server/export/export-service.ts` | **New.** `exportWorkbook(actor: SessionUser \| null, options: { showAll: boolean }): Promise<{ fileName: string; bytes: Buffer }>`. Asserts `ADMIN` first (OD, 003 AC-16), reads the database, maps to `ExportInput` field by field, calls the writer. Every euro crosses the boundary on a field the `ExportInput` shape declares. **Lives in its own `src/server/export/` folder** (owner direction, 2026-10-13), not under `src/server/reporting/` |
 | `src/app/analysis/export/route.ts` | **New.** `GET` handler. `requireRole`/page-guard refuses a non-`ADMIN` before the service runs; returns `200` with `Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`, `Content-Disposition: attachment; filename="…"`, and `Cache-Control: no-store`. `?all=1` sets `showAll` |
 | `src/app/analysis/page.tsx` | **Modified:** one link/control to `/analysis/export`. `011 AC-16`'s "every link carries period and breakdown" test is amended as its note allows: the export link is a plain `GET` and carries neither parameter |
 | `src/lib/export-messages.ts` | **New**, optional: every literal a criterion quotes, in one place (the #10/#11 pattern) |
 | `tests/unit/export-workbook.test.ts` | **New.** Level 3: builds a fixture, loads the buffer with ExcelJS, asserts cells |
-| `src/server/reporting/export-service.db.test.ts` | **New.** Level 2: real database, approval lifecycle, role refusal |
+| `src/server/export/export-service.db.test.ts` | **New.** Level 2: real database, approval lifecycle, role refusal. Lives beside the service in `src/server/export/` |
 | `tests/e2e/analysis-export.spec.ts` | **New.** Level 4: an `ADMIN` downloads; a `YARD_STAFF` session does not |
 
 ## UI states
@@ -195,7 +257,7 @@ With R2 to R4, `## Open questions` below is closed. Nothing else in this spec ch
    OQ1.
 
 10. **AC-10 — The money lists are amended, never loosened.** `tests/unit/project-contract.test.ts`
-    adds `src/server/reporting/export-service.ts` to the exact `unitPriceSnapshot` list (now
+    adds `src/server/export/export-service.ts` to the exact `unitPriceSnapshot` list (now
     **four** files) and to the exact `unitPrice` list (now **thirteen** files), as a literal
     file, never a directory exemption. `src/lib/` and `scripts/` stay at **zero** files naming
     the column, which the writer obeys by receiving a value field rather than a price column,

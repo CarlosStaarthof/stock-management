@@ -12,7 +12,7 @@ import {
 } from "@/lib/export-messages";
 import { db } from "@/server/db";
 import { ForbiddenError, UnauthorizedError } from "@/server/errors";
-import { exportWorkbook } from "@/server/reporting/export-service";
+import { exportWorkbook } from "@/server/export/export-service";
 import { resetTestDb } from "@/server/test-db";
 
 import {

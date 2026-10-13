@@ -1888,3 +1888,43 @@ assertion amended, so the scans cannot be narrowed without the owner's ruling.
 `npm run test:unit`: **1322 passed / 6 failed** — 5 are the 011 tree scans above; the sixth is
 the pre-existing `env-file.test.ts` (no `.env` in this container). Report:
 `progress/impl_export_workbook.md`.
+
+---
+
+## Feature 12 `export_workbook` — round 3, 2026-10-13 (branch `hermes/mv6xnr27`)
+
+**Round 2's blocked question answered by the owner: yes, move `export-service` out of
+`src/server/reporting/`.** It now lives in its own folder, `src/server/export/`:
+`export-service.ts`, `export-service.test.ts`, `export-service.db.test.ts`. `@/server/export/...`
+replaces `@/server/reporting/...`; `tests/unit/project-contract.test.ts` AC-10 names the new path
+(three references). **011's `tests/unit/analysis-contract.test.ts` is untouched and green (23/23)**
+— the `src/server/reporting/**` tree scans no longer see the export. The old blocked question is
+closed.
+
+**Spec amended** (`specs/features/012-export_workbook.md`): `## Owner rulings, 2026-10-13` now
+records R3 as the **corrected** OQ2 (one approved stock take per file, `stock-YYYY-MM-DD.xlsx`, an
+export page that defaults to the latest and lists earlier takes) and R5 as "sheet names come from
+the database, never hard-coded". A new `### Findings, 2026-10-13` records the Cashel/Clonmel
+contradiction, and `### Implementation status` marks the R3 reshape as pending. The Contract table
+and AC-10 point at `src/server/export/export-service.ts`.
+
+**BLOCKED — the owner's "Cashel" is contradicted by the source of truth.** The covering note says
+the second site is Cashel, never Clonmel, and directs that seed data, the domain model and specs be
+changed to Cashel. Not done: `Samples/Stock @ 01-Sep-2026.xlsx` (read-only) has `Clonmel ` and no
+`Cashel` sheet; the applied migration inserts `('loc_clonmel','CLONMEL','Clonmel',true,2)`;
+`specs/domain-model.md`, `docs/domain-glossary.md`, and the done+approved specs 004 (AC-21) and 005
+all seed Dublin + Clonmel; `workbook-reader.ts` / `workbook-plan.ts` / `workbook-import-service.ts`
+map `"Clonmel "` → `CLONMEL`. Renaming is a feature of its own (migration, re-seed, spec rewrite,
+read-only sample), not an export change. The export honours the part it can (R5: names come from
+`Location.name`), and those names are `Dublin` and `Clonmel`.
+
+**Second open point (OQ4), needed before R3 can be coded:** a `StockCount` is one yard+month, so a
+file carrying both site sheets is one **period** across the active yards, whose yards can have
+different `countDate`s. Which date names `stock-YYYY-MM-DD.xlsx`, and does the owner confirm one
+period per file (both site sheets), not one yard?
+
+**Gate this round:** `npm run typecheck` exit 0; `npm run lint` exit 0; `npm run test:unit`
+**1327 passed / 1 failed** — the only failure is the pre-existing `tests/unit/env-file.test.ts`
+(`.env` absent from this container, as rounds 1–2 recorded). `npm run test:db` refuses before
+loading a test (`TEST_DATABASE_URL is not set`); `test:e2e` needs a reachable branch and installed
+browsers, neither present. The DB/e2e halves of the full gate cannot run here.
