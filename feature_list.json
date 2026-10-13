@@ -604,8 +604,23 @@
       "title": "Excel export: full workbook",
       "description": "One .xlsx with Summary, Dublin and Clonmel sheets in the sample's shape, generated clean so no #REF!, no hardcoded value cells and no off-by-one YoY can occur. Held items only by default. Signature and signer printed on each yard sheet. Absorbs the former #13.",
       "spec_file": "specs/features/012-export_workbook.md",
-      "spec_status": "missing",
-      "acceptance": [],
+      "spec_status": "draft",
+      "acceptance": [
+        "AC-1: Three sheets, named exactly, generated purely.",
+        "AC-2: A yard sheet is the sample's shape.",
+        "AC-3: Every value is derived, and the total is a formula.",
+        "AC-4: No #REF!, no error cell, no hardcoded total.",
+        "AC-5: Summary mirrors the sample and is derived.",
+        "AC-6: MoM and YoY join on the period and refuse across a gap.",
+        "AC-7: Held-only by default; showAll restores every assigned item.",
+        "AC-8: ADMIN only, refused in the service.",
+        "AC-9: The signer and the signature are on each yard sheet.",
+        "AC-10: The money lists are amended, never loosened.",
+        "AC-11: No new dependency, and the file is self-contained.",
+        "AC-12: The route contract.",
+        "AC-13: An ADMIN downloads a real, readable file end to end.",
+        "AC-14: The rest of the product is unchanged."
+      ],
       "status": "pending"
     },
     {

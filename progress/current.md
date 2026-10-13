@@ -1804,3 +1804,35 @@ count: users 1, counts 0, lock rows 1, auth events 1.
   rows with no PIN, so `/setup` stayed 404. The owner replaced both strings with `stock` ones. A
   redeploy then rebuilt old `main` (`713b5a5`) by mistake, so the coordinator released again by
   pushing a new commit to `production`.
+
+## Spec pass: #12 `export_workbook` drafted, 2026-10-13
+
+#16 is the only `in_progress` feature, and every criterion left in it (AC-19 to AC-31) is a
+dashboard/owner observation or a go-live step, so no implementation is available inside it.
+`AGENTS.md` §4 picks the lowest-id `pending` feature and writes its spec first when it has none:
+that is **#12**, whose spec was `missing`.
+
+- [x] `specs/features/012-export_workbook.md` written: 14 numbered criteria, the shape taken
+      from `specs/domain-model.md` Part 1 and the derivation rules from Invariants 1/2/4/7 and
+      #9/#11, not invented. It fixes the three sheets, the `A–E` master columns and repeating
+      `Qty | Value`, the formula TOTAL over the value column, the sum-exact-round-once rule,
+      MoM/YoY joined on the period (refusing across a gap), held-only by default with a
+      `showAll` option, and `ADMIN`-only refused in the service.
+- [x] It records the exact-list amendments a new `unitPriceSnapshot` reader forces on
+      `tests/unit/project-contract.test.ts` (AC-10), and keeps `signatureSvg` named by one
+      module by routing the signer through `getLifecycleFacts`.
+- [x] `feature_list.json`: #12 `spec_status` `missing` -> `draft`, acceptance mirroring the 14
+      criteria; still exactly one feature `in_progress` (#16). Status stays `pending`.
+- [x] `progress/spec_export_workbook.md` written; three open questions for the owner (OQ1 how
+      the drawn signature reaches a cell given ExcelJS cannot embed SVG; OQ2 the default period
+      range; OQ3 column E as the current price against the frozen per-period snapshot).
+- [x] Verified: `feature_list.json` parses, #12's `spec_file` exists, one `in_progress`;
+      `npm run typecheck` 0, `npm run lint` 0; `repo-hygiene`, `no-default-password` and
+      `project-contract` 26/26 green over the new spec.
+- [ ] **Not done, and deliberately:** no `src/`, `tests/` or `prisma/` change. #12 needs the
+      owner's approval of this spec before any code exists, per `AGENTS.md` and the spec gate.
+
+**Environmental note (not introduced here):** this container has no `.env`, so
+`tests/unit/env-file.test.ts` fails on `existsSync(".env")` in `npm run test:unit`. Every other
+unit file passes. `env-file.test.ts` requires the real settings file by design (021's
+*`.env` is the only settings file*); it is not a code defect.
