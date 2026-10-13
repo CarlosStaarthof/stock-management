@@ -180,7 +180,16 @@ describe("the money boundary, and where the first monetary column may be named",
    */
   const ANALYSIS_SERVICE = "src/server/reporting/analysis-service.ts";
 
-  const SNAPSHOT_READERS = [...LIFECYCLE_MODULES, ANALYSIS_SERVICE].sort();
+  /**
+   * AMENDED BY 012 AC-10, as an exact file and never as a directory exemption: the export IS
+   * the second monetary surface, and it values each period from that period's frozen snapshot
+   * (Invariant 2). The writer it hands data to still names the column NOWHERE - every euro
+   * crosses on a field (`value`, `currentPrice`) - so the src/lib and scripts list stays at
+   * zero.
+   */
+  const EXPORT_SERVICE = "src/server/reporting/export-service.ts";
+
+  const SNAPSHOT_READERS = [...LIFECYCLE_MODULES, ANALYSIS_SERVICE, EXPORT_SERVICE].sort();
 
   it("011 AC-26, bounded after review B2: the twelfth entry may name the snapshot and nothing else", () => {
     // The list below admits FILES, and the scan it runs is the bare stem - which the price
@@ -198,7 +207,7 @@ describe("the money boundary, and where the first monetary column may be named",
     expect(new Set(named)).toEqual(new Set(["unitPriceSnapshot"]));
   });
 
-  it("011 AC-26 amending 009 AC-26: exactly twelve modules may name unitPrice", () => {
+  it("012 AC-10 amending 011 AC-26: exactly thirteen modules may name unitPrice", () => {
     const scanned = shippingModules();
 
     // The scan must have looked at something, or the assertion below is vacuous.
@@ -210,12 +219,13 @@ describe("the money boundary, and where the first monetary column may be named",
 
     // #6 is the first feature that legitimately RENDERS a price, so the permitted list
     // grew from two to nine; #9 is the first that WRITES the snapshot, so it grew to
-    // eleven; #11 is the first that values HISTORY from it, so it grows to twelve - and it
-    // stays a list of FILES, never a directory exemption. The two presentation files on it
-    // sit behind a route no YARD_STAFF session can reach at all (006 AC-2), and the three
-    // service modules are ones no session reaches directly: `/analysis` is a 307 for every
-    // staff session before `getAnalysis` is called at all. A THIRTEENTH module naming the
-    // column turns this red.
+    // eleven; #11 is the first that values HISTORY from it, so it grew to twelve; #12
+    // exports both - the frozen snapshot as a value and the current price as column E - so
+    // it grows to thirteen. It stays a list of FILES, never a directory exemption. The two
+    // presentation files on it sit behind a route no YARD_STAFF session can reach at all
+    // (006 AC-2), and the four service modules are ones no session reaches directly:
+    // `/analysis` and `/analysis/export` are a 307 or a 403 for every staff session before
+    // the service is called at all. A FOURTEENTH module naming the column turns this red.
     expect(offenders).toEqual([
       "src/app/item-master/actions.ts",
       "src/components/item-master/ItemTable.tsx",
@@ -229,8 +239,9 @@ describe("the money boundary, and where the first monetary column may be named",
       "src/server/items/workbook-import-service.ts",
       "src/server/items/workbook-plan.ts",
       "src/server/reporting/analysis-service.ts",
+      "src/server/reporting/export-service.ts",
     ]);
-    expect(offenders).toHaveLength(12);
+    expect(offenders).toHaveLength(13);
   });
 
   it("006 AC-31: src/lib and scripts stay at ZERO files naming it", () => {
@@ -269,22 +280,24 @@ describe("the money boundary, and where the first monetary column may be named",
     ]);
   });
 
-  it("011 AC-26 amending 009 AC-26: unitPriceSnapshot is named by exactly those three files", () => {
+  it("012 AC-10 amending 011 AC-26: unitPriceSnapshot is named by exactly those four files", () => {
     // 006 AC-31 held this at ZERO because the column had no legitimate reader yet. #9 is
     // both its first writer and its first reader, so the assertion became an EXACT LIST
     // rather than being deleted; #11 is the second reader - THE PRICE SNAPSHOT IS THE ONLY
     // SOURCE OF A EURO IN THIS PRODUCT, AND ANALYSIS IS THE FEATURE THAT JOINS THEM ACROSS
-    // PERIODS - so the list grows to three. A FOURTH module naming the snapshot turns this
-    // red, and the addition is a FILE rather than `src/server/reporting/**`.
+    // PERIODS - and #12 is the third, exporting a period's frozen value. So the list is
+    // four. A FIFTH module naming the snapshot turns this red, and the addition is a FILE
+    // rather than `src/server/reporting/**`.
     const offenders = shippingModules()
       .filter((file) => /unitPriceSnapshot/.test(readFileSync(file, "utf8")))
       .sort();
 
     expect(offenders).toEqual(SNAPSHOT_READERS);
-    expect(offenders).toHaveLength(3);
+    expect(offenders).toHaveLength(4);
 
     // Non-vacuity, kept with the amendment: the scan must have read the tree.
     expect(shippingModules()).toContain("src/server/reporting/analysis-service.ts");
+    expect(shippingModules()).toContain("src/server/reporting/export-service.ts");
   });
 
   it("009 AC-26: signatureSvg is named by the lifecycle service and by nothing else", () => {

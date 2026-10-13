@@ -1,5 +1,59 @@
 # Feature 12 — Excel export: full workbook
 
+**Round 2, 2026-10-13 — BLOCKED on a spec conflict between 012's contract and 011's tree
+scans.** Implementer (default agent), branch `hermes/mv6xnr27`.
+
+## Round 2
+
+### Built
+
+| File | What |
+|---|---|
+| `src/server/reporting/export-service.ts` (new) | `exportWorkbook(actor, { showAll }): Promise<{ fileName; bytes }>`; `assertRole(actor, "ADMIN")` first; reads yards, approved counts, valued lines and yard links; maps to `ExportInput` field by field; calls `buildWorkbook`. Money is read from `unitPriceSnapshot` for a period's value (Invariant 2) and column E is the item's current price (R4). The signer facts come through `getLifecycleFacts` (AC-9). |
+| `src/lib/export-messages.ts` (amended) | `EXPORT_FILENAME_PREFIX` and `exportFileName(periodKeys)` for AC-12. |
+| `src/server/reporting/export-service.test.ts` (new) | AC-8's refusal half and AC-12's filename half, with no database. |
+| `src/server/reporting/export-service.db.test.ts` (new) | Level 2: two yards, two approved periods, a held / counted-zero / never-counted item, signer names and dates. |
+| `tests/unit/project-contract.test.ts` (amended) | AC-10: `unitPrice` 12 → 13 and `unitPriceSnapshot` 3 → 4, `src/server/reporting/export-service.ts` added as a literal file. |
+
+### The blocker
+
+`tests/unit/analysis-contract.test.ts` (spec 011's contract) scans the whole of
+`src/server/reporting/**` and asserts:
+
+- **AC-4:** `db.` appears in exactly one module, and it is `analysis-service.ts`.
+- **AC-8:** no file in the three trees names `itemPrice`, `ItemPrice`, `selectCurrentPrice`,
+  `priceAmountOf`, `effectiveFrom` or `todayIso`; imports `@/server/items/price-selection`; names
+  `unitPrice` other than as the snapshot; or reaches the item's `prices` relation.
+
+012's approved Contract table places `export-service.ts` in `src/server/reporting/`, and the
+feature must read the database and the item's current price (column E, ruling R4), so it
+necessarily uses `db.`, imports `price-selection`/`todayIso`, and reads `prices`. It therefore
+cannot satisfy 011's tree-wide scans. 012 AC-14 states that `011 AC-16`'s link test is the **only**
+existing assertion amended, so narrowing 011's scans to 011's own modules is a spec change the
+owner must rule on rather than a change the implementer may make.
+
+### Gate
+
+- `npm run typecheck` — exit 0.
+- `npm run lint` — exit 0 (`--max-warnings 0`).
+- `npm run test:unit` — **1322 passed / 6 failed**: the five 011 scan assertions above, plus the
+  pre-existing `tests/unit/env-file.test.ts` (no `.env` in this container).
+- `test:db` and `test:e2e` still cannot run here (no reachable Neon branch, no Playwright
+  browsers); the `export-service.db.test.ts` and the not-yet-written route/e2e are the next
+  rounds' work.
+
+### Recommendation
+
+Narrow 011's two tree-wide scans to 011's own modules (`analysis-service.ts`,
+`period-series.ts`, `analysis-input.ts`, and the analysis page), keyed the way AC-25 already keys
+its `filesTouchedBy(11, …)` check, so the assertion stays exactly as strong about 011 while a
+legitimate sibling module no longer trips it. The alternative is to move `export-service.ts`
+outside `src/server/reporting/`, which changes 012's Contract table and AC-10.
+
+---
+
+# Feature 12 — Excel export: full workbook
+
 **Round 1, 2026-10-13.** Implementer (default agent), branch `hermes/mv6xnr27`.
 Spec `specs/features/012-export_workbook.md`, approved 2026-10-13 after the owner's rulings.
 

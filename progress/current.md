@@ -1864,3 +1864,27 @@ unit proof builds the input directly. The writer was also made to obey #5's dire
 (AC-12), the e2e spec (AC-13), the `project-contract.test.ts` money-list amendments (AC-10), and
 the full gate (AC-14). This container has no `.env` and no Playwright browsers, so `test:db` and
 `test:e2e` cannot run here and `init` would skip the database checks.
+
+---
+
+## Feature 12 `export_workbook` — round 2, 2026-10-13 (branch `hermes/mv6xnr27`)
+
+**Built:** `src/server/reporting/export-service.ts` (`exportWorkbook`, ADMIN-only, maps the
+database to `ExportInput` field by field), the filename helper in `src/lib/export-messages.ts`,
+`src/server/reporting/export-service.test.ts` (pure refusal + filename) and
+`src/server/reporting/export-service.db.test.ts` (Level 2). `project-contract.test.ts` amended per
+AC-10 (`unitPrice` 12 → 13, `unitPriceSnapshot` 3 → 4, both literal files).
+
+**BLOCKED on a spec conflict.** 011's contract (`tests/unit/analysis-contract.test.ts`) scans the
+whole of `src/server/reporting/**` and asserts (AC-4) that `db.` appears in exactly
+`analysis-service.ts`, and (AC-8) that no file there names `itemPrice`/`ItemPrice`/
+`selectCurrentPrice`/`priceAmountOf`/`effectiveFrom`/`todayIso`, imports
+`@/server/items/price-selection`, names `unitPrice` other than as the snapshot, or reaches the
+item's `prices` relation. 012's approved spec places `export-service.ts` in that same directory
+and requires it to read the database and column E (the item's current price, ruling R4), so it
+cannot satisfy 011's tree-wide scans. 012 AC-14 says `011 AC-16`'s link test is the ONLY existing
+assertion amended, so the scans cannot be narrowed without the owner's ruling.
+
+`npm run test:unit`: **1322 passed / 6 failed** — 5 are the 011 tree scans above; the sixth is
+the pre-existing `env-file.test.ts` (no `.env` in this container). Report:
+`progress/impl_export_workbook.md`.

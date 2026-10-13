@@ -41,3 +41,21 @@ export const SUMMARY_YOY_LABEL = "YoY Variance";
 /** The signer block below each yard sheet's total row (AC-9, owner ruling R2). Text only. */
 export const SIGNED_BY_LABEL = "Signed by";
 export const SIGNED_ON_LABEL = "Signed on";
+
+/* -------------------------------------------------------------------------- the file */
+
+/**
+ * The download's name (AC-12): `macroads-stock-<first>-<last>.xlsx` for the exported period
+ * range, and `macroads-stock-empty.xlsx` when there is no period to name.
+ *
+ * It lives here, beside the sheet and header literals, so the route, the service and the test
+ * read the SAME spelling — and so a file name cannot exist in two forms. `periodKeys` are the
+ * exported periods, ascending, which is the order the yard sheets carry them.
+ */
+export const EXPORT_FILENAME_PREFIX = "macroads-stock";
+
+export function exportFileName(periodKeys: readonly string[]): string {
+  if (periodKeys.length === 0) return `${EXPORT_FILENAME_PREFIX}-empty.xlsx`;
+
+  return `${EXPORT_FILENAME_PREFIX}-${periodKeys[0]}-${periodKeys[periodKeys.length - 1]}.xlsx`;
+}
