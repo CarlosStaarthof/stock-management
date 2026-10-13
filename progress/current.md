@@ -1836,3 +1836,31 @@ that is **#12**, whose spec was `missing`.
 `tests/unit/env-file.test.ts` fails on `existsSync(".env")` in `npm run test:unit`. Every other
 unit file passes. `env-file.test.ts` requires the real settings file by design (021's
 *`.env` is the only settings file*); it is not a code defect.
+
+---
+
+## Feature 12 `export_workbook` — round 1, 2026-10-13 (branch `hermes/mv6xnr27`)
+
+**Spec approved this round.** The owner's rulings are recorded in
+`specs/features/012-export_workbook.md` → `## Owner rulings, 2026-10-13` (R1–R5): #16 is live and
+is marked `done`; OQ1 = signer name + signed date only, no drawn stroke; OQ2 = every approved
+period; OQ3 = column E is the current price and each period keeps its frozen value; site sheets
+are one per active yard (`Dublin`, `Clonmel`). Spec status `draft` → `approved`; #12 status
+`pending` → `in_progress`; exactly one feature is `in_progress`.
+
+**Built, pure, and green:** `src/lib/excel/workbook-writer.ts` (`buildWorkbook`), its literal
+module `src/lib/export-messages.ts`, and `tests/unit/export-workbook.test.ts` (21 tests). Covers
+AC-1 to AC-7, AC-9 and AC-11. `npm run typecheck` 0, `npm run lint` 0, `npm run test:unit`
+**1321 passed / 1 failed**, the one failure being the pre-existing `tests/unit/env-file.test.ts`
+(no `.env` in this container). Report: `progress/impl_export_workbook.md`.
+
+Two spec ambiguities were resolved and recorded in the report, not hidden: a `Value` cell stores
+the exact product and is rounded by number format (so the `SUM` total is the sum of exact values,
+not of rounded cells, which AC-3 requires), and `showAll` lives on `ExportInput` because AC-7's
+unit proof builds the input directly. The writer was also made to obey #5's directory scan of
+`src/lib/excel` rather than amending it, since AC-14 permits only the 011 link test to change.
+
+**Left for the next rounds:** the `export-service.ts` (AC-8), the route and the `/analysis` link
+(AC-12), the e2e spec (AC-13), the `project-contract.test.ts` money-list amendments (AC-10), and
+the full gate (AC-14). This container has no `.env` and no Playwright browsers, so `test:db` and
+`test:e2e` cannot run here and `init` would skip the database checks.

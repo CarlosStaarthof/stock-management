@@ -1,6 +1,6 @@
 # 012 — Excel export: full workbook
 
-**Feature id:** 12   **Status:** draft   **Depends on:** #4 `domain_schema` (every table and
+**Feature id:** 12   **Status:** approved   **Depends on:** #4 `domain_schema` (every table and
 column the export reads already exists), #5 `seed_from_workbook` (`src/lib/excel/workbook-reader.ts`
 and the workbook this export is checked against), #6 `item_master_ui` (`formatPriceExact`,
 `NO_SUPPLIER`, the money-column census of 006 AC-31), #7 `entry_start` (`period.ts` —
@@ -52,6 +52,21 @@ each names the risk it accepts.
 | OD2 | **The export prints the signer and the signature on each yard sheet.** | An `APPROVED` count always carries a signature (Invariant 11), so this never needs an alternative path. How the drawn stroke reaches a cell is Open question OQ1, because ExcelJS cannot embed SVG. |
 | OD3 | **Only `APPROVED` counts contribute a euro**, and only for **complete periods** (Invariant 7). A `DRAFT` or `SUBMITTED` count is not exported. | A month not yet approved is missing from the file. That is the point: an unapproved count is not a figure anyone may rely on. |
 | OD4 | **The export is generated on demand and never stored in the repository.** It is returned in the HTTP response and is the owner's to save. | Nothing is versioned. The database is the system of record; the file is a report (`specs/product-brief.md`). |
+
+## Owner rulings, 2026-10-13
+
+The owner answered the three open questions and fixed two more points. Each ruling is binding and
+resolves the OQ it names.
+
+| # | Ruling | Consequence |
+|---|---|---|
+| R1 | **Feature #16 `deploy` is live** (`progress/impl_deploy.md`, first release). | `feature_list.json` moves #16 to `done`; it is no longer `in_progress`. |
+| R2 | **OQ1: the `AB` prints the signer's name and the signed date only, as text. The drawn stroke is NOT exported.** | No SVG rasteriser, no new dependency, and `signatureSvg` stays named by exactly `count-lifecycle-service.ts` (009 AC-26). The signer facts reach the writer through `getLifecycleFacts`, never by naming the column. AC-9 is met with name + date. |
+| R3 | **OQ2: a default export covers every approved period.** | `listApprovedPeriods` supplies the period set, ascending on the yard sheets and newest-first in `Summary`. A chosen-year filter is a later feature and adds no route parameter here (AC-12 unchanged). |
+| R4 | **OQ3: column E is the item's current price, and each period keeps its frozen value.** | Column E is `formatPriceExact` of the item's current price; a period's `Value` is `quantity × unitPriceSnapshot` from that period's `APPROVED` count. Editing a price never moves a past `Value` (Invariant 2). |
+| R5 | **The site sheets are one per active yard, named for the yard: `Dublin` and `Clonmel`.** | The writer derives the yard sheets from the active yards it is handed, so the names always match the database's `Location.name`; the sample workbook's `Clonmel ` trailing-space typo is still not reproduced (AC-1). |
+
+With R2 to R4, `## Open questions` below is closed. Nothing else in this spec changes.
 
 ## User stories
 
@@ -227,6 +242,9 @@ each names the risk it accepts.
 - **A second export format** (CSV, PDF).
 
 ## Open questions
+
+**All three were answered by the owner on 2026-10-13 — see *Owner rulings* (R2, R3, R4).** The
+text below is kept as the record of what was asked; the rulings are the contract.
 
 - **OQ1 — How does the drawn signature reach the sheet?** ExcelJS can add a PNG/JPEG image but
   cannot embed the stored SVG path. The owner's summary says "signature and signer printed".

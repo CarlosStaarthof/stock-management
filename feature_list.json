@@ -595,7 +595,7 @@
         "AC-30: **A rollback drill has been done.** Production has two deployments: B, the current one, and A, the one immediately before it, sharing one schema.\n- The owner rolls production back to A in Vercel's dashboard, and the coordinator's `npm run verify:deploy -- --url https://stock-management-zeta-one.vercel.app --expect-commit <A>` passes.\n- The owner returns production to B, and the same run with `--expect-commit <B>` passes.\n- `docs/operations.md` → *Rollback* records what Hobby's rollback offered (V3), whether Vercel stopped promoting new `production` pushes after it, and how that was undone.\n\n*Proved by* the recorded script outputs and owner observation.",
         "AC-31: **A cold database does not fail the first person of the day.** After production has had no request for at least one hour, the first sign-in succeeds at the first attempt, with no error page. *Proved by* recorded owner observation, with the time. If it fails, the error shown is recorded and D18 is revisited."
       ],
-      "status": "in_progress"
+      "status": "done"
     },
     {
       "id": 12,
@@ -604,7 +604,7 @@
       "title": "Excel export: full workbook",
       "description": "One .xlsx with Summary, Dublin and Clonmel sheets in the sample's shape, generated clean so no #REF!, no hardcoded value cells and no off-by-one YoY can occur. Held items only by default. Signature and signer printed on each yard sheet. Absorbs the former #13.",
       "spec_file": "specs/features/012-export_workbook.md",
-      "spec_status": "draft",
+      "spec_status": "approved",
       "acceptance": [
         "AC-1: Three sheets, named exactly, generated purely.",
         "AC-2: A yard sheet is the sample's shape.",
@@ -621,7 +621,7 @@
         "AC-13: An ADMIN downloads a real, readable file end to end.",
         "AC-14: The rest of the product is unchanged."
       ],
-      "status": "pending"
+      "status": "in_progress"
     },
     {
       "id": 14,
