@@ -274,8 +274,12 @@ may not change, not a depot name.
 14. **AC-14 — The rest of the product is unchanged.** `npm run test:unit`, `npm run test:db`,
     `npm run test:e2e`, `npm run typecheck` and `npm run lint` pass; no existing assertion is
     weakened, skipped or deleted; `git status` for `Samples/` is empty; the `/analysis` page
-    keeps every figure it had and `011 AC-16`'s link test is the only one amended, under its
-    own note. *Proved by* the gate.
+    keeps every figure it had. Exactly two existing assertions are amended, each not weakened:
+    `011 AC-16`'s link test counts the `/analysis/export` link as a second exception, under its
+    own note; and `tests/unit/stock-entry-contract.test.ts`'s reserved-year census moved from
+    fourteen files / fifteen years to fifteen / sixteen, because AC-15's e2e spec reserves
+    `analysisExport: 2106` and the census is an equality that a new reserving spec necessarily
+    moves. Both remain equalities, not loosened. *Proved by* the gate.
 
 15. **AC-15 — The export page lists the approved stock takes (R8).** `GET /analysis/export`
     renders the approved stock takes, newest first, the latest first; for each stock take it

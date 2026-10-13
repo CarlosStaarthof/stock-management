@@ -660,12 +660,12 @@ describe("AC-30: the e2e suite keeps 006 AC-35's shape", () => {
 
     // #7 shipped four, 008 AC-33 added three, 009 AC-32 three more, 010 AC-21 two, and
     // 011 AC-24 adds `analysisAccess`, `analysisPrior` and `analysisFigures` across TWO
-    // files. FOURTEEN files, FIFTEEN distinct years — the first time those two numbers
-    // differ, and the reason they may. Both are derived from the tree above rather than
-    // copied from a spec, and both stay equalities rather than being loosened into a
-    // `toBeGreaterThan`: a spec file that quietly reused a sibling's year turns them red.
-    expect(reserving).toHaveLength(14);
-    expect(owner.size).toBe(15);
+    // files. 012 AC-15 adds `analysis-export.spec.ts` with `analysisExport`. FIFTEEN files,
+    // SIXTEEN distinct years. Both are derived from the tree above rather than copied from a
+    // spec, and both stay equalities rather than being loosened into a `toBeGreaterThan`: a
+    // spec file that quietly reused a sibling's year turns them red.
+    expect(reserving).toHaveLength(15);
+    expect(owner.size).toBe(16);
 
     // KEYS ARE NOT YEARS (review observation O10). Everything above counts year KEYS, so
     // two keys holding the same number - `analysisPrior: 2104, analysisFigures: 2104` -
@@ -688,18 +688,21 @@ describe("AC-30: the e2e suite keeps 006 AC-35's shape", () => {
 
     const ownedYears = [...owner.keys()].map((key) => yearOf.get(key));
     expect(ownedYears, "every key a spec names is declared").not.toContain(undefined);
-    expect(new Set(ownedYears).size).toBe(15);
+    expect(new Set(ownedYears).size).toBe(16);
 
     // Non-vacuity: the selection really does reach past the prefix it used to match, and
     // it really does see both of the keys the two-year file names.
     expect(reserving).toContain("tests/e2e/stock-takes-calendar.spec.ts");
     expect(reserving).toContain("tests/e2e/analysis-figures.spec.ts");
+    expect(reserving).toContain("tests/e2e/analysis-export.spec.ts");
     expect(owner.get("analysisPrior")).toBe("tests/e2e/analysis-figures.spec.ts");
     expect(owner.get("analysisFigures")).toBe("tests/e2e/analysis-figures.spec.ts");
+    expect(owner.get("analysisExport")).toBe("tests/e2e/analysis-export.spec.ts");
     expect(support).toContain("takesCount: 2102");
     expect(support).toContain("analysisAccess: 2103");
     expect(support).toContain("analysisPrior: 2104");
     expect(support).toContain("analysisFigures: 2105");
+    expect(support).toContain("analysisExport: 2106");
   });
 });
 

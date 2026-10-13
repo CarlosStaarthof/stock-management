@@ -64,6 +64,10 @@ export const RESERVED_YEAR = {
   analysisAccess: 2103,
   analysisPrior: 2104,
   analysisFigures: 2105,
+  // #12's one spec (012 AC-15). FIFTEEN files, SIXTEEN years. Its counts are built through
+  // Prisma and the lifecycle service, so 2106 is reachable although 007 AC-8 caps a period
+  // started through `startCount` at 2100, and it deletes only its own year.
+  analysisExport: 2106,
 } as const;
 
 export function assertReserved(year: number): void {
