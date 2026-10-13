@@ -270,3 +270,79 @@ spelling on purpose). Files changed:
   together with rewriting `tests/unit/export-workbook.test.ts`, `export-service.test.ts`,
   `export-service.db.test.ts`, adding `src/app/analysis/export/{route,page}.tsx` and
   `tests/e2e/analysis-export.spec.ts`, and the `011 AC-16` `/analysis` link amendment.
+
+---
+
+# Round 5 — 2026-10-13 (branch `hermes/mv700xeb`) — the R3/R7/R8 per-depot reshape
+
+Spec: `specs/features/012-export_workbook.md` (approved). Source for every claim: its
+*Owner rulings, 2026-10-13* (R3 one file per depot, R7 `<Depot>_Stocktake_dd-mm-yyyy.xlsx`,
+R8 one download per depot on the listing page) and the amended acceptance criteria.
+
+## What changed
+
+**The pure writer is one depot, one stock take.** `src/lib/excel/workbook-writer.ts` now takes
+`ExportInput = { showAll, depotName, periodLabel, rows, count }` and builds exactly **two**
+worksheets: `Summary`, then the depot sheet, whose name is the handed `Location.name`
+(AC-1, R5). The depot sheet has the five master columns plus exactly one `Qty | Value` pair
+(F, G), the period label in row 1, data from row 3, a `SUM` TOTAL and the signer block
+(AC-2, AC-3, AC-9). The Summary is the depot's own name in A3 and its total in B3, a
+cross-sheet formula onto the depot TOTAL so the two cannot disagree; `South`, `Total Stock`,
+`MoM Variance` and `YoY Variance` no longer exist anywhere (AC-5, AC-6).
+
+**The service is per-depot.** `exportWorkbook(actor, { showAll, locationCode, periodKey })`
+resolves exactly one active depot and exactly one `APPROVED` count for that depot and period,
+maps its rows field by field, and names the file from the depot's own `countDate`
+(AC-3, AC-8, AC-12, R7). A new `listExportStockTakes(actor)` groups the approved counts by
+period, newest first, one entry per depot, for the page (AC-15, R8). Both assert `ADMIN` first.
+
+**The route and the page.** `src/app/analysis/export/download/route.ts` is the `GET` handler
+(ADMIN-only, xlsx content type, `Content-Disposition` with the per-depot name, `no-store`);
+`src/app/analysis/export/page.tsx` lists the approved stock takes with one download control per
+depot (AC-12, AC-15, R8). `/analysis` gains one link to the page (Contract).
+
+**`src/lib/export-messages.ts`** now carries `exportFileName(depotName, countDate)` and the
+page's literals, and drops the four cross-depot summary labels.
+
+**Tests.** `tests/unit/export-workbook.test.ts`, `src/server/export/export-service.test.ts`
+and `src/server/export/export-service.db.test.ts` are rewritten to the one-depot shape;
+`src/app/analysis/export/page.test.ts` is new (the page rendered server-side with the guard
+and service mocked, proving AC-15 without a database); `tests/e2e/analysis-figures.spec.ts`'s
+011 AC-16 link test now counts **two** exceptions (`/profiles` and `/analysis/export`), as its
+own note allows.
+
+## A deviation from the Contract, and why
+
+The Contract first placed the handler at `src/app/analysis/export/route.ts`, beside
+`page.tsx`. Next refuses a `page.tsx` and a `route.ts` in one segment, so the handler moved to
+`src/app/analysis/export/download/route.ts` and the spec's Contract, AC-12 and UI-states are
+amended to match. The listing page keeps `/analysis/export`.
+
+## Verification
+
+- `npm run typecheck` — exit 0.
+- `npm run lint` — exit 0 (`--max-warnings 0`).
+- `npm run test:unit` — **87 files / 1330 tests, 0 failed**.
+- `npm run build` — exit 0; the route table lists both `/analysis/export` (page) and
+  `/analysis/export/download` (route).
+- **Not runnable here:** `test:db` (no reachable Neon branch — `scripts/db-probe.mjs` reports
+  `[probe] unreachable …neon.invalid`, exit 1) and `test:e2e` (no Playwright browsers). The
+  rewritten `export-service.db.test.ts` typechecks; `tests/e2e/analysis-export.spec.ts` is the
+  next round's work.
+
+## Left for the next round
+
+- `tests/e2e/analysis-export.spec.ts` (AC-8 breach run, AC-13 the downloaded file, AC-15 the
+  listing) and, with it, a reserved year in `tests/e2e/support/stock-entry.ts` plus the
+  `tests/unit/stock-entry-contract.test.ts` census (14 files / 15 years).
+- The full gate once a database and browsers are available.
+
+## A spec conflict found, not resolved silently
+
+AC-15 names `tests/e2e/analysis-export.spec.ts` as its proof, but AC-14 says 011's link test
+is **the only** existing test amended. A new e2e spec that reserves its own year forces
+`tests/unit/stock-entry-contract.test.ts`'s 008 AC-30 / 011 AC-24 census to move from
+14 files / 15 years to 15 / 16. Adding the spec therefore amends a second test, against
+AC-14 as written, or leaves AC-15's e2e half unbuilt. The core reshape does not depend on
+either choice, so the e2e spec is deferred one round and the conflict is recorded here for
+the owner rather than worked around.

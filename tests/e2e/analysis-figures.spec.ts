@@ -640,13 +640,17 @@ test("AC-16: EVERY link on the screen carries the current period and grouping", 
     ),
   );
 
-  // ONE EXCEPTION, AND IT IS COUNTED (amended by 021 C2-1; see the note under AC-16): the
-  // header's link to `/profiles` leaves the analysis view, so it carries no query parameter.
-  // Exactly one such link exists, in the header; a second one would be a link that drops the
-  // reading state, and turns this red.
-  expect(allHrefs.filter((href) => href === "/profiles")).toHaveLength(1);
+  // TWO EXCEPTIONS, AND BOTH ARE COUNTED (amended by 021 C2-1 and by 012, whose export link
+  // leaves the analysis view exactly as the profiles link does): the header's `/profiles` and
+  // the header's `/analysis/export` each carry no query parameter. Exactly one of each exists;
+  // a second of either would be a link that drops the reading state, and turns this red.
+  const exceptions = ["/profiles", "/analysis/export"];
+  for (const exception of exceptions) {
+    expect(allHrefs.filter((href) => href === exception), exception).toHaveLength(1);
+  }
   await expect(page.locator('header a[href="/profiles"]')).toHaveCount(1);
-  const hrefs = allHrefs.filter((href) => href !== "/profiles");
+  await expect(page.locator('header a[href="/analysis/export"]')).toHaveCount(1);
+  const hrefs = allHrefs.filter((href) => !exceptions.includes(href ?? ""));
 
   expect(hrefs.length).toBeGreaterThan(4);
   for (const href of hrefs) {

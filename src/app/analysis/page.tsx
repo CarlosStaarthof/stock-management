@@ -20,6 +20,7 @@ import {
   PREVIOUS_PERIOD,
   YEAR_ON_YEAR_LABEL,
 } from "@/lib/analysis-messages";
+import { EXPORT_LINK_LABEL, EXPORT_PATH } from "@/lib/export-messages";
 import { todayInYard } from "@/lib/yard-time";
 import { monthKeyOf } from "@/server/counts/period";
 import {
@@ -62,9 +63,10 @@ import type { BreakdownKey } from "@/types/analysis";
  * rule covering the breakdown links, both period jumps and every link into a count, and a
  * browser test can assert it as one rule (AC-16).
  *
- * ONE EXCEPTION, IN THE HEADER (021 C2-1, the note under AC-16): the link to `/profiles`,
- * the admin section. It leaves the analysis view rather than moving within it, so it carries
- * no query parameter. There is exactly one, and the test counts it.
+ * TWO EXCEPTIONS, BOTH IN THE HEADER (021 C2-1, and 012's note under AC-16): the link to
+ * `/profiles`, the admin section, and the link to `/analysis/export`, the export page. Both
+ * leave the analysis view rather than moving within it, so neither carries a query parameter.
+ * There are exactly two, and the test counts them.
  *
  * NO `loading.tsx` AT OR ABOVE THIS SEGMENT (AC-3). A Suspense boundary above a page turns
  * the server's `redirect()` into a `200` carrying a shell — and on this route the request
@@ -202,6 +204,14 @@ export default async function AnalysisPage({
         name={user.name}
         heading={<h1 className="text-2xl font-semibold tracking-tight">{ANALYSIS_HEADING}</h1>}
       >
+        <Link
+          href={EXPORT_PATH}
+          data-testid="export-link"
+          prefetch={false}
+          className="inline-flex min-h-11 items-center rounded border border-slate-300 px-3 py-2 text-sm"
+        >
+          {EXPORT_LINK_LABEL}
+        </Link>
         <Link
           href="/profiles"
           data-testid="profiles-link"

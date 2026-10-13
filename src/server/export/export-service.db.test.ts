@@ -11,8 +11,8 @@ import {
   VALUE_HEADER,
 } from "@/lib/export-messages";
 import { db } from "@/server/db";
-import { ForbiddenError, UnauthorizedError } from "@/server/errors";
-import { exportWorkbook } from "@/server/export/export-service";
+import { ForbiddenError, NotFoundError, UnauthorizedError, ValidationError } from "@/server/errors";
+import { exportWorkbook, listExportStockTakes } from "@/server/export/export-service";
 import { resetTestDb } from "@/server/test-db";
 
 import {
@@ -33,9 +33,8 @@ import {
  * against a REAL Postgres and a hand-built fixture.
  *
  * Every euro in these criteria is asserted on rows this file created, never on the user's
- * seeded item master. The writer's own shape AC-1 to AC-7 is proved with no database in
- * `tests/unit/export-workbook.test.ts`; here the question is whether THIS module reads the
- * right rows and hands them across on the right fields.
+ * seeded item master. ONE DEPOT PER CALL (R3): `exportWorkbook` is asked for `DUBLIN` or
+ * `CASHEL` and produces a file that names only that one.
  */
 
 beforeEach(async () => {
@@ -45,6 +44,7 @@ beforeEach(async () => {
 /* ------------------------------------------------------------------ the fixture */
 
 const SIGNER_NAME = "Aoife Signer";
+const PERIOD = "2026-06";
 
 type LineSpec = { itemId: string; quantity: string; snapshot: string };
 
@@ -85,7 +85,7 @@ async function makeApprovedCount(input: {
   });
 }
 
-/** Two periods, two yards; a held item, a counted zero and a never-counted item. */
+/** One period; a held item, a counted zero and a never-counted item at Dublin, one at Cashel. */
 async function seed(): Promise<void> {
   const signerId = await makeUser("YARD_STAFF");
   await db.user.update({ where: { id: signerId }, data: { name: SIGNER_NAME } });
@@ -124,7 +124,7 @@ async function seed(): Promise<void> {
 
   // No supplier: the sheet must read NO_SUPPLIER (AC-2).
   const cashelHeld = await makeItem({
-    description: "Cashel Held",
+    description: "Held Down South",
     itemTypeId: typeId,
     unitLabel: "1 Unit",
   });
@@ -133,7 +133,7 @@ async function seed(): Promise<void> {
 
   await makeApprovedCount({
     locationId: DUBLIN_ID,
-    periodKey: "2026-06",
+    periodKey: PERIOD,
     signerId,
     lines: [
       { itemId: widgetA, quantity: "2", snapshot: "1.005" },
@@ -141,27 +141,18 @@ async function seed(): Promise<void> {
     ],
   });
   await makeApprovedCount({
-    locationId: DUBLIN_ID,
-    periodKey: "2026-07",
-    signerId,
-    lines: [{ itemId: widgetA, quantity: "3", snapshot: "1.005" }],
-  });
-  await makeApprovedCount({
     locationId: CASHEL_ID,
-    periodKey: "2026-06",
-    signerId,
-    lines: [{ itemId: cashelHeld, quantity: "5", snapshot: "3" }],
-  });
-  await makeApprovedCount({
-    locationId: CASHEL_ID,
-    periodKey: "2026-07",
+    periodKey: PERIOD,
     signerId,
     lines: [{ itemId: cashelHeld, quantity: "5", snapshot: "3" }],
   });
 }
 
-async function openWorkbook(showAll: boolean): Promise<ExcelJS.Workbook> {
-  const { bytes } = await exportWorkbook(ADMIN, { showAll });
+async function openWorkbook(
+  locationCode: string,
+  showAll = false,
+): Promise<ExcelJS.Workbook> {
+  const { bytes } = await exportWorkbook(ADMIN, { showAll, locationCode, periodKey: PERIOD });
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(new Uint8Array(bytes).buffer);
   return workbook;
@@ -177,61 +168,71 @@ function sheet(workbook: ExcelJS.Workbook, name: string): ExcelJS.Worksheet {
   return found;
 }
 
+function stringsIn(workbook: ExcelJS.Workbook): string[] {
+  const found: string[] = [];
+  for (const worksheet of workbook.worksheets) {
+    worksheet.eachRow((row) => {
+      row.eachCell((cell) => {
+        if (typeof cell.value === "string") found.push(cell.value);
+      });
+    });
+  }
+  return found;
+}
+
 /* -------------------------------------------------------------------- the criteria */
 
 describe("012 AC-8: ADMIN only, refused in the service", () => {
   it("AC-8: a YARD_STAFF actor is ForbiddenError; a null actor is UnauthorizedError", async () => {
-    await expect(exportWorkbook(STAFF, { showAll: false })).rejects.toThrow(ForbiddenError);
-    await expect(exportWorkbook(null, { showAll: false })).rejects.toThrow(UnauthorizedError);
+    await expect(
+      exportWorkbook(STAFF, { showAll: false, locationCode: "DUBLIN", periodKey: PERIOD }),
+    ).rejects.toThrow(ForbiddenError);
+    await expect(
+      exportWorkbook(null, { showAll: false, locationCode: "DUBLIN", periodKey: PERIOD }),
+    ).rejects.toThrow(UnauthorizedError);
   });
 });
 
 describe("012 AC-1, AC-12: the sheets and the file name", () => {
-  it("AC-1: builds Summary, Dublin and Cashel, in that order", async () => {
+  it("AC-1: one depot builds Summary then that depot, and no other", async () => {
     await seed();
-    const workbook = await openWorkbook(false);
-    expect(workbook.worksheets.map((each) => each.name)).toEqual([
-      "Summary",
-      "Dublin",
-      "Cashel",
-    ]);
+    const dublin = await openWorkbook("DUBLIN");
+    expect(dublin.worksheets.map((each) => each.name)).toEqual(["Summary", "Dublin"]);
+
+    const cashel = await openWorkbook("CASHEL");
+    expect(cashel.worksheets.map((each) => each.name)).toEqual(["Summary", "Cashel"]);
   });
 
-  it("AC-12: names the file for the first and last approved period", async () => {
+  it("AC-12: names the file from the depot's own count date", async () => {
     await seed();
-    const result = await exportWorkbook(ADMIN, { showAll: false });
-    expect(result.fileName).toBe("macroads-stock-2026-06-2026-07.xlsx");
+    const result = await exportWorkbook(ADMIN, {
+      showAll: false,
+      locationCode: "DUBLIN",
+      periodKey: PERIOD,
+    });
+    expect(result.fileName).toBe("Dublin_Stocktake_15-06-2026.xlsx");
   });
 
-  it("AC-12: with nothing approved, the empty file name and an empty but valid workbook", async () => {
-    const result = await exportWorkbook(ADMIN, { showAll: false });
-    expect(result.fileName).toBe("macroads-stock-empty.xlsx");
-
-    const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.load(new Uint8Array(result.bytes).buffer);
-    expect(workbook.worksheets.map((each) => each.name)).toEqual([
-      "Summary",
-      "Dublin",
-      "Cashel",
-    ]);
+  it("AC-12: an unknown depot or an unapproved period is a refusal, never a file", async () => {
+    await seed();
+    await expect(
+      exportWorkbook(ADMIN, { showAll: false, locationCode: "NOPE", periodKey: PERIOD }),
+    ).rejects.toThrow(ValidationError);
+    await expect(
+      exportWorkbook(ADMIN, { showAll: false, locationCode: "DUBLIN", periodKey: "2026-09" }),
+    ).rejects.toThrow(NotFoundError);
   });
 });
 
-describe("012 AC-2, AC-3: the yard sheet shape and a derived value", () => {
+describe("012 AC-2, AC-3, AC-6: the depot sheet, a derived value, one depot only", () => {
   it("AC-2: the headers, the master columns, NO_SUPPLIER and the current price", async () => {
     await seed();
-    const workbook = await openWorkbook(false);
-    const dublin = sheet(workbook, "Dublin");
+    const dublin = sheet(await openWorkbook("DUBLIN"), "Dublin");
 
-    expect(["A2", "B2", "C2", "D2", "E2", "F2", "G2", "H2", "I2"].map((ref) => dublin.getCell(ref).value)).toEqual([
-      ...MASTER_HEADERS,
-      QUANTITY_HEADER,
-      VALUE_HEADER,
-      QUANTITY_HEADER,
-      VALUE_HEADER,
-    ]);
+    expect(
+      ["A2", "B2", "C2", "D2", "E2", "F2", "G2"].map((ref) => dublin.getCell(ref).value),
+    ).toEqual([...MASTER_HEADERS, QUANTITY_HEADER, VALUE_HEADER]);
     expect(dublin.getCell("F1").value).toBe("June 2026");
-    expect(dublin.getCell("H1").value).toBe("July 2026");
 
     expect(dublin.getCell("A3").value).toBe("Widget A");
     expect(dublin.getCell("B3").value).toBe("Kelly");
@@ -240,32 +241,36 @@ describe("012 AC-2, AC-3: the yard sheet shape and a derived value", () => {
     // Column E is the CURRENT price (9.99), not the June snapshot (R4).
     expect(dublin.getCell("E3").value).toBe("€9.99");
 
-    const cashel = sheet(workbook, "Cashel");
+    const cashel = sheet(await openWorkbook("CASHEL"), "Cashel");
     expect(cashel.getCell("B3").value).toBe(NO_SUPPLIER);
   });
 
-  it("AC-3, AC-13: the Value cell is quantity x frozen snapshot, and the TOTAL is a formula", async () => {
+  it("AC-3: the Value cell is quantity x frozen snapshot, and the TOTAL is a formula", async () => {
     await seed();
     // Held-only: row 3 is Widget A, and its row 4 is the total.
-    const workbook = await openWorkbook(false);
-    const dublin = sheet(workbook, "Dublin");
+    const dublin = sheet(await openWorkbook("DUBLIN"), "Dublin");
 
     expect(dublin.getCell("G3").value).toBe(2.01); // 2 x 1.005, from the June snapshot
-    expect(dublin.getCell("H3").value).toBe(3.015); // 3 x 1.005, from the July snapshot
 
     const total = dublin.getCell("G4").value as { formula?: string; result?: number };
     expect(total.formula).toMatch(/^SUM\(G3:G3\)$/);
     expect(total.result).toBe(2.01);
   });
 
+  it("AC-6: a Dublin file carries no Cashel cell, and a Cashel file carries no Dublin cell", async () => {
+    await seed();
+    expect(stringsIn(await openWorkbook("DUBLIN"))).not.toContain("Cashel");
+    expect(stringsIn(await openWorkbook("CASHEL"))).not.toContain("Dublin");
+  });
+
   it("AC-7: held-only hides the counted zero and the never-counted item; showAll restores them", async () => {
     await seed();
 
-    const held = sheet(await openWorkbook(false), "Dublin");
+    const held = sheet(await openWorkbook("DUBLIN"), "Dublin");
     expect(held.getCell("A3").value).toBe("Widget A");
     expect(held.getCell("A4").value).toBe(TOTAL_LABEL);
 
-    const all = sheet(await openWorkbook(true), "Dublin");
+    const all = sheet(await openWorkbook("DUBLIN", true), "Dublin");
     expect([
       all.getCell("A3").value,
       all.getCell("A4").value,
@@ -275,19 +280,37 @@ describe("012 AC-2, AC-3: the yard sheet shape and a derived value", () => {
   });
 });
 
-describe("012 AC-9: the signer and the signed date travel onto the sheet", () => {
-  it("AC-9: renders the stored signer name and signed date per approved count", async () => {
+describe("012 AC-9: the signer and the signed date travel onto the depot sheet", () => {
+  it("AC-9: renders the stored signer name and signed date", async () => {
     await seed();
     // Held-only Dublin has one data row, so the total is row 4 and the signer block starts at 6.
-    const dublin = sheet(await openWorkbook(false), "Dublin");
+    const dublin = sheet(await openWorkbook("DUBLIN"), "Dublin");
 
     expect(dublin.getCell("A6").value).toBe(SIGNED_BY_LABEL);
     expect(dublin.getCell("B6").value).toBe(SIGNER_NAME);
     expect(dublin.getCell("A7").value).toBe(SIGNED_ON_LABEL);
     expect(dublin.getCell("B7").value).toBe("2026-06-15");
+  });
+});
 
-    // The second approved count follows below.
-    expect(dublin.getCell("B9").value).toBe(SIGNER_NAME);
-    expect(dublin.getCell("B10").value).toBe("2026-07-15");
+describe("012 AC-15: the listing page's stock takes", () => {
+  it("AC-15: one stock take, one download per depot, newest first", async () => {
+    await seed();
+    const takes = await listExportStockTakes(ADMIN);
+
+    expect(takes).toEqual([
+      {
+        periodKey: PERIOD,
+        periodLabel: "June 2026",
+        depots: [
+          { code: "DUBLIN", name: "Dublin", countDate: "2026-06-15" },
+          { code: "CASHEL", name: "Cashel", countDate: "2026-06-15" },
+        ],
+      },
+    ]);
+  });
+
+  it("AC-15: a YARD_STAFF actor is refused the listing", async () => {
+    await expect(listExportStockTakes(STAFF)).rejects.toThrow(ForbiddenError);
   });
 });

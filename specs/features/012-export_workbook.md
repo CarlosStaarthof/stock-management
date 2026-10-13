@@ -87,14 +87,19 @@ alias — the physical worksheet name of that one read-only file — and maps it
 location. Everywhere else the depot is `Cashel`; the alias is a fact about a file this repository
 may not change, not a depot name.
 
-### Implementation status, 2026-10-13 (round 4)
+### Implementation status, 2026-10-13 (round 5)
 
 - The service lives at `src/server/export/export-service.ts` (with `export-service.test.ts` and
   `export-service.db.test.ts`), moved out of `src/server/reporting/` in round 3.
 - The **R6 rename is done** (source, tests, specs, docs, the seed and one new migration).
-- The **R3/R7/R8 per-depot reshape is the remaining implementation work**: the writer, service,
-  route and page below are amended to the per-depot contract, and the criteria are rewritten to
-  match. The feature stays `in_progress` until the gate is green.
+- The **R3/R7/R8 per-depot reshape is built**: `buildWorkbook` takes one depot and one stock
+  take and writes exactly two sheets (AC-1, AC-5, AC-6); the service takes `{ showAll,
+  locationCode, periodKey }` and builds `<Depot>_Stocktake_dd-mm-yyyy.xlsx` (AC-3, AC-12) and
+  exposes `listExportStockTakes` (AC-15); the download route and the listing page exist, and
+  `/analysis` links to the page. `typecheck`, `lint`, `test:unit` and `next build` are green.
+- **Still to do:** the `test:db` and `test:e2e` halves (`export-service.db.test.ts` is rewritten
+  and typechecks but this container has no reachable database, and `tests/e2e/analysis-export.spec.ts`
+  is not yet written). The feature stays `in_progress` until the full gate is green.
 
 ## User stories
 
@@ -126,7 +131,7 @@ may not change, not a depot name.
 |---|---|
 | `src/lib/excel/workbook-writer.ts` | **New, pure.** `buildWorkbook(input: ExportInput): Promise<Buffer>`, where `ExportInput` is plain data for **one depot's one stock take** (the depot's name, its rows, its single period, its per-count facts). ExcelJS loads it into exactly two worksheets: `Summary`, then the depot sheet. Imports `exceljs` and `src/lib/` only; imports nothing from `src/server/` |
 | `src/server/export/export-service.ts` | **New.** `exportWorkbook(actor: SessionUser \| null, options: { showAll: boolean; locationCode: string; periodKey: string }): Promise<{ fileName: string; bytes: Buffer }>`. Asserts `ADMIN` first (003 AC-16), resolves the one `APPROVED` count for that depot and period, reads the depot's rows, maps to `ExportInput` field by field, calls the writer. **Lives in its own `src/server/export/` folder.** A separate read function, `listExportStockTakes(actor)`, returns the approved stock takes the page lists |
-| `src/app/analysis/export/route.ts` | **New.** `GET` handler. `requireRole`/page-guard refuses a non-`ADMIN` before the service runs; requires `?location=DUBLIN\|CASHEL` and `?period=YYYY-MM`; returns `200` with `Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`, `Content-Disposition: attachment; filename="<Depot>_Stocktake_dd-mm-yyyy.xlsx"`, and `Cache-Control: no-store`. `?all=1` sets `showAll` |
+| `src/app/analysis/export/download/route.ts` | **New.** `GET` handler. `requireRole`/page-guard refuses a non-`ADMIN` before the service runs; requires `?location=DUBLIN\|CASHEL` and `?period=YYYY-MM`; returns `200` with `Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`, `Content-Disposition: attachment; filename="<Depot>_Stocktake_dd-mm-yyyy.xlsx"`, and `Cache-Control: no-store`. `?all=1` sets `showAll`. **One segment below the page**, because Next refuses a `page.tsx` and a `route.ts` in the same segment: the page keeps `/analysis/export` and the download sits at `/analysis/export/download` |
 | `src/app/analysis/export/page.tsx` | **New.** ADMIN-only page listing the approved stock takes, newest first, each with one download button per depot (R8) |
 | `src/app/analysis/page.tsx` | **Modified:** one link/control to `/analysis/export`. `011 AC-16`'s "every link carries period and breakdown" test is amended as its note allows: the export link is a plain `GET` and carries neither parameter |
 | `src/lib/export-messages.ts` | **New**, optional: every literal a criterion quotes, in one place (the #10/#11 pattern), including the `<Depot>_Stocktake_dd-mm-yyyy.xlsx` name rule |
@@ -136,9 +141,10 @@ may not change, not a depot name.
 
 ## UI states
 
-- **Empty:** no `APPROVED` count exists. The file still has two sheets and the five master
-  columns; there is no `Qty | Value` pair and no total. It is a valid file, not an error. The
-  page says there is nothing to export.
+- **Empty:** no `APPROVED` count exists for the requested depot and period, so the route
+  refuses with no file (AC-12) and the page renders its "nothing to export" state. A depot with
+  an `APPROVED` count but no assigned items still produces a valid file: two sheets, the five
+  master columns, the `Qty | Value` pair and a zero total.
 - **Loading:** the download is a normal navigation; the browser shows its own progress. There
   is no in-page spinner.
 - **Error:** a non-`ADMIN` gets the refusal before the service runs. A missing/invalid
@@ -168,15 +174,18 @@ may not change, not a depot name.
    is `formatPriceExact` of the item's current price. *Proved by* loading the buffer and
    asserting the cells for a fixture with one item with a supplier and one without.
 
-3. **AC-3 — Every value is derived, and the total is a formula.** A `Value` cell is the number
-   `roundHalfUp(quantity × unitPriceSnapshot, 2)` for that stock take's `APPROVED` line, and an
-   item with no line in the period has a blank cell, never a zero. The depot TOTAL cell is a
-   spreadsheet formula over its `Value` column (not a written constant), and it equals **the
-   sum of the exact line values rounded once**, not the sum of the rounded cells. The fixture is
-   a count whose lines round to a different total than the exact sum, so the two rules are
+3. **AC-3 — Every value is derived, and the total is a formula.** A `Value` cell holds the
+   **exact** `quantity × unitPriceSnapshot` for that stock take's `APPROVED` line, displayed at
+   two places by a number format, and an item with no line has a blank cell, never a zero. The
+   depot TOTAL cell is a spreadsheet formula over its `Value` column (not a written constant),
+   and its result equals **the sum of the exact line values rounded once**, not the sum of the
+   rounded cells — which is why the cell stores the exact number rather than a pre-rounded one,
+   or a spreadsheet that recalculated the `SUM` would total the rounded cells. The fixture is a
+   count whose lines round to a different total than the exact sum (`1.005 + 1.005` is `2.01`
+   exact, while the sum of the rounded cells would be `2.02`), so the two rules are
    distinguishable. *Proved by* `tests/unit/export-workbook.test.ts`, asserting the `Value`
-   cells, that the TOTAL cell `isFormula`-like (a `{ formula }` object), and the total's value
-   for that fixture.
+   cells, that the TOTAL cell is a `{ formula, result }` object, and the total's result for
+   that fixture.
 
 4. **AC-4 — No `#REF!`, no error cell, no hardcoded total.** Walking every cell of every sheet,
    no value is an error (`#REF!`, `#DIV/0!`, `#VALUE!`, `#NAME?`, `#N/A`), and no `Value` or
@@ -246,7 +255,7 @@ may not change, not a depot name.
     process was run with. *Proved by* a unit test asserting `dependencies` keys are unchanged
     and that the buffer contains none of a set of sentinel strings.
 
-12. **AC-12 — The route contract.** `GET /analysis/export` requires `?location=DUBLIN|CASHEL`
+12. **AC-12 — The route contract.** `GET /analysis/export/download` requires `?location=DUBLIN|CASHEL`
     and `?period=YYYY-MM`; it defaults to held-only and `?all=1` sets `showAll`. The response is
     `200` with the xlsx `Content-Type`, `Cache-Control: no-store`, and a `Content-Disposition`
     attachment whose filename matches `<Depot>_Stocktake_dd-mm-yyyy.xlsx`, where `dd-mm-yyyy` is

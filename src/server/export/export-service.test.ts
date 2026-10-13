@@ -22,7 +22,7 @@ const STAFF: SessionUser = {
   role: "YARD_STAFF",
 };
 
-const OPTIONS = { showAll: false };
+const OPTIONS = { showAll: false, locationCode: "DUBLIN", periodKey: "2026-09" };
 
 describe("012 AC-8: ADMIN only, refused in the service", () => {
   it("AC-8: a null actor is UnauthorizedError, before any query", async () => {
@@ -36,9 +36,9 @@ describe("012 AC-8: ADMIN only, refused in the service", () => {
     );
   });
 
-  it("AC-8: the second argument is the show-all option, and nothing else", () => {
+  it("AC-8: the options are the show-all flag, one depot and one period", () => {
     expect(exportWorkbook.length).toBe(2);
-    expect(Object.keys(OPTIONS)).toEqual(["showAll"]);
+    expect(Object.keys(OPTIONS).sort()).toEqual(["locationCode", "periodKey", "showAll"]);
   });
 
   it("AC-9: neither the service nor its messages names the signature column", () => {
@@ -50,14 +50,11 @@ describe("012 AC-8: ADMIN only, refused in the service", () => {
 });
 
 describe("012 AC-12: the download's file name", () => {
-  it("AC-12: names the first and last exported period, ascending", () => {
-    expect(exportFileName(["2026-06", "2026-07", "2026-08"])).toBe(
-      "macroads-stock-2026-06-2026-08.xlsx",
-    );
-    expect(exportFileName(["2026-09"])).toBe("macroads-stock-2026-09-2026-09.xlsx");
+  it("AC-12: is <Depot>_Stocktake_dd-mm-yyyy.xlsx from the depot's own count date", () => {
+    expect(exportFileName("Dublin", "2026-10-13")).toBe("Dublin_Stocktake_13-10-2026.xlsx");
   });
 
-  it("AC-12: names the empty file when there is no exported period", () => {
-    expect(exportFileName([])).toBe("macroads-stock-empty.xlsx");
+  it("AC-12: takes the date from the count it is given, not from a range", () => {
+    expect(exportFileName("Cashel", "2026-07-01")).toBe("Cashel_Stocktake_01-07-2026.xlsx");
   });
 });
