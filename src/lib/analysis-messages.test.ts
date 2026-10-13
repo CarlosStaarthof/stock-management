@@ -71,17 +71,17 @@ describe("011 AC-22: the literals #6 and #7 own are re-exported, not restated", 
 
 describe("011 AC-6: a missing month is a gap, and it says which yard", () => {
   it("AC-6: one yard reads has, two yards read have, and both name the period", () => {
-    expect(missingYardsMessage(["Clonmel"], "September 2026")).toBe(
-      "Clonmel has no approved count for September 2026.",
+    expect(missingYardsMessage(["Cashel"], "September 2026")).toBe(
+      "Cashel has no approved count for September 2026.",
     );
-    expect(missingYardsMessage(["Dublin", "Clonmel"], "September 2026")).toBe(
-      "Dublin and Clonmel have no approved count for September 2026.",
+    expect(missingYardsMessage(["Dublin", "Cashel"], "September 2026")).toBe(
+      "Dublin and Cashel have no approved count for September 2026.",
     );
   });
 
   it("AC-6: three yards would still read as a sentence, not as an array", () => {
-    expect(missingYardsMessage(["Dublin", "Clonmel", "Cork"], "September 2026")).toBe(
-      "Dublin, Clonmel and Cork have no approved count for September 2026.",
+    expect(missingYardsMessage(["Dublin", "Cashel", "Cork"], "September 2026")).toBe(
+      "Dublin, Cashel and Cork have no approved count for September 2026.",
     );
   });
 

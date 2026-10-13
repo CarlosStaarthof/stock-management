@@ -194,7 +194,7 @@ test("AC-30: at 390 px the document never scrolls sideways on any of the seven U
   await page.goto(`/item-master/items/${seededItemId}`);
   await expect(page.getByTestId("save-item")).toBeVisible();
   await expect(page.getByTestId("add-price")).toBeVisible();
-  await expect(page.getByTestId("assign-CLONMEL")).toBeVisible();
+  await expect(page.getByTestId("assign-CASHEL")).toBeVisible();
 
   // AC-30 names *Move up*, so this reaches for a *Move up*. It is the SECOND row's,
   // because the first row legitimately has none — AC-23 renders no Move up on the row a

@@ -43,7 +43,7 @@ import {
   snapshotsOf,
 } from "../../../tests/support/count-fixture";
 import {
-  CLONMEL_ID,
+  CASHEL_ID,
   DUBLIN_ID,
   fixtureId,
   makeItemType,
@@ -158,7 +158,7 @@ async function seedCount(
   const lines = options.lines ?? DUBLIN_LINES;
   const priceless = options.priceless ?? 0;
   const locationId = options.locationId ?? DUBLIN_ID;
-  const locationCode = locationId === CLONMEL_ID ? "CLONMEL" : "DUBLIN";
+  const locationCode = locationId === CASHEL_ID ? "CASHEL" : "DUBLIN";
 
   const typeId = await makeItemType("BEADS", 1, "Beads");
   const supplierId = await makeSupplier("Kelly");
@@ -419,7 +419,7 @@ describe("AC-11: Invariant 2 — the snapshot is the price in force ON the count
 
     const itemId = itemIds[1];
     await db.itemPrice.deleteMany({ where: { itemId } });
-    // Clonmel's `=5.2/0.85`, which is why the column is Decimal(18, 8).
+    // Cashel's `=5.2/0.85`, which is why the column is Decimal(18, 8).
     await makePrice(itemId, "6.11764706", "2026-01-01");
 
     await submitCount(staff, countId, { signaturePath: SIGNATURE });
@@ -609,19 +609,19 @@ describe("AC-14: what submission writes, and the long list of what it does not",
 
 describe("AC-15: Part 6 — YARD_STAFF submits and never approves", () => {
   it("AC-15: staff may submit at either yard, whoever created the count", async () => {
-    const dublin = await seedCount({ lines: 4, alsoLinkTo: CLONMEL_ID });
+    const dublin = await seedCount({ lines: 4, alsoLinkTo: CASHEL_ID });
     await countEverything(dublin.countId);
     await submitCount(dublin.staff, dublin.countId, { signaturePath: SIGNATURE });
     expect((await rowOf(dublin.countId)).status).toBe("SUBMITTED");
 
-    const clonmelId = await startCount(dublin.admin, {
-      locationCode: "CLONMEL",
+    const cashelId = await startCount(dublin.admin, {
+      locationCode: "CASHEL",
       countDate: COUNT_DATE,
       period: PERIOD,
     });
-    await countEverything(clonmelId);
-    await submitCount(dublin.staff, clonmelId, { signaturePath: SIGNATURE });
-    expect((await rowOf(clonmelId)).status).toBe("SUBMITTED");
+    await countEverything(cashelId);
+    await submitCount(dublin.staff, cashelId, { signaturePath: SIGNATURE });
+    expect((await rowOf(cashelId)).status).toBe("SUBMITTED");
   });
 
   it("AC-15: approve and reopen refuse a staff actor, and nothing moves", async () => {

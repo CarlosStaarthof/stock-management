@@ -16,7 +16,7 @@ things you were not asked about.
 
 1. Read only what the question requires. Do not read the whole repository.
 2. Investigate. Prefer evidence over inference — quote file paths and line numbers,
-   or cite workbook cells (`Dublin!R13`, `'Clonmel '!AE72`).
+   or cite workbook cells (`Dublin!R13`, `Cashel!AE72`).
 3. Write your findings to the file the leader named, under `progress/`.
 4. Return **one line** to the leader.
 

@@ -303,7 +303,7 @@ export type SummaryRow = {
 
 /**
  * Both yards, or one of them. `BOTH` is a SCOPE, not a claim that both were counted: on a
- * day only Clonmel was walked, `BOTH` shows the Clonmel badge and nothing beside it.
+ * day only Cashel was walked, `BOTH` shows the Cashel badge and nothing beside it.
  *
  * It is declared here rather than in `src/server/counts/stock-takes-input.ts` for the
  * reason `CountStatus` is: `src/lib/stock-takes-view.ts` needs it, and
@@ -311,12 +311,12 @@ export type SummaryRow = {
  * except `@/server/errors`. The parser that produces one still builds on
  * `locationCodeSchema`, so which yards exist is stated in exactly one place.
  */
-export type YardScope = "DUBLIN" | "CLONMEL" | "BOTH";
+export type YardScope = "DUBLIN" | "CASHEL" | "BOTH";
 
 /** Declaration order: `Location.sortOrder`, then the scope that is both of them. */
 export const YARD_SCOPES = [
   "DUBLIN",
-  "CLONMEL",
+  "CASHEL",
   "BOTH",
 ] as const satisfies readonly YardScope[];
 

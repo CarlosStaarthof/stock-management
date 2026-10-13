@@ -107,7 +107,7 @@ export async function getCountHistory(
 
 /** The yards a scope covers. `BOTH` is both of them, and a named yard is itself. */
 function yardCodesIn(scope: YardScope): string[] {
-  return scope === "BOTH" ? ["DUBLIN", "CLONMEL"] : [scope];
+  return scope === "BOTH" ? ["DUBLIN", "CASHEL"] : [scope];
 }
 
 /** The columns a jump target needs, and no others. */
@@ -159,7 +159,7 @@ function asCountRef(row: NeighbourRow): CountRef {
  * its own neighbour, and each is reachable from the other exactly once.
  *
  * TWO CURSORS, ONE FUNCTION. On the DETAIL the cursor is a count: `{ date, countId }`, and
- * the scope is that count's OWN yard whatever `?yard` says — Clonmel's stock is different
+ * the scope is that count's OWN yard whatever `?yard` says — Cashel's stock is different
  * stock, and putting it next in a sequence a person is reading as one yard's history would
  * invite exactly the comparison Part 4 forbids. On the CALENDAR the cursor is a day with no
  * count on it: `{ date, countId: null }`, and the caller asks twice — with the month's

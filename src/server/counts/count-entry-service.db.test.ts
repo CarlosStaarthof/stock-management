@@ -25,7 +25,7 @@ import {
   snapshotsOf,
 } from "../../../tests/support/count-fixture";
 import {
-  CLONMEL_ID,
+  CASHEL_ID,
   DUBLIN_ID,
   fixtureId,
   makeItemType,
@@ -88,7 +88,7 @@ async function seedCount(
 ): Promise<Fixture> {
   const lines = options.lines ?? 4;
   const locationId = options.locationId ?? DUBLIN_ID;
-  const locationCode = locationId === CLONMEL_ID ? "CLONMEL" : "DUBLIN";
+  const locationCode = locationId === CASHEL_ID ? "CASHEL" : "DUBLIN";
 
   const typeId = await makeItemType("BEADS", 1, "Beads");
   const supplierId = await makeSupplier("Kelly");
@@ -210,9 +210,9 @@ describe("AC-2: both roles may count, and no yard is off limits", () => {
     expect(await storedQuantity(countId, itemIds[1])).toBe("21.6128");
   });
 
-  it("AC-2: an ADMIN may edit a count a YARD_STAFF user started, at Clonmel", async () => {
+  it("AC-2: an ADMIN may edit a count a YARD_STAFF user started, at Cashel", async () => {
     const { countId, itemIds, admin } = await seedCount({
-      locationId: CLONMEL_ID,
+      locationId: CASHEL_ID,
       countedBy: "YARD_STAFF",
     });
 
@@ -480,23 +480,23 @@ describe("AC-27: no database error text ever reaches a caller", () => {
 /** A second count, already past `DRAFT`, for the refusal above. */
 async function seedCountPastDraft(): Promise<{ countId: string; itemIds: string[] }> {
   const typeId = await makeItemType("THERMO", 2, "Thermo-P");
-  const itemIds = [fixtureId("clonmel", 0), fixtureId("clonmel", 1)];
+  const itemIds = [fixtureId("cashel", 0), fixtureId("cashel", 1)];
 
   await makeItemsBulk(
     itemIds.map((id, index) => ({
       id,
-      description: `Clonmel item ${index}`,
+      description: `Cashel item ${index}`,
       itemTypeId: typeId,
       unitLabel: "Tonne",
     })),
   );
   await makeLinksBulk(
-    itemIds.map((itemId, index) => ({ itemId, locationId: CLONMEL_ID, sortOrder: 3 + index })),
+    itemIds.map((itemId, index) => ({ itemId, locationId: CASHEL_ID, sortOrder: 3 + index })),
   );
 
   const creator = await newActor("ADMIN", "An Administrator");
   const countId = await startCount(creator, {
-    locationCode: "CLONMEL",
+    locationCode: "CASHEL",
     countDate: "2026-09-02",
     period: "2026-09",
   });

@@ -58,7 +58,7 @@ export default defineConfig({
    * TWO PHASES, and the dependency between them is a correctness requirement rather than a
    * performance choice (spec 007 AC-30).
    *
-   * #6's specs EDIT the yard sheets: they assign their own items to Dublin and Clonmel and
+   * #6's specs EDIT the yard sheets: they assign their own items to Dublin and Cashel and
    * delete them again, and `item-master-items.spec.ts` asserts that an unreferenced item
    * still offers its *Delete* control. #7's specs COUNT those sheets: `startCount`
    * pre-populates one `StockCountLine` per item on the yard's sheet, which is the whole

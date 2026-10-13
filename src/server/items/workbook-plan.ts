@@ -19,7 +19,7 @@ import { ConflictError, NotFoundError } from "@/server/errors";
  * (`diffPlan`), and what a human needs to be told (`buildImportReport`). That is what makes
  * AC-1 to AC-17 provable in `npm run test:unit` with no Postgres at all.
  *
- * The `Summary` sheet and the `Clonmel Trucks & Yard` sheet are excluded from this feature
+ * The `Summary` sheet and the `Cashel Trucks & Yard` sheet are excluded from this feature
  * (specs/domain-model.md Part 2 § Not imported); this module never sees them, because the
  * reader never returns them.
  */
@@ -27,14 +27,14 @@ import { ConflictError, NotFoundError } from "@/server/errors";
 /** `Location.code` for each yard sheet. #4's migration seeded both rows; #5 only reads them. */
 export const LOCATION_CODE_BY_SHEET = {
   Dublin: "DUBLIN",
-  "Clonmel ": "CLONMEL",
+  Cashel: "CASHEL",
 } as const satisfies Record<YardSheetName, string>;
 
 export type LocationCode = (typeof LOCATION_CODE_BY_SHEET)[YardSheetName];
 
 /** specs/domain-model.md Part 2 § Prices: the single price column is the 2025 list. */
 export const PRICE_EFFECTIVE_FROM = "2025-01-01";
-/** The string `Dublin!E2` and `'Clonmel '!E2` both hold. */
+/** The string `Dublin!E2` and `Cashel!E2` both hold. */
 export const PRICE_LABEL = "2025 Prices";
 export const PRICE_CURRENCY = "EUR";
 
@@ -42,7 +42,7 @@ export const PRICE_CURRENCY = "EUR";
  * The item types of specs/domain-model.md Part 2, in Part 2's order.
  *
  * Pinned literally rather than derived from first appearance on the sheets, because the
- * two do not agree: Dublin meets `A-S` fourth and `'Clonmel '` meets `C-E` third, so a
+ * two do not agree: Dublin meets `A-S` fourth and `Cashel` meets `C-E` third, so a
  * first-appearance rule would produce a different answer from the one Part 2 states.
  * `code` and `name` are both the workbook's own spelling (spec 005 Open questions §3).
  */
@@ -68,7 +68,7 @@ const ITEM_TYPE_ORDER: readonly string[] = [
   "Fuel",
 ];
 
-/** `'Clonmel '!C66` reads `Logo's`, and it is the `Logo` type (Part 2). */
+/** `Cashel!C66` reads `Logo's`, and it is the `Logo` type (Part 2). */
 const ITEM_TYPE_VARIANTS = new Map<string, string>([["Logo's", "Logo"]]);
 
 /**
@@ -115,7 +115,7 @@ export type ImportPlanItem = {
   /** `null` for the 11 items the workbook prices nowhere. Never a JavaScript number. */
   unitPrice: string | null;
   links: ImportPlanLink[];
-  /** Every source cell this item was built from, e.g. `["Dublin!A3", "'Clonmel '!A3"]`. */
+  /** Every source cell this item was built from, e.g. `["Dublin!A3", "Cashel!A3"]`. */
   cells: string[];
   /** Why `needsReview` is true. Empty when it is false. */
   reviewReasons: ReviewReason[];
@@ -423,7 +423,7 @@ export function buildImportPlan(rows: YardSheetRow[]): ImportPlan {
 
     // Two rows on ONE sheet with the same identity would be two links to one location, and
     // `@@unique([itemId, locationId])` refuses that. It does not happen in this workbook
-    // (82 Dublin rows and 70 Clonmel rows make 152 links across 140 items); the first row
+    // (82 Dublin rows and 70 Cashel rows make 152 links across 140 items); the first row
     // keeps the sort order if it ever does, and the second row's values still merge below.
     if (!existing.links.has(locationCode)) {
       existing.links.set(locationCode, { locationCode, sortOrder: row.row });
@@ -583,7 +583,7 @@ export function buildImportPlan(rows: YardSheetRow[]): ImportPlan {
   };
 }
 
-/** `'Clonmel '!D64` -> `["Clonmel ", 64]`. Used only to sort report arrays. */
+/** `Cashel!D64` -> `["Cashel", 64]`. Used only to sort report arrays. */
 function splitCellRef(cellRef: string): [string, number] {
   const parts = /^(?:'(.*)'|([^!]*))!([A-Z]+)(\d+)$/.exec(cellRef);
   if (parts === null) return ["", 0];
@@ -615,7 +615,7 @@ export function diffPlan(plan: ImportPlan, existing: ExistingMasterData): Import
   for (const code of [...usedCodes].sort()) {
     if (!locationIdByCode.has(code)) {
       throw new NotFoundError(
-        `Location ${code} is not in the database. #4's migration seeds DUBLIN and CLONMEL; ` +
+        `Location ${code} is not in the database. #4's migration seeds DUBLIN and CASHEL; ` +
           "this importer reads them and never creates them.",
       );
     }

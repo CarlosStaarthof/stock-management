@@ -131,7 +131,7 @@ export async function reservedCountTotals(
 
 /** The id of the count this yard and period holds, or `null`. */
 export async function countIdFor(
-  locationCode: "DUBLIN" | "CLONMEL",
+  locationCode: "DUBLIN" | "CASHEL",
   year: number,
   month: number,
 ): Promise<string | null> {
@@ -171,7 +171,7 @@ export async function createdByIdOf(countId: string): Promise<string> {
  * `tests/support/item-master-fixture.ts` records for #6.
  */
 export async function seedCount(input: {
-  locationCode: "DUBLIN" | "CLONMEL";
+  locationCode: "DUBLIN" | "CASHEL";
   year: number;
   month: number;
   countDate: string;
@@ -265,7 +265,7 @@ export function bodyShowsPrice(body: string, price: string): boolean {
  */
 export async function seedCountLines(
   countId: string,
-  locationCode: "DUBLIN" | "CLONMEL",
+  locationCode: "DUBLIN" | "CASHEL",
 ): Promise<number> {
   const location = await db.location.findUniqueOrThrow({
     where: { code: locationCode },
@@ -287,7 +287,7 @@ export async function seedCountLines(
 
 /** A count, its lines, and the number of them — the one call a #8 spec starts from. */
 export async function seedCountWithLines(input: {
-  locationCode: "DUBLIN" | "CLONMEL";
+  locationCode: "DUBLIN" | "CASHEL";
   year: number;
   month: number;
   countDate: string;

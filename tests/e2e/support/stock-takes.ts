@@ -101,7 +101,7 @@ export async function shapeCountQuantities(
  * the whole database might belong to an item no Dublin count has a row for, and then the
  * measurement would be taken on a row that is not on the screen.
  */
-export async function longestDescription(locationCode: "DUBLIN" | "CLONMEL"): Promise<string> {
+export async function longestDescription(locationCode: "DUBLIN" | "CASHEL"): Promise<string> {
   const links = await db.itemLocation.findMany({
     where: { location: { code: locationCode } },
     select: { item: { select: { description: true } } },

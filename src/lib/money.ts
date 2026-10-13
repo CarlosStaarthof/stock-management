@@ -2,7 +2,7 @@
  * Formatting for the decimal strings the database stores as `Decimal(18, 8)`.
  *
  * `docs/architecture.md` § Money and quantities: never a JavaScript `number` for anything
- * Postgres stores as a decimal. `6.11764706` is one of the four Clonmel prices that are
+ * Postgres stores as a decimal. `6.11764706` is one of the four Cashel prices that are
  * workbook formulas (`=5.2/0.85` and friends), and a `Number` round trip is exactly what
  * loses its tail. So this module takes a STRING and returns a STRING, and there is no
  * `Number(...)`, `parseFloat`, `toFixed` or `Intl.NumberFormat` anywhere in it.
@@ -127,7 +127,7 @@ function render(value: ScaledDigits, trim: boolean): string {
  * `quantity x price`, exact to the last digit, with no rounding anywhere (009 AC-24).
  *
  * `multiplyDecimal("21.6128", "6.11764706")` is `"132.219482378368"` — fourteen decimal
- * places, because one of the four Clonmel prices is a non-terminating workbook formula and
+ * places, because one of the four Cashel prices is a non-terminating workbook formula and
  * Invariant 10 forbids losing its tail before the total is taken.
  */
 export function multiplyDecimal(left: string, right: string): string {

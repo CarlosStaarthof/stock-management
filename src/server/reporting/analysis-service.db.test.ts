@@ -10,7 +10,7 @@ import type { AnalysisForAdmin, BreakdownKey } from "@/types/analysis";
 import type { CountStatus } from "@/types/stock-count";
 
 import { allTableCounts, countRowOf, lineRowsOf } from "../../../tests/support/count-fixture";
-import { ADMIN, CLONMEL_ID, DUBLIN_ID, makePrice } from "../../../tests/support/item-master-fixture";
+import { ADMIN, CASHEL_ID, DUBLIN_ID, makePrice } from "../../../tests/support/item-master-fixture";
 
 /**
  * Spec 011 at Level 2 (`docs/verification.md`): the figures, against a REAL Postgres and a
@@ -44,7 +44,7 @@ type LineSpec = {
 };
 
 type CountSpec = {
-  yard: "DUBLIN" | "CLONMEL";
+  yard: "DUBLIN" | "CASHEL";
   /** `"2026-09"`. */
   periodKey: string;
   status: CountStatus;
@@ -66,7 +66,7 @@ type Fixture = {
 
 const YARD_IDS: Record<CountSpec["yard"], string> = {
   DUBLIN: DUBLIN_ID,
-  CLONMEL: CLONMEL_ID,
+  CASHEL: CASHEL_ID,
 };
 
 const DEFAULT_TYPE = { code: "BEADS", name: "Beads" };
@@ -244,7 +244,7 @@ const AC7: FixtureSpec = {
       ],
     },
     {
-      yard: "CLONMEL",
+      yard: "CASHEL",
       periodKey: "2026-09",
       status: "APPROVED",
       lines: [
@@ -256,7 +256,7 @@ const AC7: FixtureSpec = {
 };
 
 const DUBLIN_VALUE = "8880.919482378368";
-const CLONMEL_VALUE = "15.71775";
+const CASHEL_VALUE = "15.71775";
 const TOTAL_VALUE = "8896.637232378368";
 
 /* ---------------------------------------------------------------------- AC-7 */
@@ -268,7 +268,7 @@ describe("011 AC-7: the per-yard figures and the total, by hand", () => {
     const analysis = await analysisOf("2026-09");
 
     expect(yardOf(analysis, "DUBLIN").yardValue).toBe(DUBLIN_VALUE);
-    expect(yardOf(analysis, "CLONMEL").yardValue).toBe(CLONMEL_VALUE);
+    expect(yardOf(analysis, "CASHEL").yardValue).toBe(CASHEL_VALUE);
     expect(analysis.period.totalStock).toBe(TOTAL_VALUE);
     expect(analysis.period.complete).toBe(true);
   });
@@ -279,7 +279,7 @@ describe("011 AC-7: the per-yard figures and the total, by hand", () => {
     const analysis = await analysisOf("2026-09");
 
     expect(formatFigure(yardOf(analysis, "DUBLIN").yardValue ?? "")).toBe("€8,880.92");
-    expect(formatFigure(yardOf(analysis, "CLONMEL").yardValue ?? "")).toBe("€15.72");
+    expect(formatFigure(yardOf(analysis, "CASHEL").yardValue ?? "")).toBe("€15.72");
     expect(formatFigure(analysis.period.totalStock ?? "")).toBe("€8,896.64");
   });
 
@@ -290,7 +290,7 @@ describe("011 AC-7: the per-yard figures and the total, by hand", () => {
     await seed({
       counts: [
         { yard: "DUBLIN", periodKey: "2026-09", status: "APPROVED", lines: [{ quantity: "0.004", snapshot: "1" }] },
-        { yard: "CLONMEL", periodKey: "2026-09", status: "APPROVED", lines: [{ quantity: "0.004", snapshot: "1" }] },
+        { yard: "CASHEL", periodKey: "2026-09", status: "APPROVED", lines: [{ quantity: "0.004", snapshot: "1" }] },
       ],
     });
 
@@ -331,7 +331,7 @@ describe("011 AC-5: only an APPROVED count carries a euro", () => {
     counts: [
       { yard: "DUBLIN", periodKey: "2026-09", status: "APPROVED", lines: [{ quantity: "10", snapshot: "2" }] },
       {
-        yard: "CLONMEL",
+        yard: "CASHEL",
         periodKey: "2026-09",
         status: "SUBMITTED",
         // ITS SNAPSHOTS EXIST. They are deliberately not read.
@@ -344,12 +344,12 @@ describe("011 AC-5: only an APPROVED count carries a euro", () => {
     const fixture = await seed(MIXED);
 
     const analysis = await analysisOf("2026-09");
-    const clonmel = yardOf(analysis, "CLONMEL");
+    const cashel = yardOf(analysis, "CASHEL");
 
-    expect(clonmel.yardValue).toBeNull();
-    expect(clonmel.countStatus).toBe("SUBMITTED");
-    expect(clonmel.countId).toBe(fixture.countIds.get("2026-09|CLONMEL"));
-    expect(clonmel.countDate).toBe("2026-09-15");
+    expect(cashel.yardValue).toBeNull();
+    expect(cashel.countStatus).toBe("SUBMITTED");
+    expect(cashel.countId).toBe(fixture.countIds.get("2026-09|CASHEL"));
+    expect(cashel.countDate).toBe("2026-09-15");
     expect(analysis.period.complete).toBe(false);
   });
 
@@ -363,29 +363,29 @@ describe("011 AC-5: only an APPROVED count carries a euro", () => {
 
     expect(analysis.period.yards.map((yard) => yard.locationCode)).toEqual([
       "DUBLIN",
-      "CLONMEL",
+      "CASHEL",
       "CORK",
     ]);
     expect(yardOf(analysis, "CORK").countStatus).toBeNull();
     expect(yardOf(analysis, "CORK").yardValue).toBeNull();
-    expect(analysis.period.missingYardNames).toEqual(["Clonmel", "Cork"]);
+    expect(analysis.period.missingYardNames).toEqual(["Cashel", "Cork"]);
   });
 
   it("AC-5: DRAFT is the same answer with a different word, and APPROVED changes nothing else", async () => {
     const fixture = await seed(MIXED);
-    const clonmelId = fixture.countIds.get("2026-09|CLONMEL") ?? "";
+    const cashelId = fixture.countIds.get("2026-09|CASHEL") ?? "";
 
     const beforeDublin = yardOf(await analysisOf("2026-09"), "DUBLIN");
 
-    await db.stockCount.update({ where: { id: clonmelId }, data: { status: "DRAFT" } });
+    await db.stockCount.update({ where: { id: cashelId }, data: { status: "DRAFT" } });
     const asDraft = await analysisOf("2026-09");
-    expect(yardOf(asDraft, "CLONMEL").yardValue).toBeNull();
-    expect(yardOf(asDraft, "CLONMEL").countStatus).toBe("DRAFT");
+    expect(yardOf(asDraft, "CASHEL").yardValue).toBeNull();
+    expect(yardOf(asDraft, "CASHEL").countStatus).toBe("DRAFT");
     expect(asDraft.period.complete).toBe(false);
 
-    await db.stockCount.update({ where: { id: clonmelId }, data: { status: "APPROVED" } });
+    await db.stockCount.update({ where: { id: cashelId }, data: { status: "APPROVED" } });
     const asApproved = await analysisOf("2026-09");
-    expect(yardOf(asApproved, "CLONMEL").yardValue).toBe("9900");
+    expect(yardOf(asApproved, "CASHEL").yardValue).toBe("9900");
     expect(asApproved.period.complete).toBe(true);
 
     // NO OTHER FIELD OF THE DUBLIN FIGURE MOVES when the other yard is approved.
@@ -402,10 +402,10 @@ describe("011 AC-5: only an APPROVED count carries a euro", () => {
     expect(analysis.yearOnYear.state).not.toBe("COMPARABLE");
     expect(analysis.trend.every((point) => point.totalStock === null)).toBe(true);
 
-    // The one group in the fixture carries Dublin's 20 and nothing of Clonmel's 9,900.
+    // The one group in the fixture carries Dublin's 20 and nothing of Cashel's 9,900.
     for (const row of analysis.breakdown) {
-      const clonmelCell = row.perYard.find((cell) => cell.locationCode === "CLONMEL");
-      expect(clonmelCell?.amount ?? null).toBeNull();
+      const cashelCell = row.perYard.find((cell) => cell.locationCode === "CASHEL");
+      expect(cashelCell?.amount ?? null).toBeNull();
       expect(row.amount).toBeNull();
     }
     expect(analysis.breakdown.map((row) => row.perYard[0].amount)).toEqual(["20"]);
@@ -425,7 +425,7 @@ describe("011 AC-6: a missing month is a gap, never a zero", () => {
     const analysis = await analysisOf("2026-09");
 
     expect(analysis.period.complete).toBe(false);
-    expect(analysis.period.missingYardNames).toEqual(["Clonmel"]);
+    expect(analysis.period.missingYardNames).toEqual(["Cashel"]);
     expect(analysis.period.totalStock).toBeNull();
     expect(analysis.period.totalStock).not.toBe("0");
 
@@ -433,7 +433,7 @@ describe("011 AC-6: a missing month is a gap, never a zero", () => {
       expect(row.amount).toBeNull();
       // The per-yard cell of the APPROVED yard is still a figure.
       expect(row.perYard.find((cell) => cell.locationCode === "DUBLIN")?.amount).toBe("20");
-      expect(row.perYard.find((cell) => cell.locationCode === "CLONMEL")?.amount).toBeNull();
+      expect(row.perYard.find((cell) => cell.locationCode === "CASHEL")?.amount).toBeNull();
     }
 
     expect(analysis.monthOnMonth.state).not.toBe("COMPARABLE");
@@ -444,7 +444,7 @@ describe("011 AC-6: a missing month is a gap, never a zero", () => {
     await seed({
       counts: [
         { yard: "DUBLIN", periodKey: "2026-09", status: "APPROVED", lines: [{ quantity: "0", snapshot: "45" }] },
-        { yard: "CLONMEL", periodKey: "2026-09", status: "APPROVED", lines: [{ quantity: "0", snapshot: "33.09" }] },
+        { yard: "CASHEL", periodKey: "2026-09", status: "APPROVED", lines: [{ quantity: "0", snapshot: "33.09" }] },
       ],
     });
 
@@ -500,7 +500,7 @@ describe("011 AC-9: a held line with no price counts zero, and says so", () => {
   const AC9: FixtureSpec = {
     counts: [
       { yard: "DUBLIN", periodKey: "2026-09", status: "APPROVED", lines: AC9_LINES },
-      { yard: "CLONMEL", periodKey: "2026-09", status: "APPROVED", lines: [{ quantity: "1", snapshot: "10" }] },
+      { yard: "CASHEL", periodKey: "2026-09", status: "APPROVED", lines: [{ quantity: "1", snapshot: "10" }] },
     ],
   };
 
@@ -512,7 +512,7 @@ describe("011 AC-9: a held line with no price counts zero, and says so", () => {
     expect(yardOf(analysis, "DUBLIN").unvaluedHeldLineCount).toBe(3);
     expect(yardOf(analysis, "DUBLIN").heldLineCount).toBe(43);
     expect(analysis.period.unvaluedHeldLineCount).toBe(3);
-    expect(yardOf(analysis, "CLONMEL").unvaluedHeldLineCount).toBe(0);
+    expect(yardOf(analysis, "CASHEL").unvaluedHeldLineCount).toBe(0);
 
     // A line counted as none is not stock that failed to be valued, and a warning that
     // fires on all 35 zero rows of a Dublin count is a warning nobody reads.
@@ -533,7 +533,7 @@ describe("011 AC-9: a held line with no price counts zero, and says so", () => {
           status: "APPROVED",
           lines: AC9_LINES.filter((line) => !(line.quantity === "5" && line.snapshot === null)),
         },
-        { yard: "CLONMEL", periodKey: "2026-09", status: "APPROVED", lines: [{ quantity: "1", snapshot: "10" }] },
+        { yard: "CASHEL", periodKey: "2026-09", status: "APPROVED", lines: [{ quantity: "1", snapshot: "10" }] },
       ],
     });
     const without = await analysisOf("2026-09");
@@ -563,7 +563,7 @@ describe("011 AC-9: a held line with no price counts zero, and says so", () => {
             { type: "PAINT", quantity: "9", snapshot: null },
           ],
         },
-        { yard: "CLONMEL", periodKey: "2026-09", status: "APPROVED", lines: [{ quantity: "1", snapshot: "1" }] },
+        { yard: "CASHEL", periodKey: "2026-09", status: "APPROVED", lines: [{ quantity: "1", snapshot: "1" }] },
       ],
     });
 
@@ -620,10 +620,10 @@ describe("011 AC-11, AC-12: the two comparisons, joined on the period", () => {
       counts: [
         ...AC7.counts,
         { yard: "DUBLIN", periodKey: "2026-08", status: augustStatus, lines: [{ quantity: "890", snapshot: "9.83" }] },
-        { yard: "CLONMEL", periodKey: "2026-08", status: augustStatus, lines: [{ quantity: "0", snapshot: "1" }] },
+        { yard: "CASHEL", periodKey: "2026-08", status: augustStatus, lines: [{ quantity: "0", snapshot: "1" }] },
         // July is COMPLETE in the same fixture, and must never be reached for.
         { yard: "DUBLIN", periodKey: "2026-07", status: "APPROVED", lines: [{ quantity: "1", snapshot: "1" }] },
-        { yard: "CLONMEL", periodKey: "2026-07", status: "APPROVED", lines: [{ quantity: "1", snapshot: "1" }] },
+        { yard: "CASHEL", periodKey: "2026-07", status: "APPROVED", lines: [{ quantity: "1", snapshot: "1" }] },
       ],
     };
   }
@@ -644,9 +644,9 @@ describe("011 AC-11, AC-12: the two comparisons, joined on the period", () => {
     await seed({
       counts: [
         { yard: "DUBLIN", periodKey: "2026-09", status: "APPROVED", lines: [{ quantity: "1", snapshot: "100" }] },
-        { yard: "CLONMEL", periodKey: "2026-09", status: "APPROVED", lines: [{ quantity: "1", snapshot: "0" }] },
+        { yard: "CASHEL", periodKey: "2026-09", status: "APPROVED", lines: [{ quantity: "1", snapshot: "0" }] },
         { yard: "DUBLIN", periodKey: "2026-08", status: "APPROVED", lines: [{ quantity: "1", snapshot: "1334.56" }] },
-        { yard: "CLONMEL", periodKey: "2026-08", status: "APPROVED", lines: [{ quantity: "1", snapshot: "0" }] },
+        { yard: "CASHEL", periodKey: "2026-08", status: "APPROVED", lines: [{ quantity: "1", snapshot: "0" }] },
       ],
     });
 
@@ -663,7 +663,7 @@ describe("011 AC-11, AC-12: the two comparisons, joined on the period", () => {
         ...AC7.counts,
         { yard: "DUBLIN", periodKey: "2026-08", status: "APPROVED", lines: [{ quantity: "1", snapshot: "1" }] },
         { yard: "DUBLIN", periodKey: "2026-07", status: "APPROVED", lines: [{ quantity: "1", snapshot: "1" }] },
-        { yard: "CLONMEL", periodKey: "2026-07", status: "APPROVED", lines: [{ quantity: "1", snapshot: "1" }] },
+        { yard: "CASHEL", periodKey: "2026-07", status: "APPROVED", lines: [{ quantity: "1", snapshot: "1" }] },
       ],
     });
 
@@ -690,7 +690,7 @@ describe("011 AC-11, AC-12: the two comparisons, joined on the period", () => {
       counts: [
         { yard: "DUBLIN", periodKey: "2026-09", status: "APPROVED", lines: [{ quantity: "1", snapshot: "1" }] },
         { yard: "DUBLIN", periodKey: "2026-08", status: "APPROVED", lines: [{ quantity: "1", snapshot: "1" }] },
-        { yard: "CLONMEL", periodKey: "2026-08", status: "APPROVED", lines: [{ quantity: "1", snapshot: "1" }] },
+        { yard: "CASHEL", periodKey: "2026-08", status: "APPROVED", lines: [{ quantity: "1", snapshot: "1" }] },
       ],
     });
 
@@ -709,7 +709,7 @@ describe("011 AC-11, AC-12: the two comparisons, joined on the period", () => {
       counts: [
         ...AC7.counts,
         { yard: "DUBLIN", periodKey: "2025-09", status: "APPROVED", lines: [{ quantity: "100", snapshot: "1" }] },
-        { yard: "CLONMEL", periodKey: "2025-09", status: "APPROVED", lines: [{ quantity: "0", snapshot: "1" }] },
+        { yard: "CASHEL", periodKey: "2025-09", status: "APPROVED", lines: [{ quantity: "0", snapshot: "1" }] },
         { yard: "DUBLIN", periodKey: "2025-10", status: "APPROVED", lines: [{ quantity: "5", snapshot: "1" }] },
         { yard: "DUBLIN", periodKey: "2026-08", status: "APPROVED", lines: [{ quantity: "7", snapshot: "1" }] },
       ],
@@ -749,7 +749,7 @@ describe("011 AC-14: the trend the chart is drawn from", () => {
       counts: [
         ...AC7.counts,
         { yard: "DUBLIN", periodKey: "2025-09", status: "APPROVED", lines: [{ quantity: "1", snapshot: "1" }] },
-        { yard: "CLONMEL", periodKey: "2025-09", status: "APPROVED", lines: [{ quantity: "1", snapshot: "1" }] },
+        { yard: "CASHEL", periodKey: "2025-09", status: "APPROVED", lines: [{ quantity: "1", snapshot: "1" }] },
       ],
     });
 
@@ -801,7 +801,7 @@ describe("011 AC-15: the breakdown, by type and by supplier", () => {
         ],
       },
       {
-        yard: "CLONMEL",
+        yard: "CASHEL",
         periodKey: "2026-09",
         status: "APPROVED",
         lines: [
@@ -821,10 +821,10 @@ describe("011 AC-15: the breakdown, by type and by supplier", () => {
     expect(analysis.breakdown[0].groupKey).toBe("THERMO");
     expect(analysis.breakdown[0].perYard).toEqual([
       { locationCode: "DUBLIN", amount: "25" },
-      { locationCode: "CLONMEL", amount: "5" },
+      { locationCode: "CASHEL", amount: "5" },
     ]);
     expect(analysis.breakdown[0].amount).toBe("30");
-    // Beads: Dublin 5 + 6 + 0, Clonmel 1.25.
+    // Beads: Dublin 5 + 6 + 0, Cashel 1.25.
     expect(analysis.breakdown[1].amount).toBe("12.25");
   });
 
@@ -872,7 +872,7 @@ describe("011 AC-15: the breakdown, by type and by supplier", () => {
             { type: "EMPTY", quantity: "0", snapshot: "1" },
           ],
         },
-        { yard: "CLONMEL", periodKey: "2026-09", status: "APPROVED", lines: [{ type: "THERMO", quantity: "1", snapshot: "1" }] },
+        { yard: "CASHEL", periodKey: "2026-09", status: "APPROVED", lines: [{ type: "THERMO", quantity: "1", snapshot: "1" }] },
       ],
     });
 
@@ -894,7 +894,7 @@ describe("011 AC-15: the breakdown, by type and by supplier", () => {
     expect(analysis.breakdown[0].amount).toBeNull();
     expect(analysis.breakdown[0].perYard).toEqual([
       { locationCode: "DUBLIN", amount: "6" },
-      { locationCode: "CLONMEL", amount: null },
+      { locationCode: "CASHEL", amount: null },
     ]);
   });
 });
@@ -981,7 +981,7 @@ describe("011 AC-17: the money-key walk over the admin shape", () => {
     await seed(AC7);
 
     const analysis = await analysisOf("2026-09");
-    const figures = new Set([DUBLIN_VALUE, CLONMEL_VALUE, TOTAL_VALUE]);
+    const figures = new Set([DUBLIN_VALUE, CASHEL_VALUE, TOTAL_VALUE]);
     const strays: string[] = [];
 
     const walk = (node: unknown): void => {

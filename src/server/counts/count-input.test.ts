@@ -47,7 +47,7 @@ describe("parseYardChoice", () => {
 
   it("AC-23: the two real yards are accepted, and surrounding whitespace is not an error", () => {
     expect(parseYardChoice("DUBLIN")).toBe("DUBLIN");
-    expect(parseYardChoice("CLONMEL")).toBe("CLONMEL");
+    expect(parseYardChoice("CASHEL")).toBe("CASHEL");
     expect(parseYardChoice("  DUBLIN  ")).toBe("DUBLIN");
   });
 
@@ -136,7 +136,7 @@ describe("parseStartCountInput", () => {
         .period,
     ).toEqual({ periodYear: 2025, periodMonth: 12 });
     expect(
-      parseStartCountInput({ locationCode: "CLONMEL", countDate: "2025-11-30", period: undefined })
+      parseStartCountInput({ locationCode: "CASHEL", countDate: "2025-11-30", period: undefined })
         .period,
     ).toEqual({ periodYear: 2025, periodMonth: 11 });
   });
@@ -173,10 +173,10 @@ describe("the query parameters, which navigate and never throw", () => {
 
   it("AC-23: ?locationCode is a yard or it is null, and never an error", () => {
     expect(parseYardChoiceOrNull("DUBLIN")).toBe("DUBLIN");
-    expect(parseYardChoiceOrNull("CLONMEL")).toBe("CLONMEL");
+    expect(parseYardChoiceOrNull("CASHEL")).toBe("CASHEL");
     expect(parseYardChoiceOrNull("BANANA")).toBeNull();
     expect(parseYardChoiceOrNull(undefined)).toBeNull();
-    expect(parseYardChoiceOrNull(["DUBLIN", "CLONMEL"])).toBeNull();
+    expect(parseYardChoiceOrNull(["DUBLIN", "CASHEL"])).toBeNull();
   });
 });
 

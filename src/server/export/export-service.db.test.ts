@@ -17,7 +17,7 @@ import { resetTestDb } from "@/server/test-db";
 
 import {
   ADMIN,
-  CLONMEL_ID,
+  CASHEL_ID,
   DUBLIN_ID,
   STAFF,
   makeItem,
@@ -123,13 +123,13 @@ async function seed(): Promise<void> {
   await makeLink(neverCounted, DUBLIN_ID, 3);
 
   // No supplier: the sheet must read NO_SUPPLIER (AC-2).
-  const clonmelHeld = await makeItem({
-    description: "Clonmel Held",
+  const cashelHeld = await makeItem({
+    description: "Cashel Held",
     itemTypeId: typeId,
     unitLabel: "1 Unit",
   });
-  await makePrice(clonmelHeld, "3", "2026-01-01");
-  await makeLink(clonmelHeld, CLONMEL_ID, 1);
+  await makePrice(cashelHeld, "3", "2026-01-01");
+  await makeLink(cashelHeld, CASHEL_ID, 1);
 
   await makeApprovedCount({
     locationId: DUBLIN_ID,
@@ -147,16 +147,16 @@ async function seed(): Promise<void> {
     lines: [{ itemId: widgetA, quantity: "3", snapshot: "1.005" }],
   });
   await makeApprovedCount({
-    locationId: CLONMEL_ID,
+    locationId: CASHEL_ID,
     periodKey: "2026-06",
     signerId,
-    lines: [{ itemId: clonmelHeld, quantity: "5", snapshot: "3" }],
+    lines: [{ itemId: cashelHeld, quantity: "5", snapshot: "3" }],
   });
   await makeApprovedCount({
-    locationId: CLONMEL_ID,
+    locationId: CASHEL_ID,
     periodKey: "2026-07",
     signerId,
-    lines: [{ itemId: clonmelHeld, quantity: "5", snapshot: "3" }],
+    lines: [{ itemId: cashelHeld, quantity: "5", snapshot: "3" }],
   });
 }
 
@@ -187,13 +187,13 @@ describe("012 AC-8: ADMIN only, refused in the service", () => {
 });
 
 describe("012 AC-1, AC-12: the sheets and the file name", () => {
-  it("AC-1: builds Summary, Dublin and Clonmel, in that order", async () => {
+  it("AC-1: builds Summary, Dublin and Cashel, in that order", async () => {
     await seed();
     const workbook = await openWorkbook(false);
     expect(workbook.worksheets.map((each) => each.name)).toEqual([
       "Summary",
       "Dublin",
-      "Clonmel",
+      "Cashel",
     ]);
   });
 
@@ -212,7 +212,7 @@ describe("012 AC-1, AC-12: the sheets and the file name", () => {
     expect(workbook.worksheets.map((each) => each.name)).toEqual([
       "Summary",
       "Dublin",
-      "Clonmel",
+      "Cashel",
     ]);
   });
 });
@@ -240,8 +240,8 @@ describe("012 AC-2, AC-3: the yard sheet shape and a derived value", () => {
     // Column E is the CURRENT price (9.99), not the June snapshot (R4).
     expect(dublin.getCell("E3").value).toBe("€9.99");
 
-    const clonmel = sheet(workbook, "Clonmel");
-    expect(clonmel.getCell("B3").value).toBe(NO_SUPPLIER);
+    const cashel = sheet(workbook, "Cashel");
+    expect(cashel.getCell("B3").value).toBe(NO_SUPPLIER);
   });
 
   it("AC-3, AC-13: the Value cell is quantity x frozen snapshot, and the TOTAL is a formula", async () => {

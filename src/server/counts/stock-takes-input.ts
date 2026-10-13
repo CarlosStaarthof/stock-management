@@ -46,7 +46,7 @@ function singleValue(raw: string | string[] | undefined): string | undefined | t
 }
 
 /**
- * `?yard=DUBLIN|CLONMEL|BOTH`, `BOTH` when it is absent, and `null` for anything else —
+ * `?yard=DUBLIN|CASHEL|BOTH`, `BOTH` when it is absent, and `null` for anything else —
  * `banana`, `dublin`, an empty string, or the parameter repeated twice (AC-6).
  *
  * The comparison is exact and case-sensitive, because `locationCodeSchema` is: a code is a

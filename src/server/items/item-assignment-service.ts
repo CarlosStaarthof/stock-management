@@ -21,7 +21,7 @@ import type { SheetEntry, StaffSheetEntry } from "@/server/items/sheet-shape";
  *    mistake. Re-assigning puts it back where it was (AC-22, open question 4).
  *  * REORDERING IS A SWAP, IN ONE TRANSACTION. Two rows exchange `sortOrder`, so the
  *    MULTISET of `sortOrder` values at a yard is identical before and after any sequence
- *    of moves. Clonmel's 71-74 gap records that the fuel rows sit below the total row, and
+ *    of moves. Cashel's 71-74 gap records that the fuel rows sit below the total row, and
  *    `sortOrder` is the workbook's own source row number (005 open question 4) — so there
  *    is no renumber action here and never will be (AC-23, open question 5).
  *  * A NEW ASSIGNMENT TAKES `max + 1`, counting inactive links too, so a re-used number

@@ -22,7 +22,7 @@ import { resetTestDb } from "@/server/test-db";
 import type { CountForAdmin } from "@/types/stock-count";
 
 import {
-  CLONMEL_ID,
+  CASHEL_ID,
   DUBLIN_ID,
   fixtureId,
   makeItemType,
@@ -43,7 +43,7 @@ beforeEach(async () => {
 });
 
 const DUBLIN_LINKS = 82;
-const CLONMEL_LINKS = 70;
+const CASHEL_LINKS = 70;
 
 /**
  * The mechanism AC-13's atomicity test uses: a constraint no `StockCountLine` insert can
@@ -73,12 +73,12 @@ async function newActor(role: "ADMIN" | "YARD_STAFF", name = "Jo Byrne"): Promis
 }
 
 /**
- * Today's master, reproduced: 82 active Dublin links and 70 active Clonmel links — the 152
+ * Today's master, reproduced: 82 active Dublin links and 70 active Cashel links — the 152
  * the workbook importer wrote (AC-12). `pricedCount` of the Dublin items carry a price.
  */
 async function seedMaster(options: { pricedDublinItems?: number } = {}): Promise<{
   dublinItemIds: string[];
-  clonmelItemIds: string[];
+  cashelItemIds: string[];
 }> {
   const typeId = await makeItemType("BEADS", 1);
   const supplierId = await makeSupplier("Kelly");
@@ -86,7 +86,7 @@ async function seedMaster(options: { pricedDublinItems?: number } = {}): Promise
   const dublinItemIds = Array.from({ length: DUBLIN_LINKS }, (_unused, index) =>
     fixtureId("item_dub", index),
   );
-  const clonmelItemIds = Array.from({ length: CLONMEL_LINKS }, (_unused, index) =>
+  const cashelItemIds = Array.from({ length: CASHEL_LINKS }, (_unused, index) =>
     fixtureId("item_clo", index),
   );
 
@@ -98,9 +98,9 @@ async function seedMaster(options: { pricedDublinItems?: number } = {}): Promise
       supplierId,
       unitLabel: "20 Kg",
     })),
-    ...clonmelItemIds.map((id, index) => ({
+    ...cashelItemIds.map((id, index) => ({
       id,
-      description: `Clonmel item ${String(index).padStart(3, "0")}`,
+      description: `Cashel item ${String(index).padStart(3, "0")}`,
       itemTypeId: typeId,
       supplierId,
       unitLabel: "25 Kg",
@@ -110,7 +110,7 @@ async function seedMaster(options: { pricedDublinItems?: number } = {}): Promise
   await makeLinksBulk([
     // Dublin's imported links start at 3, which is the workbook's own source row number.
     ...dublinItemIds.map((itemId, index) => ({ itemId, locationId: DUBLIN_ID, sortOrder: 3 + index })),
-    ...clonmelItemIds.map((itemId, index) => ({ itemId, locationId: CLONMEL_ID, sortOrder: 3 + index })),
+    ...cashelItemIds.map((itemId, index) => ({ itemId, locationId: CASHEL_ID, sortOrder: 3 + index })),
   ]);
 
   const priced = options.pricedDublinItems ?? DUBLIN_LINKS;
@@ -118,7 +118,7 @@ async function seedMaster(options: { pricedDublinItems?: number } = {}): Promise
     await makePrice(itemId, "9.83000000", "2025-01-01", "2025 Prices");
   }
 
-  return { dublinItemIds, clonmelItemIds };
+  return { dublinItemIds, cashelItemIds };
 }
 
 /** The three strings the confirm form sends. */
@@ -176,26 +176,26 @@ describe("the actor is the session, and a null one writes nothing", () => {
 /* ----------------------------------------------------------------- AC-12, AC-13 */
 
 describe("startCount pre-populates from listSheet", () => {
-  it("AC-12: a Dublin count has 82 lines and a Clonmel count 70, and the itemIds are the sheet's", async () => {
-    const { dublinItemIds, clonmelItemIds } = await seedMaster();
+  it("AC-12: a Dublin count has 82 lines and a Cashel count 70, and the itemIds are the sheet's", async () => {
+    const { dublinItemIds, cashelItemIds } = await seedMaster();
     const staff = await newActor("YARD_STAFF");
 
     const dublinId = await startCount(staff, startInput("DUBLIN", "2026-09-01", "2026-09"));
-    const clonmelId = await startCount(staff, startInput("CLONMEL", "2026-09-01", "2026-09"));
+    const cashelId = await startCount(staff, startInput("CASHEL", "2026-09-01", "2026-09"));
 
     const dublinLines = await db.stockCountLine.findMany({
       where: { stockCountId: dublinId },
       select: { itemId: true },
     });
-    const clonmelLines = await db.stockCountLine.findMany({
-      where: { stockCountId: clonmelId },
+    const cashelLines = await db.stockCountLine.findMany({
+      where: { stockCountId: cashelId },
       select: { itemId: true },
     });
 
     expect(dublinLines).toHaveLength(82);
-    expect(clonmelLines).toHaveLength(70);
+    expect(cashelLines).toHaveLength(70);
     expect(new Set(dublinLines.map((line) => line.itemId))).toEqual(new Set(dublinItemIds));
-    expect(new Set(clonmelLines.map((line) => line.itemId))).toEqual(new Set(clonmelItemIds));
+    expect(new Set(cashelLines.map((line) => line.itemId))).toEqual(new Set(cashelItemIds));
   });
 
   it("AC-12, AC-15: every created line is quantity null, snapshot null and note null", async () => {
@@ -323,18 +323,18 @@ describe("startCount pre-populates from listSheet", () => {
     await seedMaster();
     const staff = await newActor("YARD_STAFF");
 
-    // Clonmel emptied: every link inactive. Nothing is deleted, so this is the state an
+    // Cashel emptied: every link inactive. Nothing is deleted, so this is the state an
     // administrator can really leave a yard in.
-    await db.itemLocation.updateMany({ where: { locationId: CLONMEL_ID }, data: { active: false } });
+    await db.itemLocation.updateMany({ where: { locationId: CASHEL_ID }, data: { active: false } });
 
     try {
-      await startCount(staff, startInput("CLONMEL", "2026-09-01", "2026-09"));
+      await startCount(staff, startInput("CASHEL", "2026-09-01", "2026-09"));
       expect.unreachable("an empty sheet cannot be counted");
     } catch (error) {
       expect(error).toBeInstanceOf(ValidationError);
       expect((error as ValidationError).field).toBe("locationCode");
       expect((error as ValidationError).message).toBe(
-        "Clonmel has no items on its sheet. An administrator must assign items before this yard can be counted.",
+        "Cashel has no items on its sheet. An administrator must assign items before this yard can be counted.",
       );
     }
 
@@ -344,10 +344,10 @@ describe("startCount pre-populates from listSheet", () => {
   it("AC-13: every item archived is the same refusal as no links at all", async () => {
     await seedMaster();
     const staff = await newActor("YARD_STAFF");
-    await db.item.updateMany({ where: { locations: { some: { locationId: CLONMEL_ID } } }, data: { active: false } });
+    await db.item.updateMany({ where: { locations: { some: { locationId: CASHEL_ID } } }, data: { active: false } });
 
     await expect(
-      startCount(staff, startInput("CLONMEL", "2026-09-01", "2026-09")),
+      startCount(staff, startInput("CASHEL", "2026-09-01", "2026-09")),
     ).rejects.toBeInstanceOf(ValidationError);
     expect(await db.stockCount.count()).toBe(0);
   });
@@ -449,7 +449,7 @@ describe("the period is a fact of its own", () => {
 
     // 2026-01-03 is a Saturday; 2025-11-30 is a Sunday.
     const saturday = await startCount(staff, startInput("DUBLIN", "2026-01-03", "2025-12"));
-    const sunday = await startCount(staff, startInput("CLONMEL", "2025-11-30", "2025-11"));
+    const sunday = await startCount(staff, startInput("CASHEL", "2025-11-30", "2025-11"));
 
     expect((await getCount(staff, saturday)).countDate).toBe("2026-01-03");
     expect((await getCount(staff, sunday)).countDate).toBe("2025-11-30");
@@ -518,9 +518,9 @@ describe("one count per yard per month", () => {
 
     await startCount(staff, startInput("DUBLIN", "2026-09-01", "2026-09"));
     const october = await startCount(staff, startInput("DUBLIN", "2026-10-10", "2026-10"));
-    const clonmel = await startCount(staff, startInput("CLONMEL", "2026-09-01", "2026-09"));
+    const cashel = await startCount(staff, startInput("CASHEL", "2026-09-01", "2026-09"));
 
-    expect(october).not.toBe(clonmel);
+    expect(october).not.toBe(cashel);
     expect(await db.stockCount.count()).toBe(3);
   });
 
@@ -563,7 +563,7 @@ describe("one count per yard per month", () => {
       createdByName: "Jo Byrne",
     });
     expect(
-      await findCountForPeriod(staff, "CLONMEL", { periodYear: 2026, periodMonth: 9 }),
+      await findCountForPeriod(staff, "CASHEL", { periodYear: 2026, periodMonth: 9 }),
     ).toBeNull();
   });
 
@@ -598,7 +598,7 @@ describe("the calendar", () => {
     const staff = await newActor("YARD_STAFF");
 
     await startCount(staff, startInput("DUBLIN", "2026-07-31", "2026-07"));
-    await startCount(staff, startInput("CLONMEL", "2026-08-31", "2026-08"));
+    await startCount(staff, startInput("CASHEL", "2026-08-31", "2026-08"));
 
     expect(await defaultMonthKey(staff)).toBe("2026-08");
   });
@@ -651,18 +651,18 @@ describe("the calendar", () => {
     await expect(listCalendarMonth(staff, "banana")).rejects.toBeInstanceOf(ValidationError);
   });
 
-  it("AC-20: a day with counts at both yards renders Dublin before Clonmel", async () => {
+  it("AC-20: a day with counts at both yards renders Dublin before Cashel", async () => {
     await seedMaster();
     const staff = await newActor("YARD_STAFF");
 
-    await startCount(staff, startInput("CLONMEL", "2026-09-01", "2026-09"));
+    await startCount(staff, startInput("CASHEL", "2026-09-01", "2026-09"));
     await startCount(staff, startInput("DUBLIN", "2026-09-01", "2026-09"));
 
     const month = await listCalendarMonth(staff, "2026-09");
     const first = month.days.find((day) => day.date === "2026-09-01");
 
     expect(first?.counts).toHaveLength(2);
-    expect(first?.counts.map((badge) => badge.locationName)).toEqual(["Dublin", "Clonmel"]);
+    expect(first?.counts.map((badge) => badge.locationName)).toEqual(["Dublin", "Cashel"]);
     expect(first?.counts.map((badge) => badge.status)).toEqual(["DRAFT", "DRAFT"]);
   });
 
@@ -696,15 +696,15 @@ describe("the calendar", () => {
     expect(month.days.find((day) => day.date === "2026-09-02")?.counts).toEqual([]);
   });
 
-  it("AC-23: listCountableYards is Dublin then Clonmel, and excludes an inactive yard", async () => {
+  it("AC-23: listCountableYards is Dublin then Cashel, and excludes an inactive yard", async () => {
     const staff = await newActor("YARD_STAFF");
 
     expect(await listCountableYards(staff)).toEqual([
       { code: "DUBLIN", name: "Dublin" },
-      { code: "CLONMEL", name: "Clonmel" },
+      { code: "CASHEL", name: "Cashel" },
     ]);
 
-    await db.location.update({ where: { id: CLONMEL_ID }, data: { active: false } });
+    await db.location.update({ where: { id: CASHEL_ID }, data: { active: false } });
 
     expect(await listCountableYards(staff)).toEqual([{ code: "DUBLIN", name: "Dublin" }]);
   });

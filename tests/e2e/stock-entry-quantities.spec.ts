@@ -385,7 +385,7 @@ test("AC-25: a countId that does not exist, and a count with no lines", async ({
   // 007 AC-13 refuses a yard with an empty sheet before anything is written, so this is a
   // state only a bug reaches — and it renders a sentence rather than an empty table.
   const emptyId = await seedCount({
-    locationCode: "CLONMEL",
+    locationCode: "CASHEL",
     year: YEAR,
     month: 7,
     countDate: `${String(YEAR)}-07-10`,

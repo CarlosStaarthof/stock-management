@@ -95,7 +95,7 @@ describe("addPrice", () => {
     });
 
     const stored = await db.itemPrice.findUniqueOrThrow({ where: { id: created.id } });
-    // The four Clonmel formula prices (=5.2/0.85 and friends) survive intact only because
+    // The four Cashel formula prices (=5.2/0.85 and friends) survive intact only because
     // nothing on this path is a JavaScript number (docs/architecture.md).
     expect(stored.unitPrice.toString()).toBe("6.11764706");
     expect(stored.currency).toBe("EUR");

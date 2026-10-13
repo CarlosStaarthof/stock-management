@@ -5,7 +5,7 @@ import { YARD_LABEL } from "@/lib/stock-takes-messages";
 import type { YardScope } from "@/types/stock-count";
 
 /**
- * Dublin / Clonmel / Both — the one control `/stock-entry` does not have (010 AC-5, AC-6).
+ * Dublin / Cashel / Both — the one control `/stock-entry` does not have (010 AC-5, AC-6).
  *
  * THREE LINKS, IN `Location.sortOrder` THEN `Both`, and the current one carries
  * `aria-current="true"` and no other one does. They are links rather than a `<select>`

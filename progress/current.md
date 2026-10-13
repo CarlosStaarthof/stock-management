@@ -1928,3 +1928,30 @@ period per file (both site sheets), not one yard?
 (`.env` absent from this container, as rounds 1–2 recorded). `npm run test:db` refuses before
 loading a test (`TEST_DATABASE_URL is not set`); `test:e2e` needs a reachable branch and installed
 browsers, neither present. The DB/e2e halves of the full gate cannot run here.
+
+---
+
+## Feature 12 `export_workbook` — round 4, 2026-10-13 (branch `hermes/mv700xeb`)
+
+**Owner rulings re-issued: R6 (Cashel, never Clonmel) and R3/R7/R8 (one file per depot).** R6 is
+done; the per-depot reshape is next. Full write-up and the complete changed-place list:
+`progress/impl_export_workbook.md` -> *Round 4*.
+
+- **Spec 012 amended** (`specs/features/012-export_workbook.md`): `## Owner rulings, 2026-10-13`
+  now carries R1–R8 (the "both depots in one file" R3 is withdrawn; the old *Findings* block is
+  gone). Purpose, OD2/OD3, Data touched, Contract, UI states and **every acceptance criterion**
+  are rewritten to the per-depot shape (AC-1 two sheets, AC-5 depot-only summary, AC-6 one depot
+  per file, AC-12 `<Depot>_Stocktake_dd-mm-yyyy.xlsx`, AC-15 the listing page, AC-16 the rename).
+- **R6 rename, everywhere.** One new data migration
+  (`prisma/migrations/20261013120000_rename_clonmel_to_cashel/migration.sql`) moves the
+  `Location` row to `Cashel`/`CASHEL`/`loc_cashel` (cascades through `ON UPDATE CASCADE`); the
+  string is renamed across source, tests, seed, specs, docs and `feature_list.json`. The
+  read-only sample is the one documented exception: `workbook-reader.ts` keeps a single
+  `LEGACY_SAMPLE_SHEET` alias for its physical `Clonmel ` worksheet and reports the depot as
+  `Cashel`. `YardScope` is now `DUBLIN | CASHEL | BOTH`.
+- **Verification:** typecheck 0, lint 0, `test:unit` **1329 passed / 0 failed** (a gitignored
+  synthetic `.env` was created so `env-file.test.ts` passes; `.invalid` hosts make the DB probe
+  skip). `test:db` and `test:e2e` remain unrunnable here (no branch, no browsers).
+- **Next:** the R3/R7/R8 per-depot reshape — writer, service (`listExportStockTakes` +
+  `exportWorkbook({locationCode, periodKey})`), `src/app/analysis/export/{route,page}`, the
+  rewritten export tests, the `/analysis` link, and the e2e spec — then the full gate.

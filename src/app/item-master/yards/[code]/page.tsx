@@ -23,7 +23,7 @@ import { currentPriceOf } from "@/server/items/sheet-shape";
  * One yard's sheet, in the order the yard is walked (006 AC-23, AC-24).
  *
  * `sortOrder` is DISPLAYED, not hidden. It is the workbook's own source row number (005
- * open question 4), Clonmel's 71-74 gap records that the fuel rows sit below the total
+ * open question 4), Cashel's 71-74 gap records that the fuel rows sit below the total
  * row, and a visible number is what lets an admin trace a row back to the cell it came
  * from. Moving is a swap of two of these numbers; there is no renumber control and the
  * feature ships none.

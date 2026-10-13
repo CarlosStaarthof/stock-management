@@ -93,7 +93,7 @@ test.beforeAll(async () => {
     itemTypeId,
     supplierId,
     unitLabel: "1 Unit",
-    notes: "Dublin!D50 says 1 Unit; 'Clonmel '!D64 says 16kg. Decide which is right.",
+    notes: "Dublin!D50 says 1 Unit; Cashel!D64 says 16kg. Decide which is right.",
     price: { amount: "12.00", effectiveFrom: "2025-01-01", label: null },
   });
 
@@ -549,7 +549,7 @@ test("AC-20: the cross-sheet note is rendered verbatim beside the unit label tha
   const notes = page.getByTestId("import-notes");
   await expect(notes).toContainText("Dublin!D50");
   await expect(notes).toContainText("1 Unit");
-  await expect(notes).toContainText("'Clonmel '!D64");
+  await expect(notes).toContainText("Cashel!D64");
   await expect(notes).toContainText("16kg");
 
   // Clearing the note is how a resolved conflict is recorded, and it changes nothing else.
@@ -575,7 +575,7 @@ test("AC-11: archiving keeps history and restoring returns the item to its yards
   await db.itemLocation.create({
     data: {
       itemId: referencedItem.id,
-      locationId: (await db.location.findUniqueOrThrow({ where: { code: "CLONMEL" } })).id,
+      locationId: (await db.location.findUniqueOrThrow({ where: { code: "CASHEL" } })).id,
       sortOrder: 920,
     },
   });
@@ -605,7 +605,7 @@ test("AC-11: archiving keeps history and restoring returns the item to its yards
   await page.goto(`/item-master/items/${referencedItem.id}`);
   await page.getByTestId("restore-item").click();
   await page.waitForURL(/\?done=restored/);
-  await expect(page.getByTestId("yard-state-CLONMEL")).toHaveText("Assigned, position 920");
+  await expect(page.getByTestId("yard-state-CASHEL")).toHaveText("Assigned, position 920");
 });
 
 test("AC-12, AC-29: an item a count names offers no Delete and refuses one readably", async ({

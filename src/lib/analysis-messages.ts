@@ -78,8 +78,8 @@ export const NOTHING_HELD_IN_PERIOD = "Nothing was held in this period.";
 /* ------------------------------------------------------------------ completeness */
 
 /**
- * `Clonmel has no approved count for September 2026.` — and with both yards missing,
- * `Dublin and Clonmel have no approved count for September 2026.` (AC-6).
+ * `Cashel has no approved count for September 2026.` — and with both yards missing,
+ * `Dublin and Cashel have no approved count for September 2026.` (AC-6).
  *
  * IT NAMES THE YARDS. Invariant 7 makes an incomplete period's total absent, and a total
  * that is absent without saying which yard is missing is a screen that tells an
@@ -166,7 +166,7 @@ export function notComparableAgainstMissing(againstPeriodLabel: string): string 
  * ROUNDED ONCE, HERE, FOR DISPLAY ONLY. Every figure this feature computes is exact and
  * unrounded until it reaches this function; nothing rounded is ever summed. The stated cost
  * is #9's: the rendered per-yard column may not add to the rendered total to the last cent,
- * AND THE TOTAL IS THE CORRECT FIGURE. Invariant 10 is the reason — four Clonmel prices
+ * AND THE TOTAL IS THE CORRECT FIGURE. Invariant 10 is the reason — four Cashel prices
  * are non-terminating workbook formulas, and a stock system that disagrees with the file it
  * replaced, by any amount, will not be trusted.
  */

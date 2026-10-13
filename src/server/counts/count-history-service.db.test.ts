@@ -16,7 +16,7 @@ import { COUNT_STATUSES } from "@/types/stock-count";
 import type { CountForAdmin, YardScope } from "@/types/stock-count";
 
 import {
-  CLONMEL_ID,
+  CASHEL_ID,
   DUBLIN_ID,
   makeItem,
   makeItemType,
@@ -387,7 +387,7 @@ describe("getCountHistory", () => {
 describe("findNeighbourCounts", () => {
   /**
    * AC-11's own fixture: Dublin counts dated `2026-01-31`, `2026-04-30` and `2026-05-31`,
-   * and one Clonmel count dated `2026-03-31`. February and March hold no Dublin count at
+   * and one Cashel count dated `2026-03-31`. February and March hold no Dublin count at
    * all, which is the workbook's shape — it skips July and August 2025 entirely.
    */
   async function seedNeighbours(): Promise<{
@@ -395,20 +395,20 @@ describe("findNeighbourCounts", () => {
     dublinJanuary: string;
     dublinApril: string;
     dublinMay: string;
-    clonmelMarch: string;
+    cashelMarch: string;
   }> {
     const actor = await newActor("ADMIN");
 
     const dublinJanuary = await makeCount(actor.id, { countDate: "2026-01-31", periodMonth: 1 });
-    const clonmelMarch = await makeCount(actor.id, {
-      locationId: CLONMEL_ID,
+    const cashelMarch = await makeCount(actor.id, {
+      locationId: CASHEL_ID,
       countDate: "2026-03-31",
       periodMonth: 3,
     });
     const dublinApril = await makeCount(actor.id, { countDate: "2026-04-30", periodMonth: 4 });
     const dublinMay = await makeCount(actor.id, { countDate: "2026-05-31", periodMonth: 5 });
 
-    return { actor, dublinJanuary, dublinApril, dublinMay, clonmelMarch };
+    return { actor, dublinJanuary, dublinApril, dublinMay, cashelMarch };
   }
 
   it("AC-3: a null actor raises UnauthorizedError", async () => {
@@ -435,17 +435,17 @@ describe("findNeighbourCounts", () => {
     expect(previous?.locationCode).toBe("DUBLIN");
   });
 
-  it("AC-11: the same cursor under BOTH lands on the Clonmel count in March", async () => {
-    const { actor, clonmelMarch } = await seedNeighbours();
+  it("AC-11: the same cursor under BOTH lands on the Cashel count in March", async () => {
+    const { actor, cashelMarch } = await seedNeighbours();
 
     const { previous } = await findNeighbourCounts(actor, "BOTH", {
       date: "2026-04-01",
       countId: null,
     });
 
-    expect(previous?.countId).toBe(clonmelMarch);
+    expect(previous?.countId).toBe(cashelMarch);
     expect(previous?.monthKey).toBe("2026-03");
-    expect(previous?.locationCode).toBe("CLONMEL");
+    expect(previous?.locationCode).toBe("CASHEL");
   });
 
   it("AC-11: next is the earliest count strictly after the month's last day", async () => {
@@ -469,7 +469,7 @@ describe("findNeighbourCounts", () => {
       countId: dublinApril,
     });
 
-    // NOT the 2026-03-31 Clonmel count: Clonmel's stock is different stock, and a jump
+    // NOT the 2026-03-31 Cashel count: Cashel's stock is different stock, and a jump
     // that crossed yards would invite exactly the comparison Part 4 forbids.
     expect(previous?.countId).toBe(dublinJanuary);
     expect(next?.countId).toBe(dublinMay);
@@ -496,13 +496,13 @@ describe("findNeighbourCounts", () => {
   it("AC-11: a yard with no counts at all has no neighbours in either direction", async () => {
     const { actor } = await seedNeighbours();
 
-    const clonmel = await findNeighbourCounts(actor, "CLONMEL", {
+    const cashel = await findNeighbourCounts(actor, "CASHEL", {
       date: "2026-03-31",
       countId: null,
     });
 
-    expect(clonmel.previous).toBeNull();
-    expect(clonmel.next).toBeNull();
+    expect(cashel.previous).toBeNull();
+    expect(cashel.next).toBeNull();
   });
 
   it("AC-11: two counts at one yard sharing a countDate are reachable exactly once", async () => {
@@ -594,12 +594,12 @@ describe("AC-4, AC-7, AC-12: the scoped calendar over one unchanged query", () =
   async function seedTwoYards(actor: SessionUser): Promise<void> {
     await makeCount(actor.id, { countDate: "2026-04-30", periodMonth: 4 });
     await makeCount(actor.id, {
-      locationId: CLONMEL_ID,
+      locationId: CASHEL_ID,
       countDate: "2026-04-30",
       periodMonth: 4,
     });
     await makeCount(actor.id, {
-      locationId: CLONMEL_ID,
+      locationId: CASHEL_ID,
       countDate: "2026-04-14",
       periodMonth: 3,
     });
@@ -612,11 +612,11 @@ describe("AC-4, AC-7, AC-12: the scoped calendar over one unchanged query", () =
     const month = await listCalendarMonth(actor, "2026-04");
 
     expect(filterCalendarByYard(month, "DUBLIN").countsInMonth).toBe(1);
-    expect(filterCalendarByYard(month, "CLONMEL").countsInMonth).toBe(2);
+    expect(filterCalendarByYard(month, "CASHEL").countsInMonth).toBe(2);
     expect(filterCalendarByYard(month, "BOTH")).toEqual(month);
   });
 
-  it("AC-6: on a day only Clonmel was counted, DUBLIN leaves the cell plain", async () => {
+  it("AC-6: on a day only Cashel was counted, DUBLIN leaves the cell plain", async () => {
     const actor = await newActor("ADMIN");
     await seedTwoYards(actor);
 
@@ -625,14 +625,14 @@ describe("AC-4, AC-7, AC-12: the scoped calendar over one unchanged query", () =
       filterCalendarByYard(month, scope).days.find((day) => day.date === date);
 
     expect(dayOf("BOTH", "2026-04-14")?.counts).toHaveLength(1);
-    expect(dayOf("CLONMEL", "2026-04-14")?.counts).toHaveLength(1);
+    expect(dayOf("CASHEL", "2026-04-14")?.counts).toHaveLength(1);
     expect(dayOf("DUBLIN", "2026-04-14")?.counts).toEqual([]);
 
-    // And on a day both were counted, Dublin comes before Clonmel — `Location.sortOrder`,
+    // And on a day both were counted, Dublin comes before Cashel — `Location.sortOrder`,
     // decided once in `listCalendarMonth` and not re-decided by the filter.
     expect(dayOf("BOTH", "2026-04-30")?.counts.map((badge) => badge.locationCode)).toEqual([
       "DUBLIN",
-      "CLONMEL",
+      "CASHEL",
     ]);
   });
 
@@ -641,7 +641,7 @@ describe("AC-4, AC-7, AC-12: the scoped calendar over one unchanged query", () =
     const staff = await newActor("YARD_STAFF");
     await seedTwoYards(admin);
 
-    for (const scope of ["DUBLIN", "CLONMEL", "BOTH"] as const) {
+    for (const scope of ["DUBLIN", "CASHEL", "BOTH"] as const) {
       const forStaff = filterCalendarByYard(await listCalendarMonth(staff, "2026-04"), scope);
       const forAdmin = filterCalendarByYard(await listCalendarMonth(admin, "2026-04"), scope);
 

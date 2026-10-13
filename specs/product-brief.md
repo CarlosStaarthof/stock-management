@@ -15,12 +15,12 @@ Macroads tracks yard stock in a single Excel workbook,
 This fails in four concrete ways:
 
 - **The file grows sideways.** Every count adds a new `Qty | Value` column pair.
-  Dublin is at **16 counts**, out to column `AL`; Clonmel at **15**, out to `AI`. There
+  Dublin is at **16 counts**, out to column `AL`; Cashel at **15**, out to `AI`. There
   is no natural end to this, and the sheet is already wider than its own filter range —
   which is how an earlier reading of it missed half the history.
 - **It is already broken.** Live `#REF!` errors sit in `Dublin!Q13`, `Dublin!U13`,
   `Dublin!R86` and `Dublin!V86` (both TOTAL cells), `Summary!AK3` and `Summary!AP4`.
-  Those errors propagate into totals that people rely on. One Clonmel column reads
+  Those errors propagate into totals that people rely on. One Cashel column reads
   €452,535 — four times any other — from quantities that look like kilograms typed into
   a tonnes column.
 - **History is not safe.** The `Value` columns reference the single price column `E`.
@@ -33,7 +33,7 @@ This fails in four concrete ways:
   because nothing ever removes them.
 - **A count cannot be identified by its date.** The same stock take appears as
   `2025-09-01` on the Dublin sheet and `2025-08-31` on the Summary sheet. Two dates are
-  a year out (`'Clonmel '!R1`, `Dublin!U1`), four more columns have no usable date at
+  a year out (`Cashel!R1`, `Dublin!U1`), four more columns have no usable date at
   all, and whole months are skipped.
 
 ## The product
@@ -61,7 +61,7 @@ point of the `SUBMITTED → APPROVED` step.
 
 ## Scope of v1
 
-**In — the Dublin and Clonmel yard sheets, end to end:**
+**In — the Dublin and Cashel yard sheets, end to end:**
 
 - Item master: description, supplier, type, unit, versioned price list, per-yard
   assignment and ordering.
@@ -74,7 +74,7 @@ point of the `SUBMITTED → APPROVED` step.
   nothing is auto-archived. Incomplete items appear on a worklist.
 - **Analysis** (admin only): totals by yard, MoM and YoY variance, breakdown by type and
   supplier. Every monetary figure in the product lives here.
-- **Excel export** of the full workbook — Summary, Dublin and Clonmel — matching the
+- **Excel export** of the full workbook — Summary, Dublin and Cashel — matching the
   sample's shape but generated clean, so no `#REF!`, no drifted hardcoded cells and no
   off-by-one YoY can occur. Plus a printable blank count sheet as a paper fallback.
 - Accounts with the two roles above.

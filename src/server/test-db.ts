@@ -19,13 +19,14 @@ import { db } from "@/server/db";
  */
 
 /**
- * The two yards written by `20260909135148_create_stock_domain`, with the literal ids that
- * migration uses. `Location` is reference data, not test data: Invariant 7 is undefined
- * while the table is empty, so the reset restores these two rather than deleting them.
+ * The two yards, with their literal ids after `20261013120000_rename_clonmel_to_cashel`
+ * (R6, 2026-10-13) moved the second depot from Clonmel to Cashel. `Location` is reference
+ * data, not test data: Invariant 7 is undefined while the table is empty, so the reset
+ * restores these two rather than deleting them.
  */
 export const SEEDED_LOCATIONS = [
   { id: "loc_dublin", code: "DUBLIN", name: "Dublin", active: true, sortOrder: 1 },
-  { id: "loc_clonmel", code: "CLONMEL", name: "Clonmel", active: true, sortOrder: 2 },
+  { id: "loc_cashel", code: "CASHEL", name: "Cashel", active: true, sortOrder: 2 },
 ] as const;
 
 /**

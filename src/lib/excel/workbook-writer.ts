@@ -106,7 +106,7 @@ export type ExportCount = {
 
 /**
  * One yard sheet. `name` is the worksheet name; AC-1 and ruling R5 make it the active yard's own
- * name, so it is `Dublin` and `Clonmel` for the data this product holds, and never `Clonmel `.
+ * name, so it is `Dublin` and `Cashel` for the data this product holds, and never `Cashel `.
  */
 export type ExportYard = {
   name: string;
@@ -123,7 +123,7 @@ export type ExportInput = {
   showAll: boolean;
   /** Ascending, as the yard sheets order them; the overview sheet reverses them (AC-5). */
   periods: ExportPeriod[];
-  /** The active yards, in sheet order — `Dublin` then `Clonmel` (AC-1). */
+  /** The active yards, in sheet order — `Dublin` then `Cashel` (AC-1). */
   yards: ExportYard[];
 };
 
@@ -301,7 +301,7 @@ function writeYardSheet(
  * The overview sheet: one column per period, newest in `B` (AC-5), every figure derived from the
  * same yard totals the sheets show (AC-6).
  *
- * `South` is the second yard (Clonmel in this product) and row 4 is the first (Dublin), matching
+ * `South` is the second yard (Cashel in this product) and row 4 is the first (Dublin), matching
  * the sample's own labels. `Total Stock` and the two variances are blank or a word, never a `0`,
  * when the period they would describe is not a complete period.
  */

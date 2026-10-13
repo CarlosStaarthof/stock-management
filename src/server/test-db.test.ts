@@ -44,7 +44,7 @@ describe("the contract, unchanged", () => {
   it("AC-1: SEEDED_LOCATIONS still carries the two migration rows, field for field", () => {
     expect(SEEDED_LOCATIONS.map((location) => ({ ...location }))).toEqual([
       { id: "loc_dublin", code: "DUBLIN", name: "Dublin", active: true, sortOrder: 1 },
-      { id: "loc_clonmel", code: "CLONMEL", name: "Clonmel", active: true, sortOrder: 2 },
+      { id: "loc_cashel", code: "CASHEL", name: "Cashel", active: true, sortOrder: 2 },
     ]);
   });
 });

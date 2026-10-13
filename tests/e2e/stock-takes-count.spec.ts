@@ -41,7 +41,7 @@ import type { TestUser } from "./support/users";
  * status written straight into the column would leave every snapshot null and "no euro
  * reached the screen" would prove nothing.
  *
- * THE FOURTH COUNT IS CLONMEL'S, dated BETWEEN two of Dublin's, and it exists to be NOT
+ * THE FOURTH COUNT IS CASHEL'S, dated BETWEEN two of Dublin's, and it exists to be NOT
  * jumped to: the previous count of a Dublin count is Dublin's previous count (AC-11).
  */
 const YEAR = RESERVED_YEAR.takesCount;
@@ -51,7 +51,7 @@ const created: string[] = [];
 let draftId = "";
 let submittedId = "";
 let approvedId = "";
-let clonmelId = "";
+let cashelId = "";
 let shape: Awaited<ReturnType<typeof shapeCountQuantities>>;
 let realCountsBefore: string[] = [];
 let masterBefore: Awaited<ReturnType<typeof seededMasterCounts>>;
@@ -83,9 +83,9 @@ test.beforeAll(async () => {
   draftId = draft.countId;
   shape = await shapeCountQuantities(draftId, { zeros: 5, nulls: 7 });
 
-  // Clonmel, dated between Dublin's January and Dublin's February.
-  clonmelId = await seedCount({
-    locationCode: "CLONMEL",
+  // Cashel, dated between Dublin's January and Dublin's February.
+  cashelId = await seedCount({
+    locationCode: "CASHEL",
     year: YEAR,
     month: 2,
     countDate: `${Y}-02-15`,
@@ -142,7 +142,7 @@ async function newUser(role: "YARD_STAFF" | "ADMIN" = "YARD_STAFF"): Promise<Tes
  * to the user's own data, and any of those may be created or deleted while this file runs.
  */
 function ownCounts(): string[] {
-  return [draftId, submittedId, approvedId, clonmelId];
+  return [draftId, submittedId, approvedId, cashelId];
 }
 
 /**
@@ -341,12 +341,12 @@ test("AC-9: an unreadable ?show is a 307 that keeps the yard", async ({ page }) 
     expect(plain.headers()["location"] ?? "", query).toBe(`/stock-takes/counts/${draftId}`);
 
     const scoped = await page.request.get(
-      `/stock-takes/counts/${draftId}${query}&yard=CLONMEL`,
+      `/stock-takes/counts/${draftId}${query}&yard=CASHEL`,
       { maxRedirects: 0 },
     );
     expect(scoped.status(), query).toBe(307);
     expect(scoped.headers()["location"] ?? "", query).toBe(
-      `/stock-takes/counts/${draftId}?yard=CLONMEL`,
+      `/stock-takes/counts/${draftId}?yard=CASHEL`,
     );
 
     // And following it renders the count rather than an error.
@@ -361,20 +361,20 @@ test("AC-9: an unreadable ?show is a 307 that keeps the yard", async ({ page }) 
 test("AC-11: the jumps are same-yard, and carry the reading mode", async ({ page }) => {
   await signIn(page, await newUser());
 
-  // February's Dublin count: the previous one is January's DUBLIN count, not the Clonmel
+  // February's Dublin count: the previous one is January's DUBLIN count, not the Cashel
   // count dated between them.
-  await page.goto(`/stock-takes/counts/${submittedId}?yard=CLONMEL&show=all`);
+  await page.goto(`/stock-takes/counts/${submittedId}?yard=CASHEL&show=all`);
   await expect(page.getByTestId("previous-count")).toHaveAttribute(
     "href",
-    `/stock-takes/counts/${draftId}?yard=CLONMEL&show=all`,
+    `/stock-takes/counts/${draftId}?yard=CASHEL&show=all`,
   );
   await expect(page.getByTestId("next-count")).toHaveAttribute(
     "href",
-    `/stock-takes/counts/${approvedId}?yard=CLONMEL&show=all`,
+    `/stock-takes/counts/${approvedId}?yard=CASHEL&show=all`,
   );
   expect(
     await page.getByTestId("previous-count").getAttribute("href"),
-  ).not.toContain(clonmelId);
+  ).not.toContain(cashelId);
 
   // BOTH DIRECTIONS ARE READ WHERE THIS FILE OWNS THE ANSWER, NOT WHERE THE DATABASE
   // HAPPENS TO END.
@@ -618,27 +618,27 @@ test("AC-16: badge, Show all items, Previous count, Back to the calendar — the
 }) => {
   await signIn(page, await newUser());
 
-  await page.goto(`/stock-takes?month=${Y}-02&yard=CLONMEL`);
-  await page.locator(`[data-count-id="${clonmelId}"]`).click();
+  await page.goto(`/stock-takes?month=${Y}-02&yard=CASHEL`);
+  await page.locator(`[data-count-id="${cashelId}"]`).click();
   await page.waitForURL(
     (url) =>
-      url.pathname === `/stock-takes/counts/${clonmelId}` && url.search === "?yard=CLONMEL",
+      url.pathname === `/stock-takes/counts/${cashelId}` && url.search === "?yard=CASHEL",
   );
 
   // Back to a Dublin count, where there is something to show.
-  await page.goto(`/stock-takes/counts/${submittedId}?yard=CLONMEL`);
+  await page.goto(`/stock-takes/counts/${submittedId}?yard=CASHEL`);
   await page.getByTestId("show-all-items").click();
   await page.waitForURL(
     (url) =>
       url.pathname === `/stock-takes/counts/${submittedId}` &&
-      url.search === "?yard=CLONMEL&show=all",
+      url.search === "?yard=CASHEL&show=all",
   );
 
   await page.getByTestId("previous-count").click();
   await page.waitForURL(
     (url) =>
       url.pathname === `/stock-takes/counts/${draftId}` &&
-      url.search === "?yard=CLONMEL&show=all",
+      url.search === "?yard=CASHEL&show=all",
   );
   // Still every row, because `show` travelled with the jump.
   await expect(page.getByTestId("history-line")).toHaveCount(shape.total);
@@ -646,9 +646,9 @@ test("AC-16: badge, Show all items, Previous count, Back to the calendar — the
   // *Back to the calendar* carries `yard` and NOT `show`: `show` means nothing to a
   // calendar.
   const back = page.getByTestId("back-to-calendar");
-  await expect(back).toHaveAttribute("href", "/stock-takes?yard=CLONMEL");
+  await expect(back).toHaveAttribute("href", "/stock-takes?yard=CASHEL");
   await back.click();
-  await page.waitForURL((url) => url.pathname === "/stock-takes" && url.search === "?yard=CLONMEL");
+  await page.waitForURL((url) => url.pathname === "/stock-takes" && url.search === "?yard=CASHEL");
   await expect(page.getByTestId("calendar")).toBeVisible();
 });
 

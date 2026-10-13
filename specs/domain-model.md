@@ -14,10 +14,10 @@ are all checked against.
 |---|---|---|---|
 | `Summary` | 1–22 | A–AT | **44** month columns (`B1:AT1`), back to `2019-06-30`. `B1` is text; the other 43 are date serials |
 | `Dublin` | 1–104 | A–AZ | Item master (rows 3–84) + **16 counts** + a truck/boiler block below the total row |
-| `Clonmel ` | 1–76 | A–AI | Item master (rows 3–70) + **15 counts** + 2 fuel rows below the total row |
-| `Clonmel Trucks & Yard` | 1–45 | A–M | Boilers, bags, yard bulk |
+| `Cashel ` | 1–76 | A–AI | Item master (rows 3–70) + **15 counts** + 2 fuel rows below the total row |
+| `Cashel Trucks & Yard` | 1–45 | A–M | Boilers, bags, yard bulk |
 
-Note the trailing space in the sheet name `Clonmel `. The exporter must not
+Note the trailing space in the sheet name `Cashel `. The exporter must not
 reproduce that typo.
 
 > **These extents were wrong in an earlier draft of this document.** Dublin was
@@ -27,7 +27,7 @@ reproduce that typo.
 > checked against half the data. This section is now generated directly from the
 > workbook XML.
 
-### Yard sheet layout (`Dublin`, `Clonmel `)
+### Yard sheet layout (`Dublin`, `Cashel `)
 
 Row 1 holds the count date above each `Qty` column. Row 2 is the header:
 
@@ -36,7 +36,7 @@ A Description | B Supplier | C Type | D Unit | E Price | then repeating: Qty | V
 ```
 
 Each data row is one item. `Value = Qty × E`. The total row is `Dublin!86` /
-`'Clonmel '!72`.
+`Cashel!72`.
 
 #### Dublin — 16 count columns
 
@@ -59,7 +59,7 @@ Each data row is one item. `Value = Qty × E`. The total row is `Dublin!86` /
 | `AI`/`AJ` | `46234` | 2026-07-31 | €44,929.63 | `SUBTOTAL(9,AJ3:AJ84)` |
 | `AK`/`AL` | *(none)* | **no header** | €47,958.53 | `SUBTOTAL(9,AL3:AL84)` |
 
-#### Clonmel — 15 count columns
+#### Cashel — 15 count columns
 
 | Qty / Value | Row-1 header | Reads as | Total | Total formula |
 |---|---|---|---|---|
@@ -82,7 +82,7 @@ Each data row is one item. `Value = Qty × E`. The total row is `Dublin!86` /
 #### Dublin has its own trucks — `Dublin!AM87:AZ104`
 
 Below the total row, undocumented until now, sits a boiler and bag block of the same
-shape as the `Clonmel Trucks & Yard` sheet:
+shape as the `Cashel Trucks & Yard` sheet:
 
 | Cells | Content |
 |---|---|
@@ -92,10 +92,10 @@ shape as the `Clonmel Trucks & Yard` sheet:
 | `AM99:AS103` | Bags block, the same three trucks, 50 bags = 1,000 kg each |
 
 **This answers Q6.** Dublin does hold material in its own trucks, and names three of
-them. The Trucks & Yard module at M7 covers **both** yards, not Clonmel alone.
+them. The Trucks & Yard module at M7 covers **both** yards, not Cashel alone.
 
 It also exposes a contradiction the app must not inherit: **Dublin says a full boiler is
-200 kg** (`Dublin!AQ92`), while `Clonmel Trucks & Yard!A5` says **250 kg**. One of them
+200 kg** (`Dublin!AQ92`), while `Cashel Trucks & Yard!A5` says **250 kg**. One of them
 is wrong, or the two yards genuinely run different boilers. Q8, below.
 
 ### Known defects — to be fixed, not reproduced
@@ -106,17 +106,17 @@ is wrong, or the two yards genuinely run different boilers. Q8, below.
 | `Dublin!R86`, `Dublin!V86` | Total row evaluates to `#REF!` |
 | `Dublin!U1` | Header `2026-12-31`, sitting between `2025-11-30` and `2026-01-31`. The sequence says it should read **`2025-12-31`** — a year typo |
 | `Dublin!AK1` | A 16th count pair with **no header at all**: 42 populated quantities and a real total of €47,958.53 that belongs to no month |
-| `'Clonmel '!H1` | Same defect — an unheaded count pair totalling €136,038.72 |
-| `'Clonmel '!R1` | Header `2025-01-05`, sitting between `2025-12-01` and `2026-02-03`. Should read **`2026-01-05`** |
-| `'Clonmel '!AF1`, `!AH1` | Headers are **text** (`31st July `, `31st Aug`), not dates. They cannot sort, filter or subtract |
-| `'Clonmel '!AH3:AH71` | Quantities roughly 10–15× plausible — `White Extrusion 80/20` reads **227.6875 tonnes** against 15.5 the month before. The column totals **€452,535.69**, four times any other. Consistent with kilograms typed into a tonnes column |
-| `'Clonmel '!G72`, `!I72`, `!K72` | `SUBTOTAL(9, ·3:·64)` — stops **six rows short** of the item range, which runs to row 70. Harmless today because those cells are empty in those three columns; it will silently drop the first quantity anyone enters there |
-| `'Clonmel '!72` | Three different formula styles in one total row: `SUBTOTAL(9,…3:64)`, `SUM(…3:71)` and `SUBTOTAL(9,…3:71)` |
+| `Cashel!H1` | Same defect — an unheaded count pair totalling €136,038.72 |
+| `Cashel!R1` | Header `2025-01-05`, sitting between `2025-12-01` and `2026-02-03`. Should read **`2026-01-05`** |
+| `Cashel!AF1`, `!AH1` | Headers are **text** (`31st July `, `31st Aug`), not dates. They cannot sort, filter or subtract |
+| `Cashel!AH3:AH71` | Quantities roughly 10–15× plausible — `White Extrusion 80/20` reads **227.6875 tonnes** against 15.5 the month before. The column totals **€452,535.69**, four times any other. Consistent with kilograms typed into a tonnes column |
+| `Cashel!G72`, `!I72`, `!K72` | `SUBTOTAL(9, ·3:·64)` — stops **six rows short** of the item range, which runs to row 70. Harmless today because those cells are empty in those three columns; it will silently drop the first quantity anyone enters there |
+| `Cashel!72` | Three different formula styles in one total row: `SUBTOTAL(9,…3:64)`, `SUM(…3:71)` and `SUBTOTAL(9,…3:71)` |
 | `Dublin!AH25`, `!AH51` | Two rows carry a **quantity and a price but no value cell** — `Motorcycle Logo` 9 × €45 and `MMA Paints - Blue` 1 × €81. **€486.00 counted and never valued**: the June 2026 total reads €47,428.28 where the quantities give €47,914.28. Impossible once value is derived rather than typed |
-| `'Clonmel '!AA3:AA71` | All 62 populated cells are typed numbers rather than formulas; **8 have drifted** from `qty × price`, summing to **−€362.05**. `Beads` 1 t × €790 = €790 but the cell reads €900; `MultiGrip X440 Stong Blue` 28 × €121.30 = €3,396.40 but reads €3,220 |
+| `Cashel!AA3:AA71` | All 62 populated cells are typed numbers rather than formulas; **8 have drifted** from `qty × price`, summing to **−€362.05**. `Beads` 1 t × €790 = €790 but the cell reads €900; `MultiGrip X440 Stong Blue` 28 × €121.30 = €3,396.40 but reads €3,220 |
 | `Summary!AK3`, `Summary!AP4` | `#REF!` propagating into `Total Stock` |
 | `Summary!B1` | Header `31-11-25` typed as **text** — a date that does not exist |
-| `Summary!B5` | Adds `'Clonmel '!AE72` (2026-06-30) to `Dublin!T86` (2025-11-30) — two counts **seven months apart** — under that non-existent date |
+| `Summary!B5` | Adds `Cashel!AE72` (2026-06-30) to `Dublin!T86` (2025-11-30) — two counts **seven months apart** — under that non-existent date |
 | `Summary!B18` | `=+B12+1` — an unexplained `+1` |
 | `Summary!K19`, `!L19`, `!R19` | Manual plugs of `-1`, `-1` and `1` |
 | `Summary!C9`, `Summary!B9` | Year-on-year subtracts the column **11** months back, not 12 — `=C5-N5` compares Oct 2025 with Nov 2024. `D9` leftward are correct |
@@ -127,7 +127,7 @@ is wrong, or the two yards genuinely run different boilers. Q8, below.
 | Row | Label | Content |
 |---|---|---|
 | 1 | — | Month-end dates, newest in column B, going back to `AT` |
-| 3 | `South` | `='Clonmel '!AE72` — the Clonmel total |
+| 3 | `South` | `=Cashel!AE72` — the Cashel total |
 | 4 | `Dublin` | `=Dublin!T86` — the Dublin total |
 | 5 | `Total Stock` | `=B3+B4` |
 | 7 | `MoM Variance` | `=+B5-C5` (this month minus last month) |
@@ -178,18 +178,18 @@ Collapse these spelling variants to one supplier each:
 
 **No leading-`t` variants exist.** An earlier draft of this document described `tMeon`,
 `tKelly's` and `tBriteline` as supplier typos needing a strip rule. They are not in the
-workbook. They were an artifact of the *reader*: five item descriptions on the Clonmel
+workbook. They were an artifact of the *reader*: five item descriptions on the Cashel
 sheet are stored as **rich text** - several `<r>` runs inside one `<si>` - and the
 extraction script used at the time returned the element name instead of the text,
 producing a spurious leading `t`. The real strings are:
 
 | Cell | Actually reads |
 |---|---|
-| `'Clonmel '!A9` | `White - Briteline` |
-| `'Clonmel '!A10` | `Yellow  - Briteline` |
-| `'Clonmel '!A22` | `Stick On Studs - Meon` |
-| `'Clonmel '!A23` | `Stick On Studs - Roadcraft  1st July` |
-| `'Clonmel '!A24` | `Anti Skid Buff  - Kelly's` |
+| `Cashel!A9` | `White - Briteline` |
+| `Cashel!A10` | `Yellow  - Briteline` |
+| `Cashel!A22` | `Stick On Studs - Meon` |
+| `Cashel!A23` | `Stick On Studs - Roadcraft  1st July` |
+| `Cashel!A24` | `Anti Skid Buff  - Kelly's` |
 
 **Rule for the importer:** a shared string may contain multiple runs. Concatenate every
 `<t>` descendant of the `<si>`; never read the first run alone. Column `B` never carries
@@ -227,9 +227,9 @@ Preserve the original string as `unitLabel` (staff recognise it), and derive:
 ### Items
 
 **How many items there are, and why.** 82 populated descriptions on Dublin
-(`A3:A84`) and 68 on Clonmel (`A3:A70`) = **150 item rows**. (`'Clonmel '!A71` is the
-string `TOTAL`, not an item.) Two more sit *below* Clonmel's total row —
-`'Clonmel '!A75` `Road Diesel - White` and `A76` `Marked Gas Oil - Green` — outside
+(`A3:A84`) and 68 on Cashel (`A3:A70`) = **150 item rows**. (`Cashel!A71` is the
+string `TOTAL`, not an item.) Two more sit *below* Cashel's total row —
+`Cashel!A75` `Road Diesel - White` and `A76` `Marked Gas Oil - Green` — outside
 `SUBTOTAL(9, AE3:AE71)`, so the workbook has never counted them in its stock total. They
 are real stock; they are imported and flagged, not silently added to a total that has
 never included them.
@@ -241,7 +241,7 @@ never included them.
   under both `Kestrel` and `Kellys` — those are two distinct items).
 - Rows missing a supplier, a unit or a price - **13 exactly**: `Dublin!A9`, `A12`,
   `A18`, `A29` (`Pedestrian Logo White`), `A44`, `A45`, `A46`, `A47`, `A48`, `A62`
-  (`Multigrip Signal Yellow`), `A63`, `A78`, and `'Clonmel '!A54`. (`Dublin!A43`
+  (`Multigrip Signal Yellow`), `A63`, `A78`, and `Cashel!A54`. (`Dublin!A43`
   `Clock Blue + Yellow Nos` was cited in an earlier draft and is **not** one of them -
   `D43` is `1 Unit` and `E43` is `350`.) are imported as items with `active: true`, `needsReview: true` and **no**
   `ItemPrice`. They appear in the import report and on the housekeeping worklist. They
@@ -259,7 +259,7 @@ never included them.
 ### Not imported
 
 Historical `Qty`/`Value` columns, the `Summary` sheet, and the entire
-`Clonmel Trucks & Yard` sheet — including vehicles, which move to M7 with the rest of
+`Cashel Trucks & Yard` sheet — including vehicles, which move to M7 with the rest of
 that module. Counting starts fresh from the next count.
 
 ---
@@ -286,7 +286,7 @@ SetupClaim      id Int(id)  userId(unique)  claimedAt    # 021; CHECK id = 1
                 user -> User  onDelete: Restrict
 
 Location        id  code(unique)   name  active  sortOrder
-                # DUBLIN "Dublin", CLONMEL "Clonmel"
+                # DUBLIN "Dublin", CASHEL "Cashel"
 
 Supplier        id  name(unique)   active
 
@@ -353,7 +353,7 @@ its shape is documented in Part 1 so the model is ready when M7 starts.
 8. **Decimal everywhere** for money and quantity. Never `Float`.
 9. **`Item.description` is required and non-empty.** Enforced at the database and at
    every form.
-10. **Money is `Decimal(18,8)`, not `Decimal(12,4)`.** Four Clonmel prices are stored in
+10. **Money is `Decimal(18,8)`, not `Decimal(12,4)`.** Four Cashel prices are stored in
    the workbook as *formulas* — `=5.2/0.85`, `=2.45/0.85`, `=5.89/0.85`, `=1.4/0.9` — and
    do not terminate in decimal. At 4 places, `Road Studs 301 Type` alone is 2.7c out on a
    quantity of 2,285, and the June 2026 count lands **1.4c** away from the workbook. A
@@ -399,7 +399,7 @@ is, to be settled by the feature that implements it rather than by a passing edi
 The full count-date series for both yards is in Part 1. What matters here:
 
 **Dublin** runs `2025-05-30` → `2026-07-31` across 15 dated columns, plus one with no
-header at all (`AK`). **Clonmel** runs `2025-06-30` → `2026-06-30` across 12 dated
+header at all (`AK`). **Cashel** runs `2025-06-30` → `2026-06-30` across 12 dated
 columns, plus one unheaded (`H`) and two headed with the *text* `31st July ` and
 `31st Aug`. **Summary** uses strict calendar month-ends — `2025-10-31`, `09-30`,
 `08-31`, … — and stops at October 2025.
@@ -408,16 +408,16 @@ Five facts fall out, and together they are the whole argument for the period mod
 
 1. **The Dublin count dated `2025-09-01` is the Summary column headed `2025-08-31`.**
    One stock take, two different dates on two sheets.
-2. **Two dates are a year out.** `'Clonmel '!R1` reads `2025-01-05` but sits between
+2. **Two dates are a year out.** `Cashel!R1` reads `2025-01-05` but sits between
    `2025-12-01` and `2026-02-03`. `Dublin!U1` reads `2026-12-31` but sits between
    `2025-11-30` and `2026-01-31`. Both are off by exactly one year.
 3. **Four columns cannot be dated at all** — two with no header (`Dublin!AK1`,
-   `'Clonmel '!H1`) and two whose header is prose (`'Clonmel '!AF1`, `!AH1`). Together
+   `Cashel!H1`) and two whose header is prose (`Cashel!AF1`, `!AH1`). Together
    they hold over €270,000 of counted stock that belongs to no month.
 4. **Counts fall on weekends** — `2025-11-01 Sat`, `2025-11-30 Sun` — which is ordinary
    practice, and the reason there is no business-day rule.
-5. **Months get skipped.** Clonmel jumps `2025-06-30` → `2025-09-01`, so July and August
-   2025 have no dated Clonmel count.
+5. **Months get skipped.** Cashel jumps `2025-06-30` → `2025-09-01`, so July and August
+   2025 have no dated Cashel count.
 
 A count therefore cannot be keyed by its date. Nine of this workbook's 31 count columns
 have a date that is missing, mistyped, or not a date at all.
@@ -565,7 +565,7 @@ Resolved with the user on 2026-09-01. Recorded here so later sessions do not re-
 
 | # | Question | Answer |
 |---|---|---|
-| Q1 | Does Dublin have its own trucks, or is Trucks & Yard Clonmel-only? | **Deferred.** Focus on the Dublin and Clonmel yard sheets. Trucks & Yard moves to M7 and is re-opened there. |
+| Q1 | Does Dublin have its own trucks, or is Trucks & Yard Cashel-only? | **Deferred.** Focus on the Dublin and Cashel yard sheets. Trucks & Yard moves to M7 and is re-opened there. |
 | Q2 | Does truck and yard-bulk material roll into the yard total? | **Deferred to M7** with Q1. |
 | Q3 | Is `Bal per nl` reconciliation still performed? | **Dropped from scope.** Not a figure this team owns. Removed from the product brief and the glossary. |
 | Q4 | Items with no price — obsolete, or never filled in? | **Import them, flag them.** `description` becomes mandatory going forward; items missing description, unit or price are imported with `needsReview = true` and appear on the housekeeping worklist. Their lines contribute `0` with a visible warning. |
@@ -578,5 +578,5 @@ Nothing scheduled before M7 is blocked by these.
 | # | Question | Blocks |
 |---|---|---|
 | Q6 | ~~Does Dublin have its own trucks?~~ **Answered by the workbook**: `Dublin!AM94:AS96` names trucks `09D`, `10D`, `141D` with boiler and bag readings. M7 covers both yards. | *(closed)* |
-| Q8 | A full boiler is **200 kg** on `Dublin!AQ92` and **250 kg** on `Clonmel Trucks & Yard!A5`. Different boilers, or is one wrong? | #17 `trucks_schema_seed` |
+| Q8 | A full boiler is **200 kg** on `Dublin!AQ92` and **250 kg** on `Cashel Trucks & Yard!A5`. Different boilers, or is one wrong? | #17 `trucks_schema_seed` |
 | Q7 | Do truck and yard-bulk materials roll **into** the yard count total, or stay a separate figure? If they roll in, #11 `analysis` and #12 `export_workbook` change too. | #18 `trucks_entry_ui` |

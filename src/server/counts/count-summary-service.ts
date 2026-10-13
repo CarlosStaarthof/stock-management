@@ -79,7 +79,7 @@ export type CountSummaryForAdmin = {
    * The sum of the EXACT line values, unrounded. Rendered as
    * `formatPriceExact(roundHalfUp(total, 2))`; stored nowhere, ever (Invariant 1).
    *
-   * NOT the sum of the rounded lines (Invariant 10, Open question 3): four Clonmel prices
+   * NOT the sum of the rounded lines (Invariant 10, Open question 3): four Cashel prices
    * are non-terminating workbook formulas, and a stock system that disagrees with the file
    * it replaced by any amount will not be trusted. The stated cost is that the rendered
    * column may not add to the rendered total to the last cent, and the total is right.

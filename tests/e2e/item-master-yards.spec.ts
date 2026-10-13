@@ -56,7 +56,7 @@ function typeBand(parallelIndex: number): number {
   return 9000 + parallelIndex * 10;
 }
 
-/** The Clonmel positions this file's three rows are seeded at: a gap on purpose (AC-23). */
+/** The Cashel positions this file's three rows are seeded at: a gap on purpose (AC-23). */
 const SHEET_POSITIONS = [801, 802, 805];
 
 test.beforeEach(async ({}, testInfo) => {
@@ -94,12 +94,12 @@ test.beforeAll(async () => {
   for (const [index, sortOrder] of SHEET_POSITIONS.entries()) {
     sheetItems.push(
       await seedItem(ledger, {
-        base: `Clonmel Row ${index}`,
+        base: `Cashel Row ${index}`,
         itemTypeId,
         supplierId,
         unitLabel: "20 Kg",
         price: { amount: "6.11764706", effectiveFrom: "2025-01-01", label: null },
-        yards: [{ code: "CLONMEL", sortOrder }],
+        yards: [{ code: "CASHEL", sortOrder }],
       }),
     );
   }
@@ -202,7 +202,7 @@ async function expectTypePairAlone(): Promise<void> {
 }
 
 /**
- * The same promise for the three Clonmel rows.
+ * The same promise for the three Cashel rows.
  *
  * `moveItemInSheet` swaps with the neighbour among every ACTIVE link of an ACTIVE item on
  * the sheet, ordered by `sortOrder` and then description - so this reads the sheet through
@@ -214,7 +214,7 @@ async function expectSheetRowsAlone(): Promise<void> {
   const high = Math.max(...SHEET_POSITIONS);
   const ours = new Set(sheetItems.map((item) => item.id));
   const links = await db.itemLocation.findMany({
-    where: { location: { code: "CLONMEL" }, active: true, item: { active: true } },
+    where: { location: { code: "CASHEL" }, active: true, item: { active: true } },
     select: { itemId: true, sortOrder: true, item: { select: { description: true } } },
   });
   const ordered = links.sort(
@@ -230,11 +230,11 @@ async function expectSheetRowsAlone(): Promise<void> {
   );
   expect(
     strangers.map(describeLink),
-    `another Clonmel row sits in this run's sheet band ${low}-${high}, so a move could swap with it`,
+    `another Cashel row sits in this run's sheet band ${low}-${high}, so a move could swap with it`,
   ).toEqual([]);
 
   const positions = ordered.flatMap((link, index) => (ours.has(link.itemId) ? [index] : []));
-  expect(positions, "all three seeded rows are still on the Clonmel sheet").toHaveLength(3);
+  expect(positions, "all three seeded rows are still on the Cashel sheet").toHaveLength(3);
   expect(
     ordered
       .slice(positions[0], positions[positions.length - 1] + 1)
@@ -244,7 +244,7 @@ async function expectSheetRowsAlone(): Promise<void> {
   ).toEqual([]);
 }
 
-/** The multiset of this run's `sortOrder` values at Clonmel. */
+/** The multiset of this run's `sortOrder` values at Cashel. */
 async function ourSortOrders(): Promise<number[]> {
   const links = await db.itemLocation.findMany({
     where: { itemId: { in: sheetItems.map((item) => item.id) } },
@@ -259,21 +259,21 @@ test("AC-21, AC-22: assigning puts an item last, unassigning keeps its place", a
   await signIn(page, await admin());
 
   const highestBefore = await db.itemLocation.aggregate({
-    where: { location: { code: "CLONMEL" } },
+    where: { location: { code: "CASHEL" } },
     _max: { sortOrder: true },
   });
 
   await page.goto(`/item-master/items/${unassignedItem.id}`);
-  await expect(page.getByTestId("yard-state-CLONMEL")).toHaveText("Not assigned");
-  await page.getByTestId("assign-CLONMEL").click();
+  await expect(page.getByTestId("yard-state-CASHEL")).toHaveText("Not assigned");
+  await page.getByTestId("assign-CASHEL").click();
   await page.waitForURL(/\?done=assigned/);
 
   const link = await db.itemLocation.findFirstOrThrow({
-    where: { itemId: unassignedItem.id, location: { code: "CLONMEL" } },
+    where: { itemId: unassignedItem.id, location: { code: "CASHEL" } },
   });
   expect(link.sortOrder).toBe((highestBefore._max.sortOrder ?? 0) + 1);
   expect(link.active).toBe(true);
-  await expect(page.getByTestId("yard-state-CLONMEL")).toHaveText(
+  await expect(page.getByTestId("yard-state-CASHEL")).toHaveText(
     `Assigned, position ${link.sortOrder}`,
   );
 
@@ -281,7 +281,7 @@ test("AC-21, AC-22: assigning puts an item last, unassigning keeps its place", a
   // count is of THIS item's links, not of the table: another spec file is running in
   // another worker and creating links of its own.
   const rowsBefore = await db.itemLocation.count({ where: { itemId: unassignedItem.id } });
-  await page.getByTestId("unassign-CLONMEL").click();
+  await page.getByTestId("unassign-CASHEL").click();
   await page.waitForURL(/\?done=unassigned/);
 
   const after = await db.itemLocation.findUniqueOrThrow({ where: { id: link.id } });
@@ -291,15 +291,15 @@ test("AC-21, AC-22: assigning puts an item last, unassigning keeps its place", a
   expect(await db.itemLocation.count({ where: { itemId: unassignedItem.id } })).toBe(rowsBefore);
 
   // Re-assigning restores exactly the position it held.
-  await page.getByTestId("assign-CLONMEL").click();
+  await page.getByTestId("assign-CASHEL").click();
   await page.waitForURL(/\?done=assigned/);
-  await expect(page.getByTestId("yard-state-CLONMEL")).toHaveText(
+  await expect(page.getByTestId("yard-state-CASHEL")).toHaveText(
     `Assigned, position ${link.sortOrder}`,
   );
   expect(await db.itemLocation.count({ where: { itemId: unassignedItem.id } })).toBe(rowsBefore);
 
   // Leave the fixture as the other tests expect it.
-  await page.getByTestId("unassign-CLONMEL").click();
+  await page.getByTestId("unassign-CASHEL").click();
   await page.waitForURL(/\?done=unassigned/);
 });
 
@@ -311,8 +311,8 @@ test("AC-23, AC-24: the sheet shows sortOrder, and a move is a swap that keeps t
   expect(beforeMoves).toEqual(SHEET_POSITIONS);
   await expectSheetRowsAlone();
 
-  await page.goto("/item-master/yards/CLONMEL");
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Clonmel sheet");
+  await page.goto("/item-master/yards/CASHEL");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Cashel sheet");
 
   const lastRow = page.locator(`[data-item-id="${sheetItems[2].id}"]`);
   await expect(lastRow.getByTestId("sheet-sort-order")).toHaveText("805");
@@ -349,7 +349,7 @@ test("AC-23, AC-24: the sheet shows sortOrder, and a move is a swap that keeps t
 test("AC-23: the first row has no Move up and the last has no Move down", async ({ page }) => {
   await signIn(page, await admin());
 
-  await page.goto("/item-master/yards/CLONMEL");
+  await page.goto("/item-master/yards/CASHEL");
   const rows = page.getByTestId("sheet-row");
   const count = await rows.count();
   expect(count).toBeGreaterThan(1);

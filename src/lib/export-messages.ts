@@ -30,7 +30,7 @@ export const TOTAL_LABEL = "TOTAL";
 /**
  * The `Summary` row labels, each in column A of its row (AC-5).
  *
- * `South` is the sample's name for the Clonmel yard; the Dublin row is labelled with the yard's
+ * `South` is the sample's name for the Cashel yard; the Dublin row is labelled with the yard's
  * own name by the writer, so only the four words that are not yard names live here.
  */
 export const SUMMARY_SOUTH_LABEL = "South";

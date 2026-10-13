@@ -27,7 +27,7 @@ const MONTH = `${String(YEAR)}-09`;
 
 const created: string[] = [];
 let dublinCountId = "";
-let clonmelCountId = "";
+let cashelCountId = "";
 let octoberCountId = "";
 let realCountsBefore: string[] = [];
 let masterBefore: Awaited<ReturnType<typeof seededMasterCounts>>;
@@ -55,8 +55,8 @@ test.beforeAll(async () => {
     countDate: `${MONTH}-01`,
     createdById: owner.id,
   });
-  clonmelCountId = await seedCount({
-    locationCode: "CLONMEL",
+  cashelCountId = await seedCount({
+    locationCode: "CASHEL",
     year: YEAR,
     month: 9,
     countDate: `${MONTH}-01`,
@@ -124,7 +124,7 @@ test("AC-19: the page is one month of days with seven Monday-first column headin
   await expect(page.getByTestId(`day-${MONTH}-31`)).toHaveCount(0);
 });
 
-test("AC-20: a day with counts at both yards renders two badges, Dublin before Clonmel", async ({
+test("AC-20: a day with counts at both yards renders two badges, Dublin before Cashel", async ({
   page,
 }) => {
   await signIn(page, await newUser());
@@ -136,7 +136,7 @@ test("AC-20: a day with counts at both yards renders two badges, Dublin before C
   await expect(badges).toHaveCount(2);
   await expect(badges.nth(0)).toContainText("Dublin");
   await expect(badges.nth(0)).toContainText("Draft");
-  await expect(badges.nth(1)).toContainText("Clonmel");
+  await expect(badges.nth(1)).toContainText("Cashel");
 
   await expect(badges.nth(0)).toHaveAttribute(
     "href",
@@ -144,7 +144,7 @@ test("AC-20: a day with counts at both yards renders two badges, Dublin before C
   );
   await expect(badges.nth(1)).toHaveAttribute(
     "href",
-    `/stock-entry/counts/${clonmelCountId}`,
+    `/stock-entry/counts/${cashelCountId}`,
   );
   // The period rides along in the badge's title.
   await expect(badges.nth(0)).toHaveAttribute("title", MONTH);

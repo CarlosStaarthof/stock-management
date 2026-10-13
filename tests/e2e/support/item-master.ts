@@ -78,7 +78,7 @@ export type SeedItemInput = {
   needsReview?: boolean;
   notes?: string | null;
   price?: { amount: string; effectiveFrom: string; label?: string | null } | null;
-  yards?: { code: "DUBLIN" | "CLONMEL"; sortOrder: number }[];
+  yards?: { code: "DUBLIN" | "CASHEL"; sortOrder: number }[];
 };
 
 export async function seedItem(

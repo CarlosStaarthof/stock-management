@@ -205,9 +205,9 @@ describe("the database the migrations produce", () => {
       sortOrder: 1,
     });
     expect(rows[1]).toMatchObject({
-      id: "loc_clonmel",
-      code: "CLONMEL",
-      name: "Clonmel",
+      id: "loc_cashel",
+      code: "CASHEL",
+      name: "Cashel",
       active: true,
       sortOrder: 2,
     });
@@ -224,7 +224,7 @@ describe("the database the migrations produce", () => {
 
     const rows = await db.location.findMany({ orderBy: { sortOrder: "asc" } });
     expect(rows).toHaveLength(2);
-    expect(rows.map((row) => row.id)).toEqual(["loc_dublin", "loc_clonmel"]);
+    expect(rows.map((row) => row.id)).toEqual(["loc_dublin", "loc_cashel"]);
   });
 });
 

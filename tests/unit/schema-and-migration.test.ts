@@ -471,10 +471,26 @@ describe("the second migration, create_stock_domain", () => {
     expect(sql.endsWith('ON CONFLICT ("code") DO NOTHING;')).toBe(true);
     expect(sql).toContain('INSERT INTO "Location" ("id", "code", "name", "active", "sortOrder")');
     expect(sql).toMatch(/\('loc_dublin',\s+'DUBLIN',\s+'Dublin',\s+true, 1\)/);
-    expect(sql).toMatch(/\('loc_clonmel', 'CLONMEL', 'Clonmel', true, 2\)/);
 
-    // Exactly two rows: a third yard would have to arrive through its own migration.
+    // Exactly two rows: a third yard would have to arrive through its own migration. The
+    // second row's historical name is corrected to Cashel by the R6 migration asserted below.
     const inserted = [...sql.matchAll(/\('loc_[a-z]+',/g)];
     expect(inserted).toHaveLength(2);
+  });
+
+  it("012 AC-16 (R6): the rename migration moves the second depot to Cashel", () => {
+    const directory = readdirSync("prisma/migrations").find((name) =>
+      name.endsWith("_rename_clonmel_to_cashel"),
+    );
+    expect(directory).toBeDefined();
+
+    const sql = migrationSql(directory as string);
+    expect(sql).toMatch(/UPDATE "Location"/);
+    expect(sql).toMatch(/"id"\s*=\s*'loc_cashel'/);
+    expect(sql).toMatch(/"code"\s*=\s*'CASHEL'/);
+    expect(sql).toMatch(/"name"\s*=\s*'Cashel'/);
+    expect(sql).toMatch(/WHERE "code" = 'CLONMEL'/);
+    // No schema change: the rename touches no table, column, index or type.
+    expect(sql).not.toMatch(/\b(CREATE|DROP|ALTER)\b/);
   });
 });

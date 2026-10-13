@@ -41,7 +41,7 @@ import { NotFoundError } from "@/server/errors";
  *
  * THE TOTAL IS THE SUM OF THE EXACT LINE VALUES, ROUNDED ONCE, and the cost of that is
  * stated rather than hidden: the rendered column may not add to the rendered total to the
- * last cent, and the total is the figure that agrees with the workbook. Four Clonmel prices
+ * last cent, and the total is the figure that agrees with the workbook. Four Cashel prices
  * are non-terminating formulas, and Invariant 10 says a stock system that disagrees with
  * the file it replaced by any amount will not be trusted (009 AC-25, Open question 3).
  *

@@ -30,7 +30,7 @@ export const STAFF: SessionUser = {
 };
 
 export const DUBLIN_ID = "loc_dublin";
-export const CLONMEL_ID = "loc_clonmel";
+export const CASHEL_ID = "loc_cashel";
 
 export async function makeSupplier(name: string, active = true): Promise<string> {
   const supplier = await db.supplier.create({ data: { name, active }, select: { id: true } });
@@ -180,7 +180,7 @@ export async function sortOrdersAt(locationId: string): Promise<number[]> {
 }
 
 /**
- * Bulk fixtures. AC-23 needs a 70-row Clonmel sheet and AC-24 an 84-row Dublin one; built
+ * Bulk fixtures. AC-23 needs a 70-row Cashel sheet and AC-24 an 84-row Dublin one; built
  * one `create` at a time against a Neon branch that is a network hop away, those two
  * tests alone cost minutes. `createMany` with explicit ids is the same rows in two
  * statements — and the ids have to be explicit because `createMany` returns none.

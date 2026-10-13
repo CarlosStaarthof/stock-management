@@ -97,7 +97,7 @@ describe("AC-12, AC-18: the module is money-free and server-free", () => {
     const built = [
       stockTakes.notHeldSummary(35, 82),
       stockTakes.noItemsHeld("Dublin", "September 2026"),
-      stockTakes.facetOptionLabel("Clonmel", 2),
+      stockTakes.facetOptionLabel("Cashel", 2),
     ];
 
     for (const sentence of built) expect(sentence).not.toContain("€");

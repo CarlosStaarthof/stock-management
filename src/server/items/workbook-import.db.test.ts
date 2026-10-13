@@ -157,13 +157,13 @@ describe("the two yards", () => {
 
       expect(await db.location.count()).toBe(2);
       expect(await db.itemLocation.count({ where: { locationId: "loc_dublin" } })).toBe(82);
-      expect(await db.itemLocation.count({ where: { locationId: "loc_clonmel" } })).toBe(70);
+      expect(await db.itemLocation.count({ where: { locationId: "loc_cashel" } })).toBe(70);
     },
     SLOW,
   );
 
   it(
-    "AC-13: the two below-total fuel rows are linked to Clonmel, priced and flagged",
+    "AC-13: the two below-total fuel rows are linked to Cashel, priced and flagged",
     async () => {
       await runImport();
 
@@ -184,7 +184,7 @@ describe("the two yards", () => {
         expect(item?.notes).toContain("below the total row");
         expect(item?.prices[0].unitPrice.toString()).toBe(price);
         expect(item?.locations).toHaveLength(1);
-        expect(item?.locations[0].locationId).toBe("loc_clonmel");
+        expect(item?.locations[0].locationId).toBe("loc_cashel");
         expect(item?.locations[0].sortOrder).toBe(sortOrder);
       }
     },
@@ -192,12 +192,12 @@ describe("the two yards", () => {
   );
 
   it(
-    "AC-19: a database with no CLONMEL row fails with NotFoundError and writes nothing",
+    "AC-19: a database with no CASHEL row fails with NotFoundError and writes nothing",
     async () => {
-      await db.location.delete({ where: { code: "CLONMEL" } });
+      await db.location.delete({ where: { code: "CASHEL" } });
 
       await expect(runImport()).rejects.toBeInstanceOf(NotFoundError);
-      await expect(runImport()).rejects.toThrow(/CLONMEL/);
+      await expect(runImport()).rejects.toThrow(/CASHEL/);
 
       const after = await rowCounts();
       expect(after).toMatchObject({

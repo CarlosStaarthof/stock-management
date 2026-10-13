@@ -13,7 +13,7 @@ import { ValidationError } from "@/server/errors";
  * back and asserted cell by cell. `Samples/` is opened read-only and never written to.
  *
  * Every figure here was counted from the file, not inherited: 152 rows, 82 on `Dublin`
- * and 70 on `'Clonmel '`.
+ * and 70 on `Cashel`.
  */
 
 const WORKBOOK_PATH = "Samples/Stock @ 01-Sep-2026.xlsx";
@@ -53,9 +53,9 @@ async function workbookWith(
   return Buffer.from(await workbook.xlsx.writeBuffer());
 }
 
-/** A minimal but valid `'Clonmel '` sheet, so a Dublin fixture can be read at all. */
-const VALID_CLONMEL = {
-  name: "Clonmel ",
+/** A minimal but valid `Cashel` sheet, so a Dublin fixture can be read at all. */
+const VALID_CASHEL = {
+  name: "Cashel",
   cells: {
     A2: "Description",
     A3: "Something",
@@ -74,7 +74,7 @@ beforeAll(async () => {
 describe("readYardSheets against the source workbook", () => {
   it("AC-1: returns 152 rows, from the two yard sheets and nothing else", () => {
     expect(rows).toHaveLength(152);
-    expect([...new Set(rows.map((row) => row.sheet))].sort()).toEqual(["Clonmel ", "Dublin"]);
+    expect([...new Set(rows.map((row) => row.sheet))].sort()).toEqual(["Cashel", "Dublin"]);
   });
 
   it("AC-1: every row carries exactly the eight declared fields", () => {
@@ -91,12 +91,13 @@ describe("readYardSheets against the source workbook", () => {
     }
   });
 
-  it("AC-2: resolves the worksheet whose name is exactly 'Clonmel ', trailing space and all", () => {
-    const clonmel = rows.filter((row) => row.sheet === "Clonmel ");
+  it("AC-2 (R6): resolves the read-only sample's second worksheet, reported under the domain name Cashel", () => {
+    // The sample's physical worksheet is still `Clonmel ` (the file may not be modified); the
+    // reader reaches it through LEGACY_SAMPLE_SHEET and reports the depot as Cashel.
+    const cashel = rows.filter((row) => row.sheet === "Cashel");
 
-    expect(clonmel).toHaveLength(70);
-    expect(clonmel[0].sheet).toBe("Clonmel ");
-    expect(clonmel[0].sheet.endsWith(" ")).toBe(true);
+    expect(cashel).toHaveLength(70);
+    expect(cashel[0].sheet).toBe("Cashel");
   });
 
   it("AC-3: Dublin's item block is rows 3-84, 82 rows, and no row below the total", () => {
@@ -109,10 +110,10 @@ describe("readYardSheets against the source workbook", () => {
     expect(dublin.filter((row) => row.belowTotal)).toHaveLength(0);
   });
 
-  it("AC-3: 'Clonmel ' gives rows 3-70 plus the two below-total rows 75 and 76", () => {
-    const clonmel = rows.filter((row) => row.sheet === "Clonmel ");
-    const inBlock = clonmel.filter((row) => !row.belowTotal);
-    const below = clonmel.filter((row) => row.belowTotal);
+  it("AC-3: Cashel gives rows 3-70 plus the two below-total rows 75 and 76", () => {
+    const cashel = rows.filter((row) => row.sheet === "Cashel");
+    const inBlock = cashel.filter((row) => !row.belowTotal);
+    const below = cashel.filter((row) => row.belowTotal);
 
     expect(inBlock).toHaveLength(68);
     expect(inBlock[0].row).toBe(3);
@@ -125,7 +126,7 @@ describe("readYardSheets against the source workbook", () => {
   });
 
   it("AC-3: the TOTAL rows are not items, and Dublin's empty row 85 is skipped silently", () => {
-    expect(rows.some((row) => row.sheet === "Clonmel " && row.row === 71)).toBe(false);
+    expect(rows.some((row) => row.sheet === "Cashel" && row.row === 71)).toBe(false);
     expect(rows.some((row) => row.sheet === "Dublin" && row.row === 86)).toBe(false);
     expect(rows.some((row) => row.description.trim().toUpperCase() === "TOTAL")).toBe(false);
 
@@ -134,11 +135,11 @@ describe("readYardSheets against the source workbook", () => {
   });
 
   it("AC-4: the five rich-text descriptions concatenate every run, not just the first", () => {
-    expect(rowAt("Clonmel ", 9).description).toBe("White - Briteline");
-    expect(rowAt("Clonmel ", 10).description).toBe("Yellow  - Briteline");
-    expect(rowAt("Clonmel ", 22).description).toBe("Stick On Studs - Meon");
-    expect(rowAt("Clonmel ", 23).description).toBe("Stick On Studs - Roadcraft  1st July");
-    expect(rowAt("Clonmel ", 24).description).toBe("Anti Skid Buff  - Kelly's");
+    expect(rowAt("Cashel", 9).description).toBe("White - Briteline");
+    expect(rowAt("Cashel", 10).description).toBe("Yellow  - Briteline");
+    expect(rowAt("Cashel", 22).description).toBe("Stick On Studs - Meon");
+    expect(rowAt("Cashel", 23).description).toBe("Stick On Studs - Roadcraft  1st July");
+    expect(rowAt("Cashel", 24).description).toBe("Anti Skid Buff  - Kelly's");
   });
 
   it("AC-4: each of the five is strictly longer than its own first run", () => {
@@ -154,7 +155,7 @@ describe("readYardSheets against the source workbook", () => {
     ];
 
     for (const [row, firstRun] of firstRuns) {
-      const description = rowAt("Clonmel ", row).description;
+      const description = rowAt("Cashel", row).description;
 
       expect(description.startsWith(firstRun)).toBe(true);
       expect(description.length).toBeGreaterThan(firstRun.length);
@@ -177,17 +178,17 @@ describe("readYardSheets against the source workbook", () => {
   });
 
   it("AC-5: text is read as UTF-8, so the euro sign survives", () => {
-    const description = rowAt("Clonmel ", 28).description;
+    const description = rowAt("Cashel", 28).description;
 
     expect(description).toBe("Anti Skid Grains (€550 p/T)");
     expect(description).toContain("€");
   });
 
   it("AC-6: a formula price is imported as its computed value, at eight places", () => {
-    expect(rowAt("Clonmel ", 19).price).toBe("6.11764706");
-    expect(rowAt("Clonmel ", 20).price).toBe("2.88235294");
-    expect(rowAt("Clonmel ", 21).price).toBe("6.92941176");
-    expect(rowAt("Clonmel ", 23).price).toBe("1.55555556");
+    expect(rowAt("Cashel", 19).price).toBe("6.11764706");
+    expect(rowAt("Cashel", 20).price).toBe("2.88235294");
+    expect(rowAt("Cashel", 21).price).toBe("6.92941176");
+    expect(rowAt("Cashel", 23).price).toBe("1.55555556");
   });
 
   it("AC-6: the workbook's binary-float artefacts normalise", () => {
@@ -211,7 +212,7 @@ describe("readYardSheets against the source workbook", () => {
 });
 
 describe("readYardSheets refuses what it cannot import", () => {
-  it("AC-2: a workbook with no 'Clonmel ' sheet is a ValidationError, not 82 rows", async () => {
+  it("AC-2: a workbook with no Cashel sheet is a ValidationError, not 82 rows", async () => {
     const buffer = await workbookWith([
       {
         name: "Dublin",
@@ -220,17 +221,18 @@ describe("readYardSheets refuses what it cannot import", () => {
     ]);
 
     await expect(readYardSheets(buffer)).rejects.toBeInstanceOf(ValidationError);
-    await expect(readYardSheets(buffer)).rejects.toThrow(/Clonmel/);
+    await expect(readYardSheets(buffer)).rejects.toThrow(/Cashel/);
     await expect(readYardSheets(buffer)).rejects.toThrow(/sheet/);
   });
 
-  it("AC-2: a sheet named Clonmel without the trailing space is not the sheet", async () => {
+  it("AC-2 (R6): a workbook already using the domain name Cashel is read under Cashel", async () => {
     const buffer = await workbookWith([
       { name: "Dublin", cells: { A3: "Thing", C3: "Logo", A4: "TOTAL" } },
-      { name: "Clonmel", cells: { A3: "Thing", C3: "Logo", A4: "TOTAL" } },
+      { name: "Cashel", cells: { A3: "Thing", C3: "Logo", A4: "TOTAL" } },
     ]);
 
-    await expect(readYardSheets(buffer)).rejects.toThrow(/Clonmel/);
+    const readRows = await readYardSheets(buffer);
+    expect(readRows.map((row) => row.sheet).sort()).toEqual(["Cashel", "Dublin"]);
   });
 
   it("AC-7: a row with a supplier and a price but no description names the sheet and the row", async () => {
@@ -249,7 +251,7 @@ describe("readYardSheets refuses what it cannot import", () => {
           A8: "TOTAL",
         },
       },
-      VALID_CLONMEL,
+      VALID_CASHEL,
     ]);
 
     await expect(readYardSheets(buffer)).rejects.toBeInstanceOf(ValidationError);
@@ -263,7 +265,7 @@ describe("readYardSheets refuses what it cannot import", () => {
         name: "Dublin",
         cells: { A3: "Thing", C3: "Logo", D3: "1 Unit", E3: 10, A6: "TOTAL" },
       },
-      VALID_CLONMEL,
+      VALID_CASHEL,
     ]);
 
     const read = await readYardSheets(buffer);
@@ -284,7 +286,7 @@ describe("readYardSheets refuses what it cannot import", () => {
           A4: "TOTAL",
         },
       },
-      VALID_CLONMEL,
+      VALID_CASHEL,
     ]);
 
     await expect(readYardSheets(buffer)).rejects.toBeInstanceOf(ValidationError);
@@ -295,7 +297,7 @@ describe("readYardSheets refuses what it cannot import", () => {
   it("AC-3: a sheet with no TOTAL row has no item block, and says so", async () => {
     const buffer = await workbookWith([
       { name: "Dublin", cells: { A3: "Thing", C3: "Logo" } },
-      VALID_CLONMEL,
+      VALID_CASHEL,
     ]);
 
     await expect(readYardSheets(buffer)).rejects.toBeInstanceOf(ValidationError);

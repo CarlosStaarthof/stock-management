@@ -163,8 +163,8 @@ describe("listSheet is role-shaped", () => {
     await dublinWithTwoItems();
 
     expect(await locationName(STAFF, "DUBLIN")).toBe("Dublin");
-    expect(await locationName(ADMIN, "CLONMEL")).toBe("Clonmel");
-    expect(await listSheet(STAFF, "CLONMEL")).toEqual([]);
+    expect(await locationName(ADMIN, "CASHEL")).toBe("Cashel");
+    expect(await listSheet(STAFF, "CASHEL")).toEqual([]);
   });
 
   it("AC-14, AC-4: both read functions refuse a null actor with UnauthorizedError", async () => {
@@ -192,7 +192,7 @@ describe("nothing else about the item master moves", () => {
       ["deleteItem", () => deleteItem(STAFF, priced)],
       ["markItemReviewed", () => markItemReviewed(STAFF, priced)],
       ["addPrice", () => addPrice(STAFF, { itemId: priced, unitPrice: "1.00", effectiveFrom: "2026-01-01" })],
-      ["assignItemToLocation", () => assignItemToLocation(STAFF, priced, "CLONMEL")],
+      ["assignItemToLocation", () => assignItemToLocation(STAFF, priced, "CASHEL")],
       ["unassignItemFromLocation", () => unassignItemFromLocation(STAFF, priced, "DUBLIN")],
       ["moveItemInSheet", () => moveItemInSheet(STAFF, priced, "DUBLIN", "UP")],
       ["createSupplier", () => createSupplier(STAFF, { name: "Another" })],

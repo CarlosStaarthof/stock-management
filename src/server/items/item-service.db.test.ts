@@ -28,7 +28,7 @@ import { resetTestDb } from "@/server/test-db";
 
 import {
   ADMIN,
-  CLONMEL_ID,
+  CASHEL_ID,
   DUBLIN_ID,
   makeCountLine,
   makeItem,
@@ -121,7 +121,7 @@ describe("listItems", () => {
     });
     await makePrice(itemId, "33.09000000", "2025-01-01");
     await makeLink(itemId, DUBLIN_ID, 3);
-    await makeLink(itemId, CLONMEL_ID, 7);
+    await makeLink(itemId, CASHEL_ID, 7);
 
     const [row] = (await listItems(ADMIN, QUERY, "2026-09-10")).rows;
 
@@ -136,8 +136,8 @@ describe("listItems", () => {
       currency: "EUR",
       effectiveFrom: "2025-01-01",
     });
-    // Location.sortOrder, so Dublin is always before Clonmel.
-    expect(row.yards).toEqual(["DUBLIN", "CLONMEL"]);
+    // Location.sortOrder, so Dublin is always before Cashel.
+    expect(row.yards).toEqual(["DUBLIN", "CASHEL"]);
     expect(row.reviewReasons).toEqual([]);
   });
 
@@ -501,7 +501,7 @@ describe("updateItem", () => {
       itemTypeId: typeId,
       supplierId: kelly,
       unitLabel: "1 Unit",
-      notes: "Dublin!D50 says 1 Unit; 'Clonmel '!D64 says 16kg",
+      notes: "Dublin!D50 says 1 Unit; Cashel!D64 says 16kg",
     });
     await makePrice(itemId, "1.00000000", "2025-01-01");
     const before = await db.item.findUniqueOrThrow({ where: { id: itemId } });
@@ -672,7 +672,7 @@ describe("setItemActive", () => {
 
     expect((await listItems(ADMIN, QUERY)).rows).toEqual([]);
     expect(await listSheet(ADMIN, "DUBLIN")).toEqual([]);
-    expect(await listSheet(ADMIN, "CLONMEL")).toEqual([]);
+    expect(await listSheet(ADMIN, "CASHEL")).toEqual([]);
 
     const archived = (await listItems(ADMIN, query({ filter: "archived" }))).rows;
     expect(archived).toHaveLength(1);
@@ -714,7 +714,7 @@ describe("deleteItem", () => {
     const itemId = await makeItem({ description: "Beads", itemTypeId: typeId });
     await makePrice(itemId, "1.00000000", "2025-01-01");
     await makeLink(itemId, DUBLIN_ID, 3);
-    await makeLink(itemId, CLONMEL_ID, 4);
+    await makeLink(itemId, CASHEL_ID, 4);
 
     await deleteItem(ADMIN, itemId);
 

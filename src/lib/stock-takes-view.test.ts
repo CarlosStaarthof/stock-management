@@ -9,7 +9,7 @@ import type { CalendarMonth } from "@/types/stock-count";
  * runs with no database — which is the point of it being pure (AC-20).
  *
  * The fixture is AC-7's own: three counts across two days of a 30-day month — Dublin and
- * Clonmel on the 1st, Clonmel on the 14th.
+ * Cashel on the 1st, Cashel on the 14th.
  */
 function monthFixture(): CalendarMonth {
   const days = Array.from({ length: 30 }, (_unused, index) => ({
@@ -27,8 +27,8 @@ function monthFixture(): CalendarMonth {
     },
     {
       countId: "count_clo_1",
-      locationCode: "CLONMEL",
-      locationName: "Clonmel",
+      locationCode: "CASHEL",
+      locationName: "Cashel",
       status: "DRAFT",
       periodKey: "2026-03",
     },
@@ -36,8 +36,8 @@ function monthFixture(): CalendarMonth {
   days[13].counts = [
     {
       countId: "count_clo_14",
-      locationCode: "CLONMEL",
-      locationName: "Clonmel",
+      locationCode: "CASHEL",
+      locationName: "Cashel",
       status: "DRAFT",
       periodKey: "2026-04",
     },
@@ -66,8 +66,8 @@ describe("filterCalendarByYard", () => {
     for (const badge of badges) expect(badge.locationCode).toBe("DUBLIN");
   });
 
-  it("AC-7: CLONMEL keeps two, on the two different days they happened", () => {
-    const scoped = filterCalendarByYard(monthFixture(), "CLONMEL");
+  it("AC-7: CASHEL keeps two, on the two different days they happened", () => {
+    const scoped = filterCalendarByYard(monthFixture(), "CASHEL");
 
     expect(scoped.countsInMonth).toBe(2);
     expect(scoped.days[0].counts.map((badge) => badge.countId)).toEqual(["count_clo_1"]);
@@ -88,7 +88,7 @@ describe("filterCalendarByYard", () => {
     const before = structuredClone(month);
 
     filterCalendarByYard(month, "DUBLIN");
-    filterCalendarByYard(month, "CLONMEL");
+    filterCalendarByYard(month, "CASHEL");
     filterCalendarByYard(month, "BOTH");
 
     expect(month).toEqual(before);
@@ -97,7 +97,7 @@ describe("filterCalendarByYard", () => {
   it("AC-7: days keeps one entry per day of the month, in order, including the emptied ones", () => {
     const month = monthFixture();
 
-    for (const scope of ["DUBLIN", "CLONMEL", "BOTH"] as const) {
+    for (const scope of ["DUBLIN", "CASHEL", "BOTH"] as const) {
       const scoped = filterCalendarByYard(month, scope);
 
       expect(scoped.days).toHaveLength(30);
@@ -127,18 +127,18 @@ describe("filterCalendarByYard", () => {
   });
 
   it("AC-7: badge order within a day survives the filter", () => {
-    // Dublin before Clonmel is `Location.sortOrder`, decided once in `listCalendarMonth`
+    // Dublin before Cashel is `Location.sortOrder`, decided once in `listCalendarMonth`
     // (007 AC-20). A filter that re-sorted would be a second definition of that order.
     const scoped = filterCalendarByYard(monthFixture(), "BOTH");
 
     expect(scoped.days[0].counts.map((badge) => badge.locationCode)).toEqual([
       "DUBLIN",
-      "CLONMEL",
+      "CASHEL",
     ]);
   });
 
   it("AC-12: the filtered month carries no monetary key at any depth, for any scope", () => {
-    for (const scope of ["DUBLIN", "CLONMEL", "BOTH"] as const) {
+    for (const scope of ["DUBLIN", "CASHEL", "BOTH"] as const) {
       const keys = deepKeys(filterCalendarByYard(monthFixture(), scope));
 
       expect(keys.filter((key) => /price|value|total|amount/i.test(key))).toEqual([]);
@@ -147,15 +147,15 @@ describe("filterCalendarByYard", () => {
 });
 
 describe("scopeTallies", () => {
-  it("AC-7: the fixture tallies { DUBLIN: 1, CLONMEL: 2, BOTH: 3 }", () => {
-    expect(scopeTallies(monthFixture())).toEqual({ DUBLIN: 1, CLONMEL: 2, BOTH: 3 });
+  it("AC-7: the fixture tallies { DUBLIN: 1, CASHEL: 2, BOTH: 3 }", () => {
+    expect(scopeTallies(monthFixture())).toEqual({ DUBLIN: 1, CASHEL: 2, BOTH: 3 });
   });
 
   it("AC-6: a month with no counts tallies zero for all three", () => {
     const month = monthFixture();
     const empty = { ...month, days: month.days.map((day) => ({ ...day, counts: [] })) };
 
-    expect(scopeTallies(empty)).toEqual({ DUBLIN: 0, CLONMEL: 0, BOTH: 0 });
+    expect(scopeTallies(empty)).toEqual({ DUBLIN: 0, CASHEL: 0, BOTH: 0 });
   });
 
   it("AC-6: the tally of a scope equals the countsInMonth of that scope's filter", () => {
@@ -163,7 +163,7 @@ describe("scopeTallies", () => {
     const month = monthFixture();
     const tallies = scopeTallies(month);
 
-    for (const scope of ["DUBLIN", "CLONMEL", "BOTH"] as const) {
+    for (const scope of ["DUBLIN", "CASHEL", "BOTH"] as const) {
       expect(filterCalendarByYard(month, scope).countsInMonth).toBe(tallies[scope]);
     }
   });

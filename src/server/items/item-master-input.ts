@@ -64,7 +64,7 @@ export const isoDateSchema = z
   .regex(ISO_DATE)
   .refine(isRealCalendarDate);
 
-export const locationCodeSchema = z.enum(["DUBLIN", "CLONMEL"]);
+export const locationCodeSchema = z.enum(["DUBLIN", "CASHEL"]);
 export type LocationCode = z.infer<typeof locationCodeSchema>;
 
 export const moveDirectionSchema = z.enum(["UP", "DOWN"]);

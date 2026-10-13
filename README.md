@@ -1,6 +1,6 @@
 # Macroads Stock Management
 
-A stock management web app for two road-marking yards (Dublin and Clonmel), replacing a
+A stock management web app for two road-marking yards (Dublin and Cashel), replacing a
 hand-filled Excel workbook. Yard staff enter counts on a phone; the dashboard computes
 the totals and variances; Excel becomes an export rather than the system of record.
 

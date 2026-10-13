@@ -62,7 +62,7 @@ throw new Error("duplicate");
   describe the rule without quoting it.
 
 ```ts
-// Clonmel Trucks & Yard!D8:D22 — a full hand-truck boiler holds 250 kg.
+// Cashel Trucks & Yard!D8:D22 — a full hand-truck boiler holds 250 kg.
 const KG_PER_FULL_BOILER = 250;
 ```
 

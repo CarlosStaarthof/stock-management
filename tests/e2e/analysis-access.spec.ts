@@ -56,7 +56,7 @@ const Y = String(YEAR);
 
 /** Complete: both yards approved. The period every measurement below is taken on. */
 const COMPLETE = `${Y}-12`;
-/** Incomplete: Dublin approved, Clonmel never counted. */
+/** Incomplete: Dublin approved, Cashel never counted. */
 const INCOMPLETE = `${Y}-11`;
 
 const created: string[] = [];
@@ -82,10 +82,10 @@ test.beforeAll(async () => {
   created.push(owner.username, approver.username);
 
   const dublinItems = await pickSheetItems("DUBLIN", 4);
-  const clonmelItems = await pickSheetItems("CLONMEL", 3);
+  const cashelItems = await pickSheetItems("CASHEL", 3);
 
   const approved = async (
-    locationCode: "DUBLIN" | "CLONMEL",
+    locationCode: "DUBLIN" | "CASHEL",
     month: number,
     day: string,
     items: { itemId: string }[],
@@ -105,7 +105,7 @@ test.beforeAll(async () => {
   };
 
   dublinCompleteId = await approved("DUBLIN", 12, "31", dublinItems, "4");
-  await approved("CLONMEL", 12, "31", clonmelItems, "2");
+  await approved("CASHEL", 12, "31", cashelItems, "2");
   await approved("DUBLIN", 11, "30", dublinItems, "3");
 
   // One held line with no price, so the disclosure AC-9 owns is on the measured page too:
@@ -623,10 +623,10 @@ test("AC-6: the incomplete period names the yard and never renders a euro for it
   await signIn(page, await newUser());
   await page.goto(analysisUrl(INCOMPLETE));
 
-  // Clonmel has no count at all in this period: named, not zeroed.
-  const clonmel = page.getByTestId("yard-cell-CLONMEL");
-  await expect(clonmel).toContainText(NOT_COUNTED);
-  expect(await clonmel.textContent()).not.toContain(CURRENCY_SYMBOL);
+  // Cashel has no count at all in this period: named, not zeroed.
+  const cashel = page.getByTestId("yard-cell-CASHEL");
+  await expect(cashel).toContainText(NOT_COUNTED);
+  expect(await cashel.textContent()).not.toContain(CURRENCY_SYMBOL);
 
   await expect(page.getByTestId("period-incomplete")).toContainText(
     `has no approved count for November ${Y}.`,
@@ -643,7 +643,7 @@ test("AC-6: the incomplete period names the yard and never renders a euro for it
   await page.goto(analysisUrl(COMPLETE));
   expect(await page.getByTestId("total-stock").textContent()).toContain(CURRENCY_SYMBOL);
 
-  // BOTH YARDS MISSING IS THE OTHER SENTENCE - `Dublin and Clonmel have`, not `has`. The
+  // BOTH YARDS MISSING IS THE OTHER SENTENCE - `Dublin and Cashel have`, not `has`. The
   // names come from `Location.name` and the sentence from `analysis-messages.ts`, so this
   // asserts the join rather than two yard names a future rename would falsify.
   await page.goto("/analysis?period=1999-01");

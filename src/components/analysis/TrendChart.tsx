@@ -45,7 +45,7 @@ import type { TrendPoint } from "@/types/analysis";
  *
  * A GAP'S WORD IS `Incomplete`, in the marker's `<title>` and in the table cell alike. Both
  * stand for the period's TOTAL, and a total is not a yard: `Not counted` there, for a month
- * where Dublin was approved and Clonmel was not, reads as if nobody counted at all. That is
+ * where Dublin was approved and Cashel was not, reads as if nobody counted at all. That is
  * the same reading AC-6 (amended 2026-09-24) removed from `total-stock` and the breakdown's
  * row totals, and the trend is the third place a period's total is printed.
  *

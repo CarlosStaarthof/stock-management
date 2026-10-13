@@ -7,8 +7,8 @@ road-marking practice. When a term appears in the UI, use the spelling in this t
 
 | Term | Meaning |
 |---|---|
-| **Yard** | A physical depot holding stock. Two exist: **Dublin** and **Clonmel**. |
-| **South** | How the `Summary` sheet labels the Clonmel yard. Same thing. |
+| **Yard** | A physical depot holding stock. Two exist: **Dublin** and **Cashel**. |
+| **South** | How the `Summary` sheet labels the Cashel yard. Same thing. |
 | **Trucks** | Road-marking vehicles. Material sitting in a truck is still company stock and is counted separately from the yard. |
 
 ## Counting

@@ -142,7 +142,7 @@ model SetupClaim {
 }
 
 /// A yard. A closed set of two, fixed by specs/product-brief.md and written by this
-/// feature's migration with the literal ids `loc_dublin` and `loc_clonmel`, because
+/// feature's migration with the literal ids `loc_dublin` and `loc_cashel`, because
 /// Invariant 7 — a period is complete only when every `active` Location has an APPROVED
 /// count — is undefined for as long as the table is empty.
 model Location {
@@ -211,7 +211,7 @@ model Item {
 
 /// A price-list entry. Versioned by `effectiveFrom`, never overwritten (Part 2).
 ///
-/// Decimal(18, 8) and not (12, 4): four Clonmel prices are workbook formulas — `=5.2/0.85`
+/// Decimal(18, 8) and not (12, 4): four Cashel prices are workbook formulas — `=5.2/0.85`
 /// and friends — that do not terminate in decimal, and at four places the totals drift
 /// from the file this application replaces (Invariant 10).
 model ItemPrice {

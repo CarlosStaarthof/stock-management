@@ -64,7 +64,7 @@ import type { CountHistoryView, CountRef, HeldView, YardScope } from "@/types/st
  * the same bluntness 008 AC-3 applies to the yard-sheet reader one directory over.
  *
  * THE JUMPS ARE SAME-YARD, ALWAYS (AC-11). The previous count of a Dublin count is
- * Dublin's previous count: Clonmel's stock is different stock, and putting it next in a
+ * Dublin's previous count: Cashel's stock is different stock, and putting it next in a
  * sequence a person is reading as one yard's history would invite exactly the comparison
  * Part 4 spends a page forbidding. `?yard` is therefore CARRIED across this page — so
  * *Back to the calendar* returns to what the reader was looking at — and NOT applied to

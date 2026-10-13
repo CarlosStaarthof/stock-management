@@ -65,7 +65,7 @@ export type FixtureItem = {
  * what the fixture asked for.
  */
 export async function pickSheetItems(
-  locationCode: "DUBLIN" | "CLONMEL",
+  locationCode: "DUBLIN" | "CASHEL",
   howMany: number,
 ): Promise<FixtureItem[]> {
   const links = await db.itemLocation.findMany({
@@ -119,7 +119,7 @@ export type FixtureLine = { itemId: string; quantity: string };
  * at 2100, and it does not bind a count built directly.
  */
 export async function seedCountHolding(input: {
-  locationCode: "DUBLIN" | "CLONMEL";
+  locationCode: "DUBLIN" | "CASHEL";
   year: number;
   month: number;
   countDate: string;

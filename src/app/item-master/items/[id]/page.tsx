@@ -45,7 +45,7 @@ export const dynamic = "force-dynamic";
 
 const YARDS = [
   { code: "DUBLIN", name: "Dublin" },
-  { code: "CLONMEL", name: "Clonmel" },
+  { code: "CASHEL", name: "Cashel" },
 ];
 
 export default async function ItemDetailPage({

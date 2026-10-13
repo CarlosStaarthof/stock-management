@@ -67,7 +67,7 @@ const reviewReasonSchema = z.enum([
   "BELOW_TOTAL_ROW",
 ]);
 
-const locationCodeSchema = z.enum(["DUBLIN", "CLONMEL"]);
+const locationCodeSchema = z.enum(["DUBLIN", "CASHEL"]);
 
 const planSchema = z.object({
   suppliers: z.array(z.object({ name: z.string() })),
@@ -177,7 +177,7 @@ function dateOnly(value: Date): string {
  * Reads the workbook, plans the import, and writes what is missing — once, atomically.
  *
  * The two yards are resolved by `Location.code`; they are never created. #4's migration
- * owns `loc_dublin` and `loc_clonmel`, and a database without them fails with a
+ * owns `loc_dublin` and `loc_cashel`, and a database without them fails with a
  * `NotFoundError` naming the missing code rather than inventing a yard (AC-19).
  */
 export async function importWorkbook(input: ImportWorkbookInput): Promise<ImportOutcome> {
@@ -402,7 +402,7 @@ export async function planWorkbook(
   const diff = diffPlan(plan, {
     locations: [
       { id: "loc_dublin", code: "DUBLIN" },
-      { id: "loc_clonmel", code: "CLONMEL" },
+      { id: "loc_cashel", code: "CASHEL" },
     ],
     suppliers: [],
     itemTypes: [],

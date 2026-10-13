@@ -183,9 +183,9 @@ describe("one count per yard per month, not per day", () => {
         createdById,
       },
     });
-    const clonmel = await db.stockCount.create({
+    const cashel = await db.stockCount.create({
       data: {
-        locationId: "loc_clonmel",
+        locationId: "loc_cashel",
         periodYear: 2026,
         periodMonth: 9,
         countDate: new Date("2026-09-30T00:00:00.000Z"),
@@ -194,7 +194,7 @@ describe("one count per yard per month, not per day", () => {
     });
 
     expect(october.periodMonth).toBe(10);
-    expect(clonmel.locationId).toBe("loc_clonmel");
+    expect(cashel.locationId).toBe("loc_cashel");
     expect(await db.stockCount.count()).toBe(3);
   });
 });
@@ -217,10 +217,10 @@ describe("an item is assigned to a yard at most once", () => {
     const itemId = await newItem(await newItemType());
     await db.itemLocation.create({ data: { itemId, locationId: "loc_dublin", sortOrder: 3 } });
 
-    await db.itemLocation.create({ data: { itemId, locationId: "loc_clonmel", sortOrder: 7 } });
+    await db.itemLocation.create({ data: { itemId, locationId: "loc_cashel", sortOrder: 7 } });
 
     const links = await db.itemLocation.findMany({ where: { itemId }, orderBy: { sortOrder: "asc" } });
-    expect(links.map((link) => link.locationId)).toEqual(["loc_dublin", "loc_clonmel"]);
+    expect(links.map((link) => link.locationId)).toEqual(["loc_dublin", "loc_cashel"]);
   });
 });
 

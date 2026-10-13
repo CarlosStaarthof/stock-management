@@ -88,7 +88,7 @@ const ADMIN: SessionUser = {
 
 const YARDS = [
   { code: "DUBLIN", name: "Dublin" },
-  { code: "CLONMEL", name: "Clonmel" },
+  { code: "CASHEL", name: "Cashel" },
 ] as const;
 
 /* ------------------------------------------------------------------ the shapes */
@@ -336,7 +336,7 @@ describe("011 AC-6 (amended): an incomplete period's TOTAL cells read Incomplete
           periodKey: input.periodKey,
           periodLabel: formatMonthLabel(input.periodKey),
           complete: false,
-          missingYardNames: ["Clonmel"],
+          missingYardNames: ["Cashel"],
           yards: [
             yardFigure(YARDS[0], { countId: "c-dublin", yardValue: "1234.5" }),
             yardFigure(YARDS[1], null),
@@ -349,7 +349,7 @@ describe("011 AC-6 (amended): an incomplete period's TOTAL cells read Incomplete
           groupLabel,
           perYard: [
             { locationCode: "DUBLIN", amount: "617.25" },
-            { locationCode: "CLONMEL", amount: null },
+            { locationCode: "CASHEL", amount: null },
           ],
           amount: null,
           unvaluedHeldLineCount: 0,
@@ -369,9 +369,9 @@ describe("011 AC-6 (amended): an incomplete period's TOTAL cells read Incomplete
     expect(rowTotals).toEqual([INCOMPLETE_TOTAL, INCOMPLETE_TOTAL]);
 
     // The yard is not a total: the one nobody counted keeps #7's word.
-    const clonmel = textOf(onlyElement(html, "yard-cell-CLONMEL"));
-    expect(clonmel).toContain(NOT_COUNTED);
-    expect(clonmel).not.toContain(CURRENCY_SYMBOL);
+    const cashel = textOf(onlyElement(html, "yard-cell-CASHEL"));
+    expect(cashel).toContain(NOT_COUNTED);
+    expect(cashel).not.toContain(CURRENCY_SYMBOL);
     const perYard = elementsByTestId(html, "breakdown-cell").map(textOf);
     expect(perYard).toEqual([formatFigure("617.25"), NOT_COUNTED, formatFigure("617.25"), NOT_COUNTED]);
 
@@ -381,7 +381,7 @@ describe("011 AC-6 (amended): an incomplete period's TOTAL cells read Incomplete
   });
 
   it("AC-6: the trend's cell and gap marker for that period say Incomplete too — it is the period's total", async () => {
-    // The same period as above, Dublin approved and Clonmel not, but with the month before
+    // The same period as above, Dublin approved and Cashel not, but with the month before
     // it COMPLETE, so the trend holds one real bar beside the gap and the census below can
     // tell a figure from a word.
     mocks.listApprovedPeriods.mockResolvedValue(["2026-08", "2026-09"]);
@@ -392,7 +392,7 @@ describe("011 AC-6 (amended): an incomplete period's TOTAL cells read Incomplete
           periodKey: input.periodKey,
           periodLabel: formatMonthLabel(input.periodKey),
           complete: false,
-          missingYardNames: ["Clonmel"],
+          missingYardNames: ["Cashel"],
           yards: [
             yardFigure(YARDS[0], { countId: "c-dublin", yardValue: "1234.5" }),
             yardFigure(YARDS[1], null),
@@ -437,6 +437,6 @@ describe("011 AC-6 (amended): an incomplete period's TOTAL cells read Incomplete
     ].join("");
     expect(trend).not.toContain(NOT_COUNTED);
     expect(trend).toContain(formatFigure("999.5"));
-    expect(textOf(onlyElement(html, "yard-cell-CLONMEL"))).toContain(NOT_COUNTED);
+    expect(textOf(onlyElement(html, "yard-cell-CASHEL"))).toContain(NOT_COUNTED);
   });
 });

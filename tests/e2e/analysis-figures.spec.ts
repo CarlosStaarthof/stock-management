@@ -63,7 +63,7 @@ import type { TestUser } from "./support/users";
  *
  *   2104-09  both yards approved, LARGE quantities   the year-on-year comparand, and a FALL
  *   2105-03  both yards approved, every quantity 0   complete-and-empty renders €0.00
- *   2105-07  Dublin approved, Clonmel SUBMITTED      a status that is priced and not counted
+ *   2105-07  Dublin approved, Cashel SUBMITTED      a status that is priced and not counted
  *   2105-08  both yards approved, SMALL quantities   the month-on-month comparand, and a RISE
  *   2105-09  both yards approved, and four unpriced  THE MAIN PERIOD
  *   2105-10  Dublin only                             later than 2105-09 AND incomplete
@@ -86,14 +86,14 @@ const LATEST = `${Y}-10`;
 
 const created: string[] = [];
 let dublinItems: FixtureItem[] = [];
-let clonmelItems: FixtureItem[] = [];
+let cashelItems: FixtureItem[] = [];
 let dublinMainId = "";
-let clonmelMainId = "";
+let cashelMainId = "";
 let dublinPriorId = "";
-let clonmelPriorId = "";
+let cashelPriorId = "";
 let dublinBeforeId = "";
-let clonmelBeforeId = "";
-let clonmelSubmittedId = "";
+let cashelBeforeId = "";
+let cashelSubmittedId = "";
 let realCountsBefore: string[] = [];
 let masterBefore: Awaited<ReturnType<typeof seededMasterCounts>>;
 
@@ -121,10 +121,10 @@ test.beforeAll(async () => {
   created.push(owner.username, approver.username);
 
   dublinItems = await pickSheetItems("DUBLIN", 6);
-  clonmelItems = await pickSheetItems("CLONMEL", 4);
+  cashelItems = await pickSheetItems("CASHEL", 4);
 
   const seed = async (
-    locationCode: "DUBLIN" | "CLONMEL",
+    locationCode: "DUBLIN" | "CASHEL",
     year: number,
     month: number,
     lines: { itemId: string; quantity: string }[],
@@ -149,20 +149,20 @@ test.beforeAll(async () => {
   // The year-on-year comparand: the largest period in the window, so the main period is a
   // FALL against it and the chart has a bar to scale every other bar against.
   dublinPriorId = await seed("DUBLIN", PRIOR_YEAR, 9, at(dublinItems.slice(0, 5), "10"), "APPROVED");
-  clonmelPriorId = await seed("CLONMEL", PRIOR_YEAR, 9, at(clonmelItems, "10"), "APPROVED");
+  cashelPriorId = await seed("CASHEL", PRIOR_YEAR, 9, at(cashelItems, "10"), "APPROVED");
 
   // Counted, and empty. A real state, and a different one from never counted.
   await seed("DUBLIN", YEAR, 3, at(dublinItems.slice(0, 5), "0"), "APPROVED");
-  await seed("CLONMEL", YEAR, 3, at(clonmelItems, "0"), "APPROVED");
+  await seed("CASHEL", YEAR, 3, at(cashelItems, "0"), "APPROVED");
 
   // Priced but not a record: its snapshots exist and are deliberately not read.
   await seed("DUBLIN", YEAR, 7, at(dublinItems.slice(0, 5), "1"), "APPROVED");
-  clonmelSubmittedId = await seed("CLONMEL", YEAR, 7, at(clonmelItems, "1"), "SUBMITTED");
+  cashelSubmittedId = await seed("CASHEL", YEAR, 7, at(cashelItems, "1"), "SUBMITTED");
 
   // The month-on-month comparand: smaller than the main period, so that one variance on
   // the screen is a rise and the other is a fall, and the two signs are both asserted.
   dublinBeforeId = await seed("DUBLIN", YEAR, 8, at(dublinItems.slice(0, 5), "2"), "APPROVED");
-  clonmelBeforeId = await seed("CLONMEL", YEAR, 8, at(clonmelItems, "2"), "APPROVED");
+  cashelBeforeId = await seed("CASHEL", YEAR, 8, at(cashelItems, "2"), "APPROVED");
 
   // THE MAIN PERIOD. Dublin's SIXTH line is counted as ZERO and unpriced, and it must be
   // counted in no warning anywhere: a line counted as none is not stock that failed to be
@@ -175,7 +175,7 @@ test.beforeAll(async () => {
     [...at(dublinItems.slice(0, 5), "4"), { itemId: dublinItems[5].itemId, quantity: "0" }],
     "APPROVED",
   );
-  clonmelMainId = await seed("CLONMEL", YEAR, 9, at(clonmelItems, "4"), "APPROVED");
+  cashelMainId = await seed("CASHEL", YEAR, 9, at(cashelItems, "4"), "APPROVED");
 
   // Invariant 4, after approval and never before: `submitCount` is the only thing that may
   // write that column, and it writes whatever the master holds.
@@ -194,8 +194,8 @@ test.beforeAll(async () => {
     ]);
   }
   await clearPriceSnapshots(dublinMainId, [dublinItems[5].itemId]);
-  for (const countId of [clonmelMainId, clonmelPriorId, clonmelBeforeId]) {
-    await clearPriceSnapshots(countId, [clonmelItems[0].itemId]);
+  for (const countId of [cashelMainId, cashelPriorId, cashelBeforeId]) {
+    await clearPriceSnapshots(countId, [cashelItems[0].itemId]);
   }
 
   // Later than the latest COMPLETE period, and incomplete: the default must land here.
@@ -251,15 +251,15 @@ test("AC-7: every rendered figure is the sum of the rows this file seeded", asyn
   await page.goto(analysisUrl(MAIN));
 
   const dublin = await expectedYardValue(dublinMainId);
-  const clonmel = await expectedYardValue(clonmelMainId);
+  const cashel = await expectedYardValue(cashelMainId);
 
   await expect(page.getByTestId("yard-cell-DUBLIN")).toContainText(formatFigure(dublin));
-  await expect(page.getByTestId("yard-cell-CLONMEL")).toContainText(formatFigure(clonmel));
+  await expect(page.getByTestId("yard-cell-CASHEL")).toContainText(formatFigure(cashel));
 
   // THE TOTAL IS THE SUM OF THE EXACT YARDS, ROUNDED ONCE — never the sum of the rounded
   // ones. The two can differ by a cent, and the first is the correct figure (Invariant 10).
   await expect(page.getByTestId("total-stock")).toContainText(
-    formatFigure(sumDecimals([dublin, clonmel])),
+    formatFigure(sumDecimals([dublin, cashel])),
   );
 });
 
@@ -287,10 +287,10 @@ test("AC-9: the unvalued-line sentence, both numbers of it, and the route to the
   await expect(dublin).toHaveText(unvaluedHeldLinesMessage(heldWithoutPrice));
 
   // And the singular, on the same page: one yard reads `has`, the other reads `have`.
-  await expect(page.getByTestId("yard-cell-CLONMEL").getByTestId("unvalued-lines")).toHaveText(
-    unvaluedHeldLinesMessage(unvaluedHeldLinesOf(await valuedLinesOf(clonmelMainId))),
+  await expect(page.getByTestId("yard-cell-CASHEL").getByTestId("unvalued-lines")).toHaveText(
+    unvaluedHeldLinesMessage(unvaluedHeldLinesOf(await valuedLinesOf(cashelMainId))),
   );
-  expect(unvaluedHeldLinesOf(await valuedLinesOf(clonmelMainId))).toBe(1);
+  expect(unvaluedHeldLinesOf(await valuedLinesOf(cashelMainId))).toBe(1);
 
   // The sentence is a LINK to #9's summary, which lists the items by name.
   const href = await dublin.locator("a").getAttribute("href");
@@ -314,15 +314,15 @@ test("AC-5: a SUBMITTED yard is named and linked, and is worth nothing anywhere"
   await signIn(page, await newUser());
   await page.goto(analysisUrl(PART_SUBMITTED));
 
-  const clonmel = page.getByTestId("yard-cell-CLONMEL");
-  await expect(clonmel).toContainText("Submitted");
+  const cashel = page.getByTestId("yard-cell-CASHEL");
+  await expect(cashel).toContainText("Submitted");
 
   // No euro inside the cell, and in particular not €0.00.
-  expect(await clonmel.textContent()).not.toContain(CURRENCY_SYMBOL);
+  expect(await cashel.textContent()).not.toContain(CURRENCY_SYMBOL);
 
-  const href = await clonmel.getByTestId("yard-count-link").getAttribute("href");
+  const href = await cashel.getByTestId("yard-count-link").getAttribute("href");
   expect(new URL(href ?? "", "http://localhost").pathname).toBe(
-    `/stock-takes/counts/${clonmelSubmittedId}`,
+    `/stock-takes/counts/${cashelSubmittedId}`,
   );
 
   // Its snapshots exist. They are deliberately not read, so the period does not add up -
@@ -350,7 +350,7 @@ test("AC-6: a complete period holding nothing renders €0.00, and a gap renders
 
   // And the yard that was never counted, one period later in the same fixture.
   await page.goto(analysisUrl(LATEST));
-  await expect(page.getByTestId("yard-cell-CLONMEL")).toContainText(NOT_COUNTED);
+  await expect(page.getByTestId("yard-cell-CASHEL")).toContainText(NOT_COUNTED);
   expect(await page.getByTestId("total-stock").textContent()).not.toContain(CURRENCY_SYMBOL);
   await expect(page.getByTestId("total-stock")).toContainText(INCOMPLETE_TOTAL);
   await expect(page.getByTestId("total-stock")).not.toContainText(NOT_COUNTED);
@@ -394,15 +394,15 @@ test("AC-11, AC-12: month on month rises, year on year falls, and both are joine
   // vacuous pass becomes a failure that says why.
   const main = sumDecimals([
     await expectedYardValue(dublinMainId),
-    await expectedYardValue(clonmelMainId),
+    await expectedYardValue(cashelMainId),
   ]);
   const before = sumDecimals([
     await expectedYardValue(dublinBeforeId),
-    await expectedYardValue(clonmelBeforeId),
+    await expectedYardValue(cashelBeforeId),
   ]);
   const prior = sumDecimals([
     await expectedYardValue(dublinPriorId),
-    await expectedYardValue(clonmelPriorId),
+    await expectedYardValue(cashelPriorId),
   ]);
   expect(compareDecimals(main, before), "the fixture must make this a rise").toBe(1);
   expect(compareDecimals(main, prior), "the fixture must make this a fall").toBe(-1);
@@ -510,7 +510,7 @@ test("AC-14: the chart is thirteen assertable slots and cannot disagree with its
   // unrounded, not the rounded string the cell beside it prints.
   const exact = sumDecimals([
     await expectedYardValue(dublinMainId),
-    await expectedYardValue(clonmelMainId),
+    await expectedYardValue(cashelMainId),
   ]);
   await expect(page.getByTestId("trend-bar").last()).toHaveAttribute("data-amount", exact);
 });
@@ -524,7 +524,7 @@ test("AC-15: the breakdown groups by type and by supplier, in the order the mast
 
   // The items that are HELD in the main period: Dublin's fifth line is counted as zero, so
   // its group appears only if another held line shares it.
-  const heldIds = [...dublinItems.slice(0, 5), ...clonmelItems].map((item) => item.itemId);
+  const heldIds = [...dublinItems.slice(0, 5), ...cashelItems].map((item) => item.itemId);
 
   await page.goto(analysisUrl(MAIN));
   const byType = await page
@@ -581,7 +581,7 @@ test("AC-15: an incomplete period keeps the per-yard figures and loses the row t
   expect(rowTotals.length).toBeGreaterThan(0);
   expect(new Set(rowTotals.map((text) => text.trim()))).toEqual(new Set([INCOMPLETE_TOTAL]));
   expect(
-    (await row.locator("[data-testid='breakdown-cell'][data-location-code='CLONMEL']").textContent())?.trim(),
+    (await row.locator("[data-testid='breakdown-cell'][data-location-code='CASHEL']").textContent())?.trim(),
   ).toBe(NOT_COUNTED);
 });
 
@@ -700,7 +700,7 @@ test("AC-11: the rendered variance is exactly the difference of the two totals",
 
   const main = sumDecimals([
     await expectedYardValue(dublinMainId),
-    await expectedYardValue(clonmelMainId),
+    await expectedYardValue(cashelMainId),
   ]);
 
   // The comparand's EXACT total, read off the table row that carries it - so the variance

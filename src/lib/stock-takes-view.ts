@@ -6,7 +6,7 @@ import type { CalendarDay, CalendarMonth, YardScope } from "@/types/stock-count"
  * `/stock-entry` and `/stock-takes` are the same calendar rendered at two addresses with
  * different affordances (spec 010, *Scope boundary with #7*). They stay the same calendar
  * by CALLING THE SAME FUNCTION: `listCalendarMonth(actor, monthKey)` is unchanged — same
- * signature, same body, same arguments from both pages — and the Dublin / Clonmel / Both
+ * signature, same body, same arguments from both pages — and the Dublin / Cashel / Both
  * selector is applied afterwards, here, to the value it returned.
  *
  * A `where` clause on a second query would be a second definition of "the counts in this
@@ -24,7 +24,7 @@ import type { CalendarDay, CalendarMonth, YardScope } from "@/types/stock-count"
 /** The scopes a day's badges are counted under, in the order the selector renders them. */
 const SCOPE_OF_CODE: Record<string, YardScope | undefined> = {
   DUBLIN: "DUBLIN",
-  CLONMEL: "CLONMEL",
+  CASHEL: "CASHEL",
 };
 
 /** `BOTH` is every badge; a named yard is the badges whose `locationCode` is that yard. */
@@ -65,7 +65,7 @@ export function filterCalendarByYard(month: CalendarMonth, scope: YardScope): Ca
 }
 
 /**
- * How many counts each scope has IN THIS MONTH — the `n` of `Dublin (n)`, `Clonmel (n)` and
+ * How many counts each scope has IN THIS MONTH — the `n` of `Dublin (n)`, `Cashel (n)` and
  * `Both (n)` (AC-6).
  *
  * `BOTH` is the total rather than the sum of the two named yards, and the two are the same
@@ -74,7 +74,7 @@ export function filterCalendarByYard(month: CalendarMonth, scope: YardScope): Ca
  * name, which is the honest answer for a facet count: it says how many the scope shows.
  */
 export function scopeTallies(month: CalendarMonth): Record<YardScope, number> {
-  const tallies: Record<YardScope, number> = { DUBLIN: 0, CLONMEL: 0, BOTH: 0 };
+  const tallies: Record<YardScope, number> = { DUBLIN: 0, CASHEL: 0, BOTH: 0 };
 
   for (const day of month.days) {
     for (const badge of day.counts) {

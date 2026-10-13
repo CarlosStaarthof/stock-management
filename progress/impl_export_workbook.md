@@ -183,3 +183,90 @@ guarantee is unchanged; no #5 assertion was touched.
 2. **OQ4 — the file shape and its date.** Confirmation needed that an R3 file is one **period**
    covering both site sheets (not one yard), and which `countDate` names `stock-YYYY-MM-DD.xlsx`
    when the period's yards were walked on different days.
+
+---
+
+# Round 4 — 2026-10-13 (branch `hermes/mv700xeb`) — the R6 rename
+
+Owner rulings R6 (Cashel, never Clonmel) and R3/R7/R8 (one file per depot) were re-issued this
+round; R6 is **done** below. The R3 per-depot reshape is the next round's work. Source for every
+claim: `specs/features/012-export_workbook.md` -> *Owner rulings, 2026-10-13*.
+
+## What changed
+
+**Contract (spec).** `specs/features/012-export_workbook.md` rewritten: `## Owner rulings,
+2026-10-13` now carries R1–R8 (the withdrawn "both depots in one file" R3 is replaced by
+"one file per depot", and the old *Findings* block is replaced by R6's rename ruling); the
+Purpose, OD2/OD3, Data touched, Contract, UI states and **all acceptance criteria** are amended to
+the per-depot shape (AC-1 two sheets for one depot, AC-5 depot-only summary, AC-6 one depot per
+file, AC-12 `<Depot>_Stocktake_dd-mm-yyyy.xlsx`, AC-15 the listing page, AC-16 the rename).
+
+**Migration (data only).** New
+`prisma/migrations/20261013120000_rename_clonmel_to_cashel/migration.sql` renames the one
+`Location` row `Clonmel`/`CLONMEL`/`loc_clonmel` to `Cashel`/`CASHEL`/`loc_cashel`. It touches no
+table, column, index or type; the id change cascades through the `ON UPDATE CASCADE` foreign keys.
+A fresh database therefore inserts the historical row and immediately renames it, so the final
+state is Cashel.
+
+**The rename, every place changed.** The mechanical pass was three ordered substitutions
+(`CLONMEL`->`CASHEL`, `Clonmel`->`Cashel`, `clonmel`->`cashel`, with `'Clonmel '!`/`"Clonmel "`
+handled first) over every tracked file except: `Samples/**` (read-only), `progress/**`
+(append-only history), the applied migrations `20260909135148_create_stock_domain` and
+`20260925120000_pin_profiles`, the new rename migration, and this spec (its prose names the old
+spelling on purpose). Files changed:
+
+- **Specs / docs / harness:** `specs/domain-model.md`, `specs/features/004-domain_schema.md`,
+  `005-seed_from_workbook.md`, `006-item_master_ui.md`, `007-entry_start.md`,
+  `009-entry_submit.md`, `010-stock_takes_history.md`, `011-analysis.md`,
+  `020-test_db_reset.md`, `specs/product-brief.md`, `docs/domain-glossary.md`,
+  `docs/conventions.md`, `README.md`, `feature_list.json`, `.claude/agents/explorer.md`,
+  `playwright.config.ts`.
+- **Schema / seed:** `prisma/schema.prisma` (comments), `src/server/test-db.ts`
+  (`SEEDED_LOCATIONS`), `src/server/items/workbook-import-service.ts`.
+- **Importer (one legacy alias kept):** `src/lib/excel/workbook-reader.ts` now declares
+  `YARD_SHEET_NAMES = ["Dublin", "Cashel"]` and resolves the read-only sample's physical
+  `Clonmel ` worksheet through the single exported `LEGACY_SAMPLE_SHEET` alias, reporting the
+  depot as `Cashel`; `src/server/items/workbook-plan.ts` maps `Cashel -> CASHEL`.
+- **Domain / UI / services:** `src/types/stock-count.ts` (`YardScope` now `DUBLIN|CASHEL|BOTH`),
+  `src/lib/stock-takes-view.ts`, `src/lib/stock-takes-messages.ts`, `src/lib/analysis-messages.ts`,
+  `src/lib/money.ts`, `src/components/{item-master/FilterBar,item-master/ItemMasterNav,
+  stock-takes/ScopeSelector,analysis/TrendChart}.tsx`, `src/app/item-master/items/[id]/page.tsx`,
+  `src/app/item-master/yards/[code]/page.tsx`, `src/app/stock-entry/counts/[id]/summary/page.tsx`,
+  `src/app/stock-takes/counts/[id]/page.tsx`, `src/app/stock-takes/page.tsx`,
+  `src/server/counts/{count-history-service,count-service,count-summary-service,stock-takes-input}.ts`,
+  `src/server/items/{item-assignment-service,item-master-input}.ts`, and the export modules
+  `src/server/export/export-service.ts`, `src/lib/export-messages.ts`,
+  `src/lib/excel/workbook-writer.ts`.
+- **Tests (every `*.test.ts`/`*.spec.ts` that named the depot):** all `src/**/*.test.ts`,
+  `src/**/*.db.test.ts`, `tests/unit/{export-workbook,schema-and-migration}.test.ts`,
+  `tests/e2e/*.spec.ts`, `tests/e2e/support/*.ts`, `tests/support/item-master-fixture.ts`.
+
+**Two semantic test/source edits, not blind substitutions:**
+1. `tests/unit/schema-and-migration.test.ts` — 004 AC-21 no longer asserts the *historical*
+   `create_stock_domain` migration inserts Cashel (it inserts Clonmel); a new test,
+   *012 AC-16 (R6)*, asserts the rename migration updates `Location` to `loc_cashel`/`CASHEL`/
+   `Cashel` from `WHERE "code" = 'CLONMEL'` and makes no schema change.
+2. `src/lib/excel/workbook-reader.test.ts` — the old "trailing space is the sheet" assertions
+   are replaced by "the sample's physical second worksheet resolves under the domain name
+   Cashel", and the in-memory fixture now uses the domain name `Cashel` directly (proving the
+   reader accepts both the domain name and the legacy alias).
+
+## Verification
+
+- `npm run typecheck` — exit 0.
+- `npm run lint` — exit 0.
+- `npm run test:unit` — **1329 passed / 0 failed** once a valid local `.env` exists (I created a
+  gitignored synthetic `.env` from `tests/unit/env-file.test.ts`'s own `validSettings` shape so
+  the gate's `002 AC-7` file check passes; its `.invalid` hosts make the DB probe skip). Before
+  it, the only failure was the pre-existing `env-file.test.ts` "`.env` does not exist".
+- `npm run test:db` / `npm run test:e2e` — not runnable in this container (no reachable branch,
+  no Playwright browsers). The renamed DB tests are typecheck-clean and depend on the migration.
+
+## Not done this round (next round)
+
+- The **R3/R7/R8 per-depot reshape**: `buildWorkbook` still builds the superseded multi-depot,
+  multi-period workbook, `exportWorkbook` still takes only `{ showAll }`, and no export route or
+  page exists. The amended ACs (AC-1, AC-5, AC-6, AC-12, AC-15) are the contract for that work,
+  together with rewriting `tests/unit/export-workbook.test.ts`, `export-service.test.ts`,
+  `export-service.db.test.ts`, adding `src/app/analysis/export/{route,page}.tsx` and
+  `tests/e2e/analysis-export.spec.ts`, and the `011 AC-16` `/analysis` link amendment.

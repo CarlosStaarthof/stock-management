@@ -17,26 +17,37 @@ import { ValidationError } from "@/server/errors";
  *
  * NOT READ, on purpose (specs/domain-model.md Part 2 § Not imported, spec 005 AC-25): the
  * historical `Qty` / `Value` column pairs beyond column E, the `Summary` sheet, and the
- * whole `Clonmel Trucks & Yard` sheet. Counting starts fresh from the next count, so this
+ * whole `Cashel Trucks & Yard` sheet. Counting starts fresh from the next count, so this
  * module has no reason to know a quantity ever existed.
  */
 
 /**
- * The two yard sheets, in the order the importer processes them.
+ * The two yard sheets, in the order the importer processes them, under their **domain** names.
  *
- * The trailing space in `"Clonmel "` is the workbook's own and is preserved everywhere:
- * `getWorksheet("Clonmel")` returns nothing (AC-2), so tidying the name away would make
- * the importer read one sheet and silently lose 70 rows.
+ * `Cashel` was `Clonmel` before owner ruling R6 (2026-10-13). The read-only sample
+ * `Samples/Stock @ 01-Sep-2026.xlsx` may not be modified (AGENTS.md), and its second
+ * worksheet is still physically named `Clonmel ` (with a trailing space). That name is
+ * therefore a fact about one historical file, not a depot, and lives only in
+ * `LEGACY_SAMPLE_SHEET` below — the single occurrence of the old spelling left in code.
  */
-export const YARD_SHEET_NAMES = ["Dublin", "Clonmel "] as const;
+export const YARD_SHEET_NAMES = ["Dublin", "Cashel"] as const;
 
 export type YardSheetName = (typeof YARD_SHEET_NAMES)[number];
+
+/**
+ * The physical worksheet names inside the read-only sample, for the sheets whose domain name
+ * differs from the file's. A workbook that already uses the domain name is resolved first
+ * (see `readYardSheets`), so this alias is a fallback for the one file we cannot rename.
+ */
+export const LEGACY_SAMPLE_SHEET: Partial<Record<YardSheetName, string>> = {
+  Cashel: "Clonmel ",
+};
 
 export type YardSheetRow = {
   sheet: YardSheetName;
   /** The 1-based worksheet row, e.g. 45. Becomes `ItemLocation.sortOrder`. */
   row: number;
-  /** True only for the two fuel rows below `'Clonmel '`'s total row. */
+  /** True only for the two fuel rows below `Cashel`'s total row. */
   belowTotal: boolean;
   /** Column A, trimmed. Never empty — a blank description fails loudly (AC-7). */
   description: string;
@@ -67,7 +78,7 @@ export type YardSheetRow = {
 /** Column A of row 3 is the first item on both sheets; rows 1 and 2 are headings. */
 const FIRST_ITEM_ROW = 3;
 
-/** The row that closes the item block. `'Clonmel '!A71` and `Dublin!A86`. */
+/** The row that closes the item block. `Cashel!A71` and `Dublin!A86`. */
 const TOTAL_MARKER = "TOTAL";
 
 const COLUMN_DESCRIPTION = "A";
@@ -91,7 +102,7 @@ function quoteSheetName(sheetName: string): string {
 }
 
 /**
- * `Dublin!A45` and `'Clonmel '!A75`, the way Excel itself writes them.
+ * `Dublin!A45` and `Cashel!A75`, the way Excel itself writes them.
  *
  * Every message, note and report entry in this feature uses this one function, so a cell
  * a reviewer reads in the report can be pasted straight into the workbook's name box.
@@ -165,7 +176,7 @@ export function toDecimalString(value: number, scale: number = PRICE_SCALE): str
 /**
  * One cell reduced to a string or a number.
  *
- * The rich-text branch is the reason spec 005 AC-4 exists. Five Clonmel descriptions are
+ * The rich-text branch is the reason spec 005 AC-4 exists. Five Cashel descriptions are
  * stored as several `<r>` runs inside one shared string; an earlier reader took the first
  * run only and produced `tBriteline`, which this project then wrote down as a supplier
  * typo that does not exist (Part 2). Every `<t>` descendant is concatenated, in order.
@@ -324,7 +335,7 @@ function readSheet(sheet: ExcelJS.Worksheet, sheetName: YardSheetName): YardShee
 }
 
 /**
- * Every item row of both yard sheets, `Dublin` first and `'Clonmel '` second.
+ * Every item row of both yard sheets, `Dublin` first and `Cashel` second.
  *
  * The order is fixed because it decides which sheet wins a cross-sheet disagreement
  * (AC-14), and because a deterministic order is what makes two runs of the plan
@@ -356,9 +367,12 @@ export async function readYardSheets(buffer: Buffer): Promise<YardSheetRow[]> {
   const rows: YardSheetRow[] = [];
 
   for (const sheetName of YARD_SHEET_NAMES) {
-    const sheet = workbook.getWorksheet(sheetName);
+    // The domain name first, then the read-only sample's physical alias (R6). `getWorksheet`
+    // returns `undefined` for the alias when the workbook already uses `Cashel`.
+    const alias = LEGACY_SAMPLE_SHEET[sheetName];
+    const sheet = workbook.getWorksheet(sheetName) ?? (alias === undefined ? undefined : workbook.getWorksheet(alias));
 
-    if (sheet === undefined || sheet.name !== sheetName) {
+    if (sheet === undefined || (sheet.name !== sheetName && sheet.name !== alias)) {
       throw new ValidationError(
         "sheet",
         `the workbook has no sheet named ${JSON.stringify(sheetName)}; it holds ` +

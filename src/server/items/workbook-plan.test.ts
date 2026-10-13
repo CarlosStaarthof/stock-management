@@ -35,7 +35,7 @@ const WORKBOOK_PATH = "Samples/Stock @ 01-Sep-2026.xlsx";
 const EMPTY_DATABASE: ExistingMasterData = {
   locations: [
     { id: "loc_dublin", code: "DUBLIN" },
-    { id: "loc_clonmel", code: "CLONMEL" },
+    { id: "loc_cashel", code: "CASHEL" },
   ],
   suppliers: [],
   itemTypes: [],
@@ -207,7 +207,7 @@ describe("item types", () => {
   });
 
   it("AC-9: Logo's collapses into Logo, and no type named Logo's is created", () => {
-    expect(itemAt("'Clonmel '!A66").itemTypeCode).toBe("Logo");
+    expect(itemAt("Cashel!A66").itemTypeCode).toBe("Logo");
     expect(plan.itemTypes.map((itemType) => itemType.code)).not.toContain("Logo's");
   });
 });
@@ -263,7 +263,7 @@ describe("items", () => {
     // The user decided this at approval (spec 005 Open questions §5). Collapsing internal
     // runs when matching would give 138 items and 14 shared; the plan holds 140 and 12.
     const twoSpaces = itemAt("Dublin!A16");
-    const threeSpaces = itemAt("'Clonmel '!A52");
+    const threeSpaces = itemAt("Cashel!A52");
 
     expect(twoSpaces.description).toBe("Bicycle Logo's  1200mm");
     expect(threeSpaces.description).toBe("Bicycle Logo's   1200mm");
@@ -312,7 +312,7 @@ describe("the thirteen incomplete rows", () => {
     "Dublin!A62",
     "Dublin!A63",
     "Dublin!A78",
-    "'Clonmel '!A54",
+    "Cashel!A54",
   ];
 
   it("AC-12: each is imported and flagged needsReview", () => {
@@ -342,7 +342,7 @@ describe("the thirteen incomplete rows", () => {
       "Dublin!A48",
       "Dublin!A62",
       "Dublin!A63",
-      "'Clonmel '!A54",
+      "Cashel!A54",
     ];
 
     expect(withoutPrice).toHaveLength(11);
@@ -364,10 +364,10 @@ describe("the thirteen incomplete rows", () => {
   });
 });
 
-describe("the two rows below Clonmel's total", () => {
-  it("AC-13: are imported in full, linked to Clonmel, priced and flagged", () => {
-    const diesel = itemAt("'Clonmel '!A75");
-    const gasOil = itemAt("'Clonmel '!A76");
+describe("the two rows below Cashel's total", () => {
+  it("AC-13: are imported in full, linked to Cashel, priced and flagged", () => {
+    const diesel = itemAt("Cashel!A75");
+    const gasOil = itemAt("Cashel!A76");
 
     expect(diesel.description).toBe("Road Diesel - White");
     expect(gasOil.description).toBe("Marked Gas Oil - Green");
@@ -377,7 +377,7 @@ describe("the two rows below Clonmel's total", () => {
       expect(item.itemTypeCode).toBe("Fuel");
       expect(item.unitLabel).toBe("Ltrs");
       expect(item.unitKind).toBe("LITRE");
-      expect(item.links).toEqual([{ locationCode: "CLONMEL", sortOrder: item.links[0].sortOrder }]);
+      expect(item.links).toEqual([{ locationCode: "CASHEL", sortOrder: item.links[0].sortOrder }]);
       expect(item.needsReview).toBe(true);
       expect(item.reviewReasons).toEqual(["BELOW_TOTAL_ROW"]);
     }
@@ -389,10 +389,10 @@ describe("the two rows below Clonmel's total", () => {
   });
 
   it("AC-13: each carries a note naming its cell and saying where the row sits", () => {
-    expect(itemAt("'Clonmel '!A75").notes).toContain("'Clonmel '!A75");
-    expect(itemAt("'Clonmel '!A75").notes).toContain("below the total row");
-    expect(itemAt("'Clonmel '!A76").notes).toContain("'Clonmel '!A76");
-    expect(itemAt("'Clonmel '!A76").notes).toContain("below the total row");
+    expect(itemAt("Cashel!A75").notes).toContain("Cashel!A75");
+    expect(itemAt("Cashel!A75").notes).toContain("below the total row");
+    expect(itemAt("Cashel!A76").notes).toContain("Cashel!A76");
+    expect(itemAt("Cashel!A76").notes).toContain("below the total row");
   });
 
   it("AC-13: Dublin contributes no below-total row", () => {
@@ -412,11 +412,11 @@ describe("cross-sheet disagreements", () => {
     expect(
       unitConflicts.map((conflict) => [conflict.description, ...conflict.cells, ...conflict.readings]),
     ).toEqual([
-      ["MMA Paints - Red", "Dublin!D50", "'Clonmel '!D64", "1 Unit", "16kg"],
-      ["MMA Paints - Blue", "Dublin!D51", "'Clonmel '!D61", "1 Unit", "16kg"],
-      ["MMA Paints - White", "Dublin!D53", "'Clonmel '!D60", "2 Unit", "16kg"],
-      ["ViaLine  Traffic Red RAL1023", "Dublin!D70", "'Clonmel '!D42", "20 Kg", "20kg"],
-      ["ViaLine Traffic Yellow (RAL 1023)", "Dublin!D73", "'Clonmel '!D43", "20 Kg", "20kg"],
+      ["MMA Paints - Red", "Dublin!D50", "Cashel!D64", "1 Unit", "16kg"],
+      ["MMA Paints - Blue", "Dublin!D51", "Cashel!D61", "1 Unit", "16kg"],
+      ["MMA Paints - White", "Dublin!D53", "Cashel!D60", "2 Unit", "16kg"],
+      ["ViaLine  Traffic Red RAL1023", "Dublin!D70", "Cashel!D42", "20 Kg", "20kg"],
+      ["ViaLine Traffic Yellow (RAL 1023)", "Dublin!D73", "Cashel!D43", "20 Kg", "20kg"],
     ]);
 
     for (const conflict of unitConflicts) {
@@ -430,11 +430,11 @@ describe("cross-sheet disagreements", () => {
     expect(
       typeConflicts.map((conflict) => [conflict.description, ...conflict.cells, ...conflict.readings]),
     ).toEqual([
-      ["MultiGrip X440 Traffic Green RAL6024", "Dublin!C65", "'Clonmel '!C36", "Paint", "M-Grip"],
-      ["MultiGrip X440 Traffic Purple. RAL 4006", "Dublin!C66", "'Clonmel '!C35", "Paint", "M-Grip"],
-      ["ViaLine  Traffic Red RAL1023", "Dublin!C70", "'Clonmel '!C42", "Paint", "Vialine"],
-      ["ViaLine Traffic Yellow (RAL 1023)", "Dublin!C73", "'Clonmel '!C43", "Paint", "Vialine"],
-      ["ViaLine White", "Dublin!C74", "'Clonmel '!C39", "Paint", "Vialine"],
+      ["MultiGrip X440 Traffic Green RAL6024", "Dublin!C65", "Cashel!C36", "Paint", "M-Grip"],
+      ["MultiGrip X440 Traffic Purple. RAL 4006", "Dublin!C66", "Cashel!C35", "Paint", "M-Grip"],
+      ["ViaLine  Traffic Red RAL1023", "Dublin!C70", "Cashel!C42", "Paint", "Vialine"],
+      ["ViaLine Traffic Yellow (RAL 1023)", "Dublin!C73", "Cashel!C43", "Paint", "Vialine"],
+      ["ViaLine White", "Dublin!C74", "Cashel!C39", "Paint", "Vialine"],
     ]);
   });
 
@@ -472,12 +472,12 @@ describe("cross-sheet disagreements", () => {
     const refused = () =>
       buildImportPlan([
         row({ sheet: "Dublin", row: 5, description: "Same Thing", price: "100" }),
-        row({ sheet: "Clonmel ", row: 9, description: "Same Thing", price: "110" }),
+        row({ sheet: "Cashel", row: 9, description: "Same Thing", price: "110" }),
       ]);
 
     expect(refused).toThrow(ConflictError);
     expect(refused).toThrow(/Dublin!E5/);
-    expect(refused).toThrow(/'Clonmel '!E9/);
+    expect(refused).toThrow(/Cashel!E9/);
     expect(refused).toThrow(/100/);
     expect(refused).toThrow(/110/);
   });
@@ -502,7 +502,7 @@ describe("the import report", () => {
 
     expect(report.sheets).toEqual([
       { name: "Dublin", firstRow: 3, lastRow: 84, rowsRead: 82, belowTotalRows: 0 },
-      { name: "Clonmel ", firstRow: 3, lastRow: 70, rowsRead: 68, belowTotalRows: 2 },
+      { name: "Cashel", firstRow: 3, lastRow: 70, rowsRead: 68, belowTotalRows: 2 },
     ]);
 
     expect(report.counts.map((count) => [count.table, count.planned])).toEqual([
@@ -528,9 +528,9 @@ describe("the import report", () => {
       "Dublin!A62",
       "Dublin!A63",
       "Dublin!A78",
-      "'Clonmel '!A54",
-      "'Clonmel '!A75",
-      "'Clonmel '!A76",
+      "Cashel!A54",
+      "Cashel!A75",
+      "Cashel!A76",
     ]);
 
     const reasons = new Set(report.needsReview.flatMap((entry) => entry.reasons));
@@ -779,14 +779,14 @@ describe("the report carries no money outside divergences[]", () => {
 });
 
 describe("diffPlan", () => {
-  it("AC-19: refuses a database with no CLONMEL yard, and names the code", () => {
-    const missingClonmel: ExistingMasterData = {
+  it("AC-19: refuses a database with no CASHEL yard, and names the code", () => {
+    const missingCashel: ExistingMasterData = {
       ...EMPTY_DATABASE,
       locations: [{ id: "loc_dublin", code: "DUBLIN" }],
     };
 
-    expect(() => diffPlan(plan, missingClonmel)).toThrow(NotFoundError);
-    expect(() => diffPlan(plan, missingClonmel)).toThrow(/CLONMEL/);
+    expect(() => diffPlan(plan, missingCashel)).toThrow(NotFoundError);
+    expect(() => diffPlan(plan, missingCashel)).toThrow(/CASHEL/);
   });
 
   it("AC-18: against an empty database everything is a create and nothing is skipped", () => {
@@ -814,14 +814,14 @@ describe("diffPlan", () => {
     // accept both. The collapse happens here, in application code, before the write.
     const collapsed = buildImportPlan([
       row({ sheet: "Dublin", row: 45, description: "School Logo Triangle", supplier: null, price: null }),
-      row({ sheet: "Clonmel ", row: 12, description: "School Logo Triangle", supplier: null, price: null }),
+      row({ sheet: "Cashel", row: 12, description: "School Logo Triangle", supplier: null, price: null }),
     ]);
 
     expect(collapsed.items).toHaveLength(1);
     expect(collapsed.items[0].supplierName).toBeNull();
     expect(collapsed.items[0].links).toEqual([
       { locationCode: "DUBLIN", sortOrder: 45 },
-      { locationCode: "CLONMEL", sortOrder: 12 },
+      { locationCode: "CASHEL", sortOrder: 12 },
     ]);
   });
 
@@ -946,12 +946,12 @@ describe("the importer's source, as a fact about the repository", () => {
     }
   });
 
-  it("AC-25: names Summary and Clonmel Trucks & Yard only in a comment that excludes them", () => {
+  it("AC-25: names Summary and Cashel Trucks & Yard only in a comment that excludes them", () => {
     let mentions = 0;
 
     for (const file of MODULES) {
       for (const line of readFileSync(file, "utf8").split("\n")) {
-        if (!/Summary|Clonmel Trucks & Yard/.test(line)) continue;
+        if (!/Summary|Cashel Trucks & Yard/.test(line)) continue;
         mentions += 1;
         expect(line.trim(), `${file}: ${line}`).toMatch(/^(\*|\/\/|\/\*)/);
       }
@@ -1021,7 +1021,7 @@ describe("planWorkbook, the --dry-run path", () => {
     await expect(planWorkbook("wrong.pdf", notAWorkbook)).rejects.toThrow(/xlsx/);
   });
 
-  it("AC-27: a workbook with no 'Clonmel ' sheet is refused before anything is planned", async () => {
+  it("AC-27: a workbook with no Cashel sheet is refused before anything is planned", async () => {
     const workbook = new ExcelJS.Workbook();
     const dublin = workbook.addWorksheet("Dublin");
     dublin.getCell("A3").value = "Thing";
@@ -1030,7 +1030,7 @@ describe("planWorkbook, the --dry-run path", () => {
     const bytes = Buffer.from(await workbook.xlsx.writeBuffer());
 
     await expect(planWorkbook("half.xlsx", bytes)).rejects.toBeInstanceOf(ValidationError);
-    await expect(planWorkbook("half.xlsx", bytes)).rejects.toThrow(/Clonmel/);
+    await expect(planWorkbook("half.xlsx", bytes)).rejects.toThrow(/Cashel/);
   });
 });
 

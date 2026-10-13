@@ -124,9 +124,9 @@ function baseInput(overrides: Partial<ExportInput> = {}): ExportInput {
     }),
   ];
 
-  const clonmelRows: ExportRow[] = [
+  const cashelRows: ExportRow[] = [
     row({
-      description: "Clonmel Held",
+      description: "Cashel Held",
       supplier: "Meon",
       cells: {
         "2026-06": { quantity: "5", value: "15" },
@@ -145,25 +145,25 @@ function baseInput(overrides: Partial<ExportInput> = {}): ExportInput {
     ],
   };
 
-  const clonmel: ExportYard = {
-    name: "Clonmel",
-    code: "CLONMEL",
-    rows: clonmelRows,
+  const cashel: ExportYard = {
+    name: "Cashel",
+    code: "CASHEL",
+    rows: cashelRows,
     counts: [
       { periodKey: "2026-06", signedByName: "Brian", signedOn: "2026-07-01" },
       { periodKey: "2026-07", signedByName: "Dara", signedOn: "2026-08-01" },
     ],
   };
 
-  return { showAll: false, periods: [PERIOD_A, PERIOD_B], yards: [dublin, clonmel], ...overrides };
+  return { showAll: false, periods: [PERIOD_A, PERIOD_B], yards: [dublin, cashel], ...overrides };
 }
 
 /* --------------------------------------------------------------------------- AC-1 */
 
 describe("AC-1: three sheets, named exactly, generated purely", () => {
-  it("loads into Summary, Dublin and Clonmel, in that order, with no trailing space", async () => {
+  it("loads into Summary, Dublin and Cashel, in that order, with no trailing space", async () => {
     const workbook = await load(baseInput());
-    expect(workbook.worksheets.map((each) => each.name)).toEqual(["Summary", "Dublin", "Clonmel"]);
+    expect(workbook.worksheets.map((each) => each.name)).toEqual(["Summary", "Dublin", "Cashel"]);
   });
 
   it("names the yard sheets for the active yards it is handed (ruling R5)", async () => {
@@ -308,7 +308,7 @@ describe("AC-5: Summary mirrors the sample and is derived", () => {
     expect(valueOf(summary, "A7")).toBe(SUMMARY_MOM_LABEL);
     expect(valueOf(summary, "A9")).toBe(SUMMARY_YOY_LABEL);
 
-    // July: Clonmel 15 + Dublin 2.01 = 17.01; June the same.
+    // July: Cashel 15 + Dublin 2.01 = 17.01; June the same.
     expect(valueOf(summary, "B3")).toBe(15);
     expect(valueOf(summary, "B4")).toBe(2.01);
     expect(valueOf(summary, "B5")).toBe(17.01);
@@ -325,7 +325,7 @@ describe("AC-5: Summary mirrors the sample and is derived", () => {
 
   it("gives no Total Stock for an incomplete period and names the missing yard elsewhere", async () => {
     const input = baseInput();
-    // Clonmel was not counted in July, so July is incomplete.
+    // Cashel was not counted in July, so July is incomplete.
     input.yards[1].counts = [input.yards[1].counts[0]];
     const workbook = await load(input);
     const summary = sheet(workbook, "Summary");

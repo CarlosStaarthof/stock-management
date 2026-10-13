@@ -29,9 +29,9 @@ import type { TestUser } from "./support/users";
  * reachable at all: 007 AC-8 caps the PERIOD a count started through that flow may close
  * at 2100, and this file needs counts to LOOK at rather than counts to make.
  *
- * THE FIXTURE IS AC-11's, exactly: Dublin on 31 January, 30 April and 31 May, Clonmel on
+ * THE FIXTURE IS AC-11's, exactly: Dublin on 31 January, 30 April and 31 May, Cashel on
  * 31 March and again on 30 April. So April holds two yards on one day (AC-4, AC-6), March
- * holds only Clonmel (AC-6), May is a neighbouring month with a count in it (AC-4), and
+ * holds only Cashel (AC-6), May is a neighbouring month with a count in it (AC-4), and
  * *Previous count* from April must answer `2101-01` under `DUBLIN` and `2101-03` under
  * `BOTH` — three months back at one yard, skipping the two nobody counted there (AC-11).
  */
@@ -43,8 +43,8 @@ const created: string[] = [];
 let dublinJanuaryId = "";
 let dublinAprilId = "";
 let dublinMayId = "";
-let clonmelMarchId = "";
-let clonmelAprilId = "";
+let cashelMarchId = "";
+let cashelAprilId = "";
 let realCountsBefore: string[] = [];
 let masterBefore: Awaited<ReturnType<typeof seededMasterCounts>>;
 
@@ -64,16 +64,16 @@ test.beforeAll(async () => {
   created.push(owner.username);
 
   const seed = async (
-    locationCode: "DUBLIN" | "CLONMEL",
+    locationCode: "DUBLIN" | "CASHEL",
     month: number,
     countDate: string,
   ): Promise<string> =>
     seedCount({ locationCode, year: YEAR, month, countDate, createdById: owner.id });
 
   dublinJanuaryId = await seed("DUBLIN", 1, `${Y}-01-31`);
-  clonmelMarchId = await seed("CLONMEL", 3, `${Y}-03-31`);
+  cashelMarchId = await seed("CASHEL", 3, `${Y}-03-31`);
   dublinAprilId = await seed("DUBLIN", 4, `${Y}-04-30`);
-  clonmelAprilId = await seed("CLONMEL", 4, `${Y}-04-30`);
+  cashelAprilId = await seed("CASHEL", 4, `${Y}-04-30`);
   dublinMayId = await seed("DUBLIN", 5, `${Y}-05-31`);
 });
 
@@ -186,7 +186,7 @@ test("AC-4: the two calendars render the SAME badges for the same month", async 
   expect(takesBadges).toEqual(entryBadges);
   expect(entryBadges.length).toBeGreaterThan(0);
   expect(entryBadges.some((tuple) => tuple.includes(dublinAprilId))).toBe(true);
-  expect(entryBadges.some((tuple) => tuple.includes(clonmelAprilId))).toBe(true);
+  expect(entryBadges.some((tuple) => tuple.includes(cashelAprilId))).toBe(true);
 
   // And in the neighbouring month too, so the equality is not an accident of one grid.
   await page.goto(`/stock-entry?month=${Y}-05`);
@@ -238,7 +238,7 @@ test("AC-5: what each calendar owns, asserted by absence", async ({ page }) => {
   );
 });
 
-/* ------------------------------------------------------- AC-6, the Dublin / Clonmel */
+/* ------------------------------------------------------- AC-6, the Dublin / Cashel */
 
 test("AC-6: three scope links, labelled and tallied for the displayed month", async ({
   page,
@@ -248,13 +248,13 @@ test("AC-6: three scope links, labelled and tallied for the displayed month", as
 
   const options = page.getByTestId("yard-scope").getByTestId("yard-scope-option");
   await expect(options).toHaveCount(3);
-  expect(await options.allTextContents()).toEqual(["Dublin (1)", "Clonmel (1)", "Both (2)"]);
+  expect(await options.allTextContents()).toEqual(["Dublin (1)", "Cashel (1)", "Both (2)"]);
 
   // Exactly one option is current, and with no `?yard` it is `Both`.
   await expect(page.locator("[aria-current='true']")).toHaveCount(1);
   await expect(options.nth(2)).toHaveAttribute("aria-current", "true");
 
-  await page.goto(`/stock-takes?month=${APRIL}&yard=CLONMEL`);
+  await page.goto(`/stock-takes?month=${APRIL}&yard=CASHEL`);
   await expect(page.locator("[aria-current='true']")).toHaveCount(1);
   await expect(
     page.getByTestId("yard-scope").getByTestId("yard-scope-option").nth(1),
@@ -264,31 +264,31 @@ test("AC-6: three scope links, labelled and tallied for the displayed month", as
 test("AC-6: what Both means on a day only one yard was counted", async ({ page }) => {
   await signIn(page, await newUser());
 
-  // 31 March: Clonmel only.
+  // 31 March: Cashel only.
   await page.goto(`/stock-takes?month=${Y}-03`);
   const marchCell = page.getByTestId(`day-${Y}-03-31`);
   await expect(marchCell.getByTestId("count-badge")).toHaveCount(1);
-  await expect(marchCell.locator(`[data-count-id="${clonmelMarchId}"]`)).toHaveCount(1);
+  await expect(marchCell.locator(`[data-count-id="${cashelMarchId}"]`)).toHaveCount(1);
 
-  await page.goto(`/stock-takes?month=${Y}-03&yard=CLONMEL`);
+  await page.goto(`/stock-takes?month=${Y}-03&yard=CASHEL`);
   await expect(marchCell.getByTestId("count-badge")).toHaveCount(1);
 
   await page.goto(`/stock-takes?month=${Y}-03&yard=DUBLIN`);
   await expect(marchCell.getByTestId("count-badge")).toHaveCount(0);
   await expect(marchCell.locator("a")).toHaveCount(0);
 
-  // 30 April: both, Dublin before Clonmel.
+  // 30 April: both, Dublin before Cashel.
   await page.goto(`/stock-takes?month=${APRIL}`);
   const aprilBadges = page.getByTestId(`day-${APRIL}-30`).getByTestId("count-badge");
   await expect(aprilBadges).toHaveCount(2);
   await expect(aprilBadges.nth(0)).toHaveAttribute("data-location-code", "DUBLIN");
-  await expect(aprilBadges.nth(1)).toHaveAttribute("data-location-code", "CLONMEL");
+  await expect(aprilBadges.nth(1)).toHaveAttribute("data-location-code", "CASHEL");
 });
 
 test("AC-6, AC-17: an unreadable ?yard is a 307 and no error", async ({ page }) => {
   await signIn(page, await newUser());
 
-  for (const query of ["?yard=banana", "?yard=dublin", "?yard=", "?yard=DUBLIN&yard=CLONMEL"]) {
+  for (const query of ["?yard=banana", "?yard=dublin", "?yard=", "?yard=DUBLIN&yard=CASHEL"]) {
     const response = await page.request.get(`/stock-takes${query}`, { maxRedirects: 0 });
 
     expect(response.status(), query).toBe(307);
@@ -316,7 +316,7 @@ test("AC-11: Previous count skips the months nobody counted at that yard", async
     `/stock-takes?month=${Y}-05&yard=DUBLIN`,
   );
 
-  // One month back under Both, because Clonmel counted in March.
+  // One month back under Both, because Cashel counted in March.
   await page.goto(`/stock-takes?month=${APRIL}&yard=BOTH`);
   await expect(page.getByTestId("previous-count")).toHaveAttribute(
     "href",
@@ -326,7 +326,7 @@ test("AC-11: Previous count skips the months nobody counted at that yard", async
   // Following it lands on that month, and the count is drawn there.
   await page.getByTestId("previous-count").click();
   await expect(page.getByTestId("month-heading")).toHaveText(`March ${Y}`);
-  await expect(page.locator(`[data-count-id="${clonmelMarchId}"]`)).toHaveCount(1);
+  await expect(page.locator(`[data-count-id="${cashelMarchId}"]`)).toHaveCount(1);
 });
 
 test("AC-11: with no neighbour the control still renders, disabled and not an anchor", async ({
@@ -428,7 +428,7 @@ test("AC-16: every link on a scoped calendar carries the scope, and the default 
   page,
 }) => {
   await signIn(page, await newUser());
-  await page.goto(`/stock-takes?month=${APRIL}&yard=CLONMEL`);
+  await page.goto(`/stock-takes?month=${APRIL}&yard=CASHEL`);
 
   // Every link EXCEPT the scope selector itself, which is the one control whose job is to
   // leave the current scope. The month controls, *Today*, both jumps and every badge.
@@ -443,20 +443,20 @@ test("AC-16: every link on a scoped calendar carries the scope, and the default 
 
   const hrefs = await hrefsOutsideTheSelector();
   // Non-vacuity by KIND rather than by count: the three month controls, the count jump
-  // that has a neighbour, and the Clonmel badge. (April's *Next count* is correctly not an
-  // anchor at all — Clonmel has nothing after it in this reserved year — which is why a
+  // that has a neighbour, and the Cashel badge. (April's *Next count* is correctly not an
+  // anchor at all — Cashel has nothing after it in this reserved year — which is why a
   // bare count here would be asserting about the fixture instead of about the links.)
   expect(hrefs.length).toBeGreaterThanOrEqual(5);
   expect(hrefs.some((href) => href.startsWith("/stock-takes/counts/"))).toBe(true);
   expect(hrefs.filter((href) => href.includes("month=")).length).toBeGreaterThanOrEqual(3);
   for (const href of hrefs) {
-    expect(href, href).toContain("yard=CLONMEL");
+    expect(href, href).toContain("yard=CASHEL");
   }
 
   // The selector's own three: each carries ITS scope, and `Both` carries none at all.
   const options = page.getByTestId("yard-scope").getByTestId("yard-scope-option");
   await expect(options.nth(0)).toHaveAttribute("href", `/stock-takes?month=${APRIL}&yard=DUBLIN`);
-  await expect(options.nth(1)).toHaveAttribute("href", `/stock-takes?month=${APRIL}&yard=CLONMEL`);
+  await expect(options.nth(1)).toHaveAttribute("href", `/stock-takes?month=${APRIL}&yard=CASHEL`);
   await expect(options.nth(2)).toHaveAttribute("href", `/stock-takes?month=${APRIL}`);
 
   // The default scope is never spelled into a URL: with no query string, nothing this page
@@ -599,7 +599,7 @@ test("AC-19: the calendar never scrolls sideways at 390 px or 320 px, in any sco
       });
       const page = await context.newPage();
 
-      for (const yard of ["DUBLIN", "CLONMEL", "BOTH"]) {
+      for (const yard of ["DUBLIN", "CASHEL", "BOTH"]) {
         // April is the month one day carries two badges.
         await page.goto(`/stock-takes?month=${APRIL}&yard=${yard}`);
 

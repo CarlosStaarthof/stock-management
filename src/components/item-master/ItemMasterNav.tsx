@@ -15,7 +15,7 @@ const LINKS = [
   { href: "/item-master/suppliers", label: "Suppliers" },
   { href: "/item-master/types", label: "Item types" },
   { href: "/item-master/yards/DUBLIN", label: "Dublin sheet" },
-  { href: "/item-master/yards/CLONMEL", label: "Clonmel sheet" },
+  { href: "/item-master/yards/CASHEL", label: "Cashel sheet" },
 ];
 
 export function ItemMasterNav({ current }: { current: string }): JSX.Element {

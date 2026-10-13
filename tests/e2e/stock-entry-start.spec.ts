@@ -73,15 +73,15 @@ test("AC-23: choosing a yard is deliberate — two tap targets and none preselec
   const yards = page.locator('input[name="locationCode"]');
   await expect(yards).toHaveCount(2);
   await expect(yards.nth(0)).toHaveValue("DUBLIN");
-  await expect(yards.nth(1)).toHaveValue("CLONMEL");
+  await expect(yards.nth(1)).toHaveValue("CASHEL");
 
   // NONE preselected: "no yard chosen" is a state the form can really be in.
   await expect(yards.nth(0)).not.toBeChecked();
   await expect(yards.nth(1)).not.toBeChecked();
 
-  // Dublin then Clonmel, in Location.sortOrder.
+  // Dublin then Cashel, in Location.sortOrder.
   await expect(page.getByTestId("yard-DUBLIN")).toContainText("Dublin");
-  await expect(page.getByTestId("yard-CLONMEL")).toContainText("Clonmel");
+  await expect(page.getByTestId("yard-CASHEL")).toContainText("Cashel");
 
   // The date field is a native date picker, defaulted to today in the yard.
   const date = page.getByTestId("count-date");
@@ -343,7 +343,7 @@ test("AC-8: the override is honoured, and the date and the period stay two separ
   await signIn(page, await newUser());
 
   await page.goto(
-    `/stock-entry/new/confirm?locationCode=CLONMEL&countDate=${YEAR_TEXT}-03-10`,
+    `/stock-entry/new/confirm?locationCode=CASHEL&countDate=${YEAR_TEXT}-03-10`,
   );
   // Overridden to a month far from the date's own, with no warning at any distance.
   await page.getByTestId("period-input").fill(`${YEAR_TEXT}-01`);
@@ -354,7 +354,7 @@ test("AC-8: the override is honoured, and the date and the period stay two separ
 
   await expect(page.getByTestId("count-period")).toHaveText(`January ${YEAR_TEXT}`);
   await expect(page.getByTestId("count-date")).toHaveText(`10 March ${YEAR_TEXT}`);
-  expect(await countIdFor("CLONMEL", YEAR, 1)).not.toBeNull();
+  expect(await countIdFor("CASHEL", YEAR, 1)).not.toBeNull();
 
   // AC-9: no wording that implies a business-day rule, and no weekday on the date.
   const body = await page.content();
@@ -402,7 +402,7 @@ test("AC-26: a double tap on Start count writes one count, not two", async ({ pa
   await signIn(page, await newUser());
 
   await page.goto(
-    `/stock-entry/new/confirm?locationCode=CLONMEL&countDate=${YEAR_TEXT}-07-10`,
+    `/stock-entry/new/confirm?locationCode=CASHEL&countDate=${YEAR_TEXT}-07-10`,
   );
 
   const button = page.getByTestId("start-count");
@@ -414,7 +414,7 @@ test("AC-26: a double tap on Start count writes one count, not two", async ({ pa
   await page.waitForURL(/\/stock-entry\/counts\/[a-z0-9]+/);
 
   const totals = await reservedCountTotals(YEAR);
-  expect(await countIdFor("CLONMEL", YEAR, 7)).not.toBeNull();
+  expect(await countIdFor("CASHEL", YEAR, 7)).not.toBeNull();
   // Exactly one count for that yard and period, whatever else this file has created.
   expect(totals.counts).toBeGreaterThan(0);
 });

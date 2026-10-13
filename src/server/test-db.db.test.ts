@@ -291,7 +291,7 @@ describe("what the reset leaves behind", () => {
     await db.location.create({
       data: { id: `loc_invented_${suffix()}`, code: `WEXFORD_${suffix()}`, name: "Wexford" },
     });
-    await db.location.delete({ where: { id: "loc_clonmel" } });
+    await db.location.delete({ where: { id: "loc_cashel" } });
 
     await resetTestDb();
 
@@ -305,7 +305,7 @@ describe("what the reset leaves behind", () => {
         where: { id: "loc_dublin" },
         data: { name: "Renamed By A Test", active: false, sortOrder: 99 },
       });
-      await db.location.delete({ where: { id: "loc_clonmel" } });
+      await db.location.delete({ where: { id: "loc_cashel" } });
     }, resetTestDb);
 
     expect(statements).toHaveLength(2);

@@ -49,7 +49,7 @@ import type { CountRef, YardScope } from "@/types/stock-count";
  *
  * THE SAME CALENDAR AS `/stock-entry`, RENDERED AT A SECOND ADDRESS (AC-4). It calls
  * `listCalendarMonth(user, monthKey)` EXACTLY ONCE, with no yard argument, and
- * `CalendarGrid` with the same `CalendarMonth` #7 gives it. The Dublin / Clonmel / Both
+ * `CalendarGrid` with the same `CalendarMonth` #7 gives it. The Dublin / Cashel / Both
  * scope is a PURE FILTER over that result (`filterCalendarByYard`), never a second query:
  * a `where` clause of its own would be a second definition of "the counts in this month",
  * and 006 AC-24 exists because a second definition drifts. What differs is affordance, and
@@ -64,7 +64,7 @@ import type { CountRef, YardScope } from "@/types/stock-count";
  *
  * THE MONTH IT OPENS ON IGNORES THE SCOPE, deliberately (Open question 1): `defaultMonthKey`
  * is #7's, unchanged, so "the month of the last stock take" has one definition. Choosing
- * Clonmel when Clonmel was last counted three months ago lands on a month with no Clonmel
+ * Cashel when Cashel was last counted three months ago lands on a month with no Cashel
  * counts, and *Previous count* is one tap away.
  *
  * NO `loading.tsx` EXISTS AT OR ABOVE THIS SEGMENT, and AC-2 now derives that guarantee

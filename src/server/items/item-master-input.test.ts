@@ -158,7 +158,7 @@ describe("parseSupplierName and parseItemTypeInput", () => {
 describe("parseLocationCode and parseMoveDirection", () => {
   it("AC-21: only the two yards of the product brief are codes", () => {
     expect(parseLocationCode("DUBLIN")).toBe("DUBLIN");
-    expect(parseLocationCode("CLONMEL")).toBe("CLONMEL");
+    expect(parseLocationCode("CASHEL")).toBe("CASHEL");
     expectValidationError(() => parseLocationCode("CORK"), "locationCode");
     expectValidationError(() => parseLocationCode("dublin"), "locationCode");
   });
@@ -188,14 +188,14 @@ describe("parseItemListQuery", () => {
         filter: "needs-review",
         supplierId: "sup_1",
         itemTypeId: "type_1",
-        locationCode: "CLONMEL",
+        locationCode: "CASHEL",
       }),
     ).toEqual({
       q: "multigrip",
       filter: "needs-review",
       supplierId: "sup_1",
       itemTypeId: "type_1",
-      locationCode: "CLONMEL",
+      locationCode: "CASHEL",
     });
   });
 

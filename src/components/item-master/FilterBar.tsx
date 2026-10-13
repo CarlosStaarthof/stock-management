@@ -130,7 +130,7 @@ export function FilterBar({
           >
             <option value="">Any yard</option>
             <option value="DUBLIN">Dublin</option>
-            <option value="CLONMEL">Clonmel</option>
+            <option value="CASHEL">Cashel</option>
           </select>
         </Field>
 

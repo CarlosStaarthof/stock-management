@@ -139,7 +139,7 @@ async function readValuedLines(counts: readonly ApprovedCount[]): Promise<Valued
     const count = byId.get(row.stockCountId);
     if (count === undefined) return [];
 
-    // Decimal STRINGS, never JS numbers: one Clonmel price does not terminate in decimal, and
+    // Decimal STRINGS, never JS numbers: one Cashel price does not terminate in decimal, and
     // a float round trip is exactly what loses the tail (docs/architecture.md).
     const quantity = row.quantity === null ? null : row.quantity.toString();
     const snapshot = row.unitPriceSnapshot === null ? null : row.unitPriceSnapshot.toString();

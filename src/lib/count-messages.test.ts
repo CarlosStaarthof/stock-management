@@ -137,8 +137,8 @@ describe("the literals the criteria quote", () => {
     expect(countAlreadyExists("DUBLIN", "2026-09")).toBe(
       "Count for DUBLIN in 2026-09 already exists",
     );
-    expect(countAlreadyExists("CLONMEL", "2025-12")).toBe(
-      "Count for CLONMEL in 2025-12 already exists",
+    expect(countAlreadyExists("CASHEL", "2025-12")).toBe(
+      "Count for CASHEL in 2025-12 already exists",
     );
   });
 

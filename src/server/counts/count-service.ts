@@ -172,7 +172,7 @@ export async function listCalendarMonth(
     const badges = byDate.get(dateKey) ?? [];
     days.push({
       date: dateKey,
-      // Dublin before Clonmel, in `Location.sortOrder` (AC-20). `locationSortOrder` is
+      // Dublin before Cashel, in `Location.sortOrder` (AC-20). `locationSortOrder` is
       // dropped on the way out: it is how the order was decided, not a fact about a count.
       counts: badges
         .sort(

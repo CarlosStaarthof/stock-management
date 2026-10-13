@@ -88,11 +88,11 @@ export const TODAY = COUNT_TODAY;
 /**
  * `Both` — the third option of the scope selector (AC-6).
  *
- * The other two are `Location.name` as the database holds it, so `Dublin` and `Clonmel`
+ * The other two are `Location.name` as the database holds it, so `Dublin` and `Cashel`
  * are never spelled in this module: they are data, and #6 made them editable.
  *
- * IT IS A SCOPE, NOT A CLAIM THAT BOTH YARDS WERE COUNTED. On a day only Clonmel was
- * walked, `Both (1)` shows the Clonmel badge and nothing beside it.
+ * IT IS A SCOPE, NOT A CLAIM THAT BOTH YARDS WERE COUNTED. On a day only Cashel was
+ * walked, `Both (1)` shows the Cashel badge and nothing beside it.
  */
 export const BOTH_YARDS = "Both";
 

@@ -13,7 +13,7 @@ import { resetTestDb } from "@/server/test-db";
 
 import {
   ADMIN,
-  CLONMEL_ID,
+  CASHEL_ID,
   DUBLIN_ID,
   makeCountLine,
   makeItem,
@@ -142,7 +142,7 @@ describe("unassignItemFromLocation", () => {
     const typeId = await makeItemType("BEADS", 1);
     const itemId = await makeItem({ description: "Beads", itemTypeId: typeId });
     const dublinLink = await makeLink(itemId, DUBLIN_ID, 12);
-    const clonmelLink = await makeLink(itemId, CLONMEL_ID, 30);
+    const cashelLink = await makeLink(itemId, CASHEL_ID, 30);
     const { lineId } = await makeCountLine(itemId);
     const lineBefore = await db.stockCountLine.findUniqueOrThrow({ where: { id: lineId } });
     const rowsBefore = await db.itemLocation.count();
@@ -156,7 +156,7 @@ describe("unassignItemFromLocation", () => {
     expect(await db.itemLocation.count()).toBe(rowsBefore);
 
     // The other yard is untouched, and so is history.
-    expect((await db.itemLocation.findUniqueOrThrow({ where: { id: clonmelLink } })).active).toBe(
+    expect((await db.itemLocation.findUniqueOrThrow({ where: { id: cashelLink } })).active).toBe(
       true,
     );
     expect(await db.stockCountLine.findUniqueOrThrow({ where: { id: lineId } })).toEqual(
@@ -164,7 +164,7 @@ describe("unassignItemFromLocation", () => {
     );
 
     expect((await listSheet(ADMIN, "DUBLIN")).map((entry) => entry.itemId)).toEqual([]);
-    expect((await listSheet(ADMIN, "CLONMEL")).map((entry) => entry.itemId)).toEqual([itemId]);
+    expect((await listSheet(ADMIN, "CASHEL")).map((entry) => entry.itemId)).toEqual([itemId]);
   });
 
   it("AC-22 failure path: unassigning an item that was never assigned is a NotFoundError", async () => {
@@ -179,7 +179,7 @@ describe("unassignItemFromLocation", () => {
 
 describe("moveItemInSheet", () => {
   it("AC-23: a move is a swap and the multiset of sortOrder values never changes", async () => {
-    // Clonmel as #5 imported it: 3..70, then nothing at 71..74, then 75 and 76 - the gap
+    // Cashel as #5 imported it: 3..70, then nothing at 71..74, then 75 and 76 - the gap
     // records that the two fuel rows sit below the total row (005 open question 4).
     const typeId = await makeItemType("BEADS", 1);
     const orders = [
@@ -201,16 +201,16 @@ describe("moveItemInSheet", () => {
     await makeLinksBulk(
       orders.map((sortOrder) => ({
         itemId: fixtureId("item_clon", sortOrder),
-        locationId: CLONMEL_ID,
+        locationId: CASHEL_ID,
         sortOrder,
       })),
     );
 
-    const before = await sortOrdersAt(CLONMEL_ID);
+    const before = await sortOrdersAt(CASHEL_ID);
     expect(before).toEqual([...orders].sort((left, right) => left - right));
 
     const mover = itemIdByOrder.get(75) as string;
-    await moveItemInSheet(ADMIN, mover, "CLONMEL", "UP");
+    await moveItemInSheet(ADMIN, mover, "CASHEL", "UP");
 
     // The row that was at 75 is now at 70, and the row that was at 70 is now at 75.
     expect(
@@ -225,13 +225,13 @@ describe("moveItemInSheet", () => {
     ).toBe(75);
 
     // Both values still exist, and 71..74 is still a gap: nothing was renumbered.
-    expect(await sortOrdersAt(CLONMEL_ID)).toEqual(before);
+    expect(await sortOrdersAt(CASHEL_ID)).toEqual(before);
 
-    await moveItemInSheet(ADMIN, mover, "CLONMEL", "DOWN");
-    await moveItemInSheet(ADMIN, mover, "CLONMEL", "DOWN");
-    await moveItemInSheet(ADMIN, mover, "CLONMEL", "UP");
+    await moveItemInSheet(ADMIN, mover, "CASHEL", "DOWN");
+    await moveItemInSheet(ADMIN, mover, "CASHEL", "DOWN");
+    await moveItemInSheet(ADMIN, mover, "CASHEL", "UP");
 
-    expect(await sortOrdersAt(CLONMEL_ID)).toEqual(before);
+    expect(await sortOrdersAt(CASHEL_ID)).toEqual(before);
   });
 
   it("AC-23: UP on the first row and DOWN on the last write nothing at all", async () => {
@@ -310,7 +310,7 @@ describe("listSheet", () => {
   });
 
   it("AC-28: a yard with no assignments returns an empty sheet rather than throwing", async () => {
-    expect(await listSheet(ADMIN, "CLONMEL")).toEqual([]);
+    expect(await listSheet(ADMIN, "CASHEL")).toEqual([]);
   });
 
   it("AC-4: every assignment mutation refuses a YARD_STAFF actor and writes nothing", async () => {
@@ -320,10 +320,10 @@ describe("listSheet", () => {
     const before = await db.itemLocation.findMany();
     const staff = { ...ADMIN, role: "YARD_STAFF" } as const;
 
-    await expect(assignItemToLocation(staff, itemId, "CLONMEL")).rejects.toBeInstanceOf(
+    await expect(assignItemToLocation(staff, itemId, "CASHEL")).rejects.toBeInstanceOf(
       ForbiddenError,
     );
-    await expect(assignItemToLocation(staff, itemId, "CLONMEL")).rejects.toThrow(
+    await expect(assignItemToLocation(staff, itemId, "CASHEL")).rejects.toThrow(
       "ADMIN is required for this action",
     );
     await expect(unassignItemFromLocation(staff, itemId, "DUBLIN")).rejects.toThrow(
