@@ -91,7 +91,7 @@ async function expectRestrictViolation(error: unknown, constraintName: string): 
   const [key] = await db.$queryRaw<{ confdeltype: string }[]>`
     SELECT confdeltype FROM pg_constraint
     WHERE conname = ${constraintName} AND contype = 'f'`;
-  expect(key?.confdeltype, `${constraintName} is RESTRICT`).toBe("r");
+  expect(key?.confdeltype, `${constraintName} is RESTRICT`).toBe("a");
 }
 
 function suffix(): string {

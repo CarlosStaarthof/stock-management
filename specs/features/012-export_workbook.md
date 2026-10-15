@@ -103,12 +103,12 @@ may not change, not a depot name.
 
 ## Owner rulings, 2026-10-15
 
-The owner has ruled on the four required changes in the review of goal `mv8rd5vh`
+The owner has ruled on the required changes in the review of goal `mv8rd5vh`
 (`progress/review_mv8rd5vh.md`). Each is binding and is carried out in the same run.
 
 | # | Ruling | Consequence |
 |---|---|---|
-| R9 | **The reviewer's environment now has its own test database, dependencies and Playwright browsers.** Run the **full** gate — `npm run test:unit`, `npm run test:db`, `npm run test:e2e`, `npm run typecheck`, `npm run lint` — and paste each command's **final summary lines** into `progress/impl_export_workbook.md`. If Playwright cannot run in the container, say so **plainly** in the report; never skip it silently. | AC-12, AC-13, AC-14 and AC-15 are proved by a run, not by reading. The e2e suite may use the test database, which is the reviewer's own. |
+| R9 | **End-to-end tests are out of this feature's gate.** A diagnosis on `main` (goal `mv9f61be`) showed the e2e suite cannot run in the container yet — Chromium lacks its system libraries and `PIN_PEPPER` is unset — and that is being fixed separately. The gate for 012 is `npm run typecheck`, `npm run lint`, `npm run test:unit` and `npm run test:db`, each run as its own command with its **final summary lines** pasted into `progress/impl_export_workbook.md`. | AC-12/AC-13/AC-15's browser halves are not claimed as proved here; the runnable gate is. `tests/e2e/analysis-export.spec.ts` stays in the tree for when the container is fixed. |
 | R10 | **AC-14 may be amended to match the diff, but only for test changes that follow directly from the R6 rename and the new migration.** For every changed existing assertion, `progress/impl_export_workbook.md` states what it checked **before**, what it checks **now**, and **why it is not weaker**. | AC-14 (below) is rewritten to enumerate the amended assertions. The rewritten `expectRestrictViolation` in `referential.db.test.ts` stays and **must still fail when no restrict violation occurs** (it is a strengthening, not a loosening). |
 | R11 | **`rename-clonmel-cashel.db.test.ts` connects through `TEST_DATABASE_URL` only, never `DATABASE_URL`, and fails fast if `TEST_DATABASE_URL` is unset.** | The file never touches the developer's database, even when run bare. |
 | R12 | **The depot ordering in `listExportStockTakes` is kept.** Name the test that fails without it; add one if none exists. | The AC-15 listing test (`export-service.db.test.ts`) is named as the test whose expectation breaks without the sort. |
@@ -284,8 +284,9 @@ The owner has ruled on the four required changes in the review of goal `mv8rd5vh
     fixture the test seeded; the file name matches `<Depot>_Stocktake_dd-mm-yyyy.xlsx` for that
     depot's seeded count date. *Proved by* `tests/e2e/analysis-export.spec.ts`.
 
-14. **AC-14 — The rest of the product is unchanged.** `npm run test:unit`, `npm run test:db`,
-    `npm run test:e2e`, `npm run typecheck` and `npm run lint` pass; no existing assertion is
+14. **AC-14 — The rest of the product is unchanged.** `npm run typecheck`, `npm run lint`,
+    `npm run test:unit` and `npm run test:db` pass (end-to-end tests are out of this feature's
+    gate — owner ruling R9, the container cannot run them yet); no existing assertion is
     weakened, skipped or deleted; `git status` for `Samples/` is empty; the `/analysis` page
     keeps every figure it had. The existing assertions this feature amends are enumerated below;
     each is not weakened, and `progress/impl_export_workbook.md` states for each what it checked
