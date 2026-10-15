@@ -101,6 +101,19 @@ may not change, not a depot name.
   and typechecks but this container has no reachable database, and `tests/e2e/analysis-export.spec.ts`
   is not yet written). The feature stays `in_progress` until the full gate is green.
 
+## Owner rulings, 2026-10-15
+
+The owner has ruled on the four required changes in the review of goal `mv8rd5vh`
+(`progress/review_mv8rd5vh.md`). Each is binding and is carried out in the same run.
+
+| # | Ruling | Consequence |
+|---|---|---|
+| R9 | **The reviewer's environment now has its own test database, dependencies and Playwright browsers.** Run the **full** gate — `npm run test:unit`, `npm run test:db`, `npm run test:e2e`, `npm run typecheck`, `npm run lint` — and paste each command's **final summary lines** into `progress/impl_export_workbook.md`. If Playwright cannot run in the container, say so **plainly** in the report; never skip it silently. | AC-12, AC-13, AC-14 and AC-15 are proved by a run, not by reading. The e2e suite may use the test database, which is the reviewer's own. |
+| R10 | **AC-14 may be amended to match the diff, but only for test changes that follow directly from the R6 rename and the new migration.** For every changed existing assertion, `progress/impl_export_workbook.md` states what it checked **before**, what it checks **now**, and **why it is not weaker**. | AC-14 (below) is rewritten to enumerate the amended assertions. The rewritten `expectRestrictViolation` in `referential.db.test.ts` stays and **must still fail when no restrict violation occurs** (it is a strengthening, not a loosening). |
+| R11 | **`rename-clonmel-cashel.db.test.ts` connects through `TEST_DATABASE_URL` only, never `DATABASE_URL`, and fails fast if `TEST_DATABASE_URL` is unset.** | The file never touches the developer's database, even when run bare. |
+| R12 | **The depot ordering in `listExportStockTakes` is kept.** Name the test that fails without it; add one if none exists. | The AC-15 listing test (`export-service.db.test.ts`) is named as the test whose expectation breaks without the sort. |
+| R13 | **`progress/current.md` is updated to feature 12.** It had still described feature #11. | The report is written while the work happens, not at the end (HERMES §9). |
+
 ## User stories
 
 - As an `ADMIN`, I download one `.xlsx` that opens with no `#REF!` and whose total matches
@@ -274,12 +287,29 @@ may not change, not a depot name.
 14. **AC-14 — The rest of the product is unchanged.** `npm run test:unit`, `npm run test:db`,
     `npm run test:e2e`, `npm run typecheck` and `npm run lint` pass; no existing assertion is
     weakened, skipped or deleted; `git status` for `Samples/` is empty; the `/analysis` page
-    keeps every figure it had. Exactly two existing assertions are amended, each not weakened:
-    `011 AC-16`'s link test counts the `/analysis/export` link as a second exception, under its
-    own note; and `tests/unit/stock-entry-contract.test.ts`'s reserved-year census moved from
-    fourteen files / fifteen years to fifteen / sixteen, because AC-15's e2e spec reserves
-    `analysisExport: 2106` and the census is an equality that a new reserving spec necessarily
-    moves. Both remain equalities, not loosened. *Proved by* the gate.
+    keeps every figure it had. The existing assertions this feature amends are enumerated below;
+    each is not weakened, and `progress/impl_export_workbook.md` states for each what it checked
+    **before**, what it checks **now**, and **why it is not weaker** (owner ruling R10):
+    - `011 AC-16`'s link test (`tests/e2e/analysis-figures.spec.ts`) counts the `/analysis/export`
+      link as a second exception, under its own note;
+    - `tests/unit/stock-entry-contract.test.ts`'s reserved-year census moved from **fourteen files
+      / fifteen years** to **fifteen / sixteen**, because AC-15's e2e spec reserves
+      `analysisExport: 2106`; the census remains an equality, not a floor;
+    - `src/server/deploy/census.db.test.ts`'s migration count moved from **3** to **4**, forced by
+      the new `20261013120000_rename_clonmel_to_cashel` migration; it is still an equality over the
+      applied migrations;
+    - `src/server/schema/columns.db.test.ts`'s AC-21 test now reseeds the historical insert and
+      then applies R6's rename, so the test reaches today's two yards; the idempotency it proves
+      (two inserts, two rows) is unchanged;
+    - `src/server/schema/referential.db.test.ts`'s `expectRestrictViolation` helper reads the
+      Prisma engine's `P2003` + `meta.constraint` and `pg_constraint.confdeltype`. This one is
+      **not** caused by R6: the engine now maps the PostgreSQL `RESTRICT` refusal to `P2003`
+      instead of relaying the raw SQLSTATE `23001`, so the old raw-message assertion no longer
+      matches. It is kept per R10, strengthened rather than loosened: it still names the refusing
+      constraint, still asserts the key is `RESTRICT` (`confdeltype = 'r'`), and the `rejection`
+      helper still throws when the delete succeeds, so the test still fails when no restrict
+      violation occurs.
+    *Proved by* the gate.
 
 15. **AC-15 — The export page lists the approved stock takes (R8).** `GET /analysis/export`
     renders the approved stock takes, newest first, the latest first; for each stock take it

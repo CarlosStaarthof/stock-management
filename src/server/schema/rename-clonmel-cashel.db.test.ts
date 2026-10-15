@@ -64,7 +64,20 @@ function withSchema(url: string, schema: string): string {
 
 type DbGlobal = { macroadsPrismaClient?: PrismaClient };
 
-const BASE_URL = (process.env.DATABASE_URL ?? process.env.TEST_DATABASE_URL ?? "").trim();
+/**
+ * `TEST_DATABASE_URL` ONLY (owner ruling, 2026-10-15).
+ *
+ * This file applies migrations and seeds rows of its own, so it must never connect to
+ * `DATABASE_URL` - the developer's database. Under `npm run test:db` the runner sets both,
+ * but a bare `vitest` invocation (or one pointed at the developer's environment) must fail
+ * fast rather than quietly touch the wrong database.
+ */
+const BASE_URL = (process.env.TEST_DATABASE_URL ?? "").trim();
+if (BASE_URL === "") {
+  throw new Error(
+    "rename-clonmel-cashel.db.test.ts requires TEST_DATABASE_URL; it never connects to DATABASE_URL.",
+  );
+}
 const SCHEMA = `mig_rename_${randomBytes(5).toString("hex")}`;
 
 const ADMIN: SessionUser = {
