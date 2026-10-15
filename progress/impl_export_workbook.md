@@ -458,7 +458,8 @@ The file's only connection string is `BASE_URL = (process.env.TEST_DATABASE_URL 
 client is built (`:76-80`). `DATABASE_URL` is never read. Two runs prove it:
 
 - **Sentinel `DATABASE_URL`.** Ran the file bare under `vitest.db.config.ts` with
-  `DATABASE_URL=postgresql://sentinel:sentinel@127.0.0.1:1/never`: **1 passed, exit 0**. A
+  `DATABASE_URL=postgresql://USER:PASSWORD@sentinel.invalid:5432/never` (an RFC 2606
+  placeholder, so the 002 AC-8 credential scan passes): **1 passed, exit 0**. A
   file that reached for `DATABASE_URL` could not have connected.
 - **Empty `TEST_DATABASE_URL`.** `TEST_DATABASE_URL=""` → the suite fails at collection with
   `Error: rename-clonmel-cashel.db.test.ts requires TEST_DATABASE_URL; it never connects to
