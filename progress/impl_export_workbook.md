@@ -346,3 +346,80 @@ is **the only** existing test amended. A new e2e spec that reserves its own year
 AC-14 as written, or leaves AC-15's e2e half unbuilt. The core reshape does not depend on
 either choice, so the e2e spec is deferred one round and the conflict is recorded here for
 the owner rather than worked around.
+
+---
+
+# Round 3 — goal `mv700xeb`, branch `hermes/mv8rd5vh`, 2026-10-15
+
+## What this round did
+
+- **Confirmed the harness before touching anything.** `TEST_DATABASE_URL` is set, and
+  `npm run test:db` starts, applies the four migrations and reaches the test database. No
+  other database is connected to; every command ran under a 10-minute cap.
+- **Fixed a typecheck error in Risk 1's test.**
+  `src/server/schema/rename-clonmel-cashel.db.test.ts:270` passed a `Buffer` straight to
+  `workbook.xlsx.load`, which ExcelJS's types reject (`Buffer<ArrayBufferLike>` is not its
+  `Buffer extends ArrayBuffer`). It now copies through a plain `ArrayBuffer`, the same
+  pattern `tests/unit/export-workbook.test.ts` and `export-service.db.test.ts` use. No
+  assertion changed.
+
+## Risk 1 — the Clonmel → Cashel migration is proved lossless and in place
+
+`src/server/schema/rename-clonmel-cashel.db.test.ts` (added in an earlier round of this
+goal) runs from a **fresh schema**: it creates a throwaway PostgreSQL schema, applies every
+migration chronologically *before* `20261013120000_rename_clonmel_to_cashel`, seeds a
+Clonmel world through a schema-scoped Prisma client — two items with location links and an
+`APPROVED` stock take (two lines, a signer, a signature) — then applies the rename migration
+verbatim and asserts:
+
+- **no row lost** — `Item`, `ItemLocation`, `StockCount`, `StockCountLine` and `User` counts
+  are identical before and after, and each line's `itemId|quantity|unitPriceSnapshot` string
+  is unchanged;
+- **Clonmel reads Cashel** — no row with `code = CLONMEL` and none with `id = loc_clonmel`;
+  `loc_cashel`/`CASHEL`/`Cashel` exists, and the children followed the id rename through
+  `ON UPDATE CASCADE`;
+- **the stock take still loads and exports** — `exportWorkbook(ADMIN, { CASHEL, 2026-06 })`
+  returns `Cashel_Stocktake_15-06-2026.xlsx`, which loads into exactly `Summary` + `Cashel`
+  with the expected `Value` cells and TOTAL;
+- **the migration renames in place, never drop-and-recreate** — the SQL matches
+  `UPDATE "Location"` and matches no `DROP`/`CREATE` of a table, type or schema. `Location`
+  is a text column, so no enum is involved; the file is proved to contain no `ALTER TYPE` at
+  all, so there is nothing an enum rename would need to touch.
+
+Also green: `columns.db.test.ts`'s amended AC-21 test re-runs the historical insert and then
+`renameMigrationSql()` to reach today's two yards; `schema-and-migration.test.ts`'s new
+`012 AC-16 (R6)` test asserts the migration's `WHERE "code" = 'CLONMEL'` and that it makes no
+schema change.
+
+## Risk 2 — the read-only sample still reads correctly
+
+`Samples/Stock @ 01-Sep-2026.xlsx` is unmodified (`git status --porcelain -- Samples/` is
+empty) and its worksheets are physically `["Summary", "Dublin", "Clonmel ", "Clonmel Trucks
+& Yard"]` — the second yard sheet still carries the old spelling and a trailing space.
+`src/lib/excel/workbook-reader.ts` declares `YARD_SHEET_NAMES = ["Dublin", "Cashel"]` and
+resolves the file through the single exported `LEGACY_SAMPLE_SHEET` alias
+(`Cashel: "Clonmel "`), reporting the depot as `Cashel`. `workbook-reader.test.ts` opens the
+real sample and asserts every returned row's `sheet` is `Dublin`/`Cashel` and that
+`cashel[0].sheet === "Cashel"`; it also proves a workbook already named `Cashel` is read
+directly. The seed (`scripts/seed-workbook.ts`) reads the same sample through this reader.
+So the one surviving old spelling in code is the documented exception R6 allows.
+
+## Verification
+
+- `npm run typecheck` — exit 0.
+- `npm run lint` — exit 0 (`--max-warnings 0`).
+- `npm run test:unit` — **87 files / 1330 tests, 0 failed**.
+- `npm run test:db` — **34 files / 584 tests, 0 failed**, including
+  `rename-clonmel-cashel.db.test.ts` and `export-service.db.test.ts`.
+- `npm run test:e2e` — **not run**: no Playwright browser is installed in this container, and
+  the e2e suite runs against `DATABASE_URL`, which this round is forbidden to connect to
+  (only `TEST_DATABASE_URL` may be used). AC-12/AC-13/AC-15's browser half therefore remains
+  unverified here; the spec `tests/e2e/analysis-export.spec.ts` exists and is complete.
+
+## Remaining
+
+The only acceptance criteria not proved in this container are the Level-4 (browser) halves
+(AC-12, AC-13, AC-15's e2e, and AC-14's full gate including e2e), which need Playwright
+browsers and a development database — neither available without violating the round's
+"TEST_DATABASE_URL only" rule. Everything else is green. The feature stays `in_progress`
+until the full gate can run; it is not marked `done` here.

@@ -267,7 +267,7 @@ describe("012 AC-16 (R6): Clonmel becomes Cashel in place", () => {
       expect(fileName).toBe("Cashel_Stocktake_15-06-2026.xlsx");
 
       const workbook = new ExcelJS.Workbook();
-      await workbook.xlsx.load(bytes);
+      await workbook.xlsx.load(new Uint8Array(bytes).buffer);
       expect(workbook.worksheets.map((sheet) => sheet.name)).toEqual(["Summary", "Cashel"]);
 
       const sheet = workbook.getWorksheet("Cashel");
