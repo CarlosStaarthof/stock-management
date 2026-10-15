@@ -423,3 +423,122 @@ The only acceptance criteria not proved in this container are the Level-4 (brows
 browsers and a development database — neither available without violating the round's
 "TEST_DATABASE_URL only" rule. Everything else is green. The feature stays `in_progress`
 until the full gate can run; it is not marked `done` here.
+
+---
+
+# Round — goal `mv9ycfs7`, branch `hermes/mv9ycfs7`, 2026-10-15
+
+Review being closed: `progress/review_mv8rd5vh.md` (CHANGES_REQUESTED). Owner rulings
+R9–R13 are recorded in `specs/features/012-export_workbook.md` → *Owner rulings,
+2026-10-15*. This round runs the gate the owner defined, documents every amended existing
+assertion, proves the R11/R12 methods, and updates `progress/current.md` (R13). No new
+scope.
+
+## R9 — the gate, each command run on its own
+
+`TEST_DATABASE_URL` is set, `node_modules` and `.env` are present in this container.
+Each command was run as its own invocation; the final summary lines are pasted verbatim.
+
+| Command | Final summary | Exit |
+|---|---|---|
+| `npm run typecheck` | `> tsc --noEmit` (no diagnostics) | 0 |
+| `npm run lint` | `> eslint src tests --max-warnings 0` (no output) | 0 |
+| `npm run test:unit` | `Test Files  87 passed (87)`; `Tests  1330 passed (1330)`; `Duration 163.61s` | 0 |
+| `npm run test:db` | `Test Files  34 passed (34)`; `Tests  584 passed (584)`; `Duration 355.62s` | 0 |
+
+`test:db` included `src/server/schema/rename-clonmel-cashel.db.test.ts` (1 test) and
+`src/server/export/export-service.db.test.ts` (11 tests), both green. End-to-end tests are
+out of 012's gate (R9), so `npm run test:e2e` was **not** run; `tests/e2e/analysis-export.spec.ts`
+stays in the tree for when the container can run Playwright.
+
+## R11 — `rename-clonmel-cashel.db.test.ts` uses `TEST_DATABASE_URL` only
+
+The file's only connection string is `BASE_URL = (process.env.TEST_DATABASE_URL ?? "").trim()`
+(`rename-clonmel-cashel.db.test.ts:75`); when it is empty the module throws before any
+client is built (`:76-80`). `DATABASE_URL` is never read. Two runs prove it:
+
+- **Sentinel `DATABASE_URL`.** Ran the file bare under `vitest.db.config.ts` with
+  `DATABASE_URL=postgresql://sentinel:sentinel@127.0.0.1:1/never`: **1 passed, exit 0**. A
+  file that reached for `DATABASE_URL` could not have connected.
+- **Empty `TEST_DATABASE_URL`.** `TEST_DATABASE_URL=""` → the suite fails at collection with
+  `Error: rename-clonmel-cashel.db.test.ts requires TEST_DATABASE_URL; it never connects to
+  DATABASE_URL.` — `Test Files 1 failed`, exit 1. This is the fail-fast the ruling asks for.
+
+## R10 — every existing assertion this feature changes, before vs now
+
+R10 permits amending AC-14 to match the diff only for changes that follow from the R6 rename
+and its migration. Five existing assertions changed; the fifth is not caused by R6 but is
+kept by the ruling's second sentence. For each: what it checked **before**, what it checks
+**now**, and why it is **not weaker**.
+
+1. **`tests/e2e/analysis-figures.spec.ts` — 011 AC-16's link test.**
+   *Before:* every link on `/analysis` had to carry period and breakdown, with exactly one
+   named exception (`/profiles`). *Now:* it counts `/analysis/export` as a second named
+   exception. *Not weaker:* it is still an equality over the set of exceptions, not a floor;
+   a third unaccounted link still fails. 011 AC-16's own note authorises this amendment.
+
+2. **`tests/unit/stock-entry-contract.test.ts` — the reserved-year census.**
+   *Before:* an equality — every `RESERVED_YEAR.<key>` per file, **14 files / 15 keys**, no
+   key in two files. *Now:* **15 files / 16 keys**, because `tests/e2e/analysis-export.spec.ts`
+   reserves `analysisExport: 2106`. *Not weaker:* it is still an equality, still "no key in
+   two files"; it moved by exactly the one spec and one key this feature added.
+
+3. **`src/server/deploy/census.db.test.ts` — the migration count.**
+   *Before:* expected `migrations: 3 applied, latest <X>`. *Now:* `4 applied`, forced by the
+   new `20261013120000_rename_clonmel_to_cashel`. *Not weaker:* still an exact equality on the
+   applied count, still naming the latest migration.
+
+4. **`src/server/schema/columns.db.test.ts` — AC-21's idempotency test.**
+   *Before:* ran the committed `create_stock_domain` insert twice against the live table and
+   asserted the re-run added no row. *Now:* it deletes `Location`, runs that insert twice
+   (same property: two identical inserts → two rows, no error), asserts the fresh rows are
+   `loc_dublin`/`loc_clonmel`, then applies R6's rename and asserts the final yards are
+   `loc_dublin`/`loc_cashel`. *Not weaker:* the idempotency claim is unchanged, and the test
+   now also pins both the historical and the final ids. The reseed is forced: the committed
+   insert still says `CLONMEL`, which R6 renamed away, so against the live table it no longer
+   collides and the old assertion would have been vacuous.
+
+5. **`src/server/schema/referential.db.test.ts` — `expectRestrictViolation`.**
+   *Before:* read the raw SQLSTATE out of the error text (`code: "23001"`,
+   `violates RESTRICT setting of foreign key constraint`, the constraint name). *Now:* asserts
+   the Prisma engine's typed refusal (`code === "P2003"`, `meta.constraint === constraint`),
+   the string still names the constraint, and reads `pg_constraint.confdeltype = 'r'` for the
+   named foreign key. *Not weaker — stronger:* the old version asserted only the error *text*;
+   the new one asserts the typed code, the constraint in `meta`, **and** independently
+   confirms the constraint is `RESTRICT` in the catalog. It is not caused by R6 (a Prisma
+   engine behaviour change — the engine now maps the refusal to `P2003`); R10 keeps it.
+   The `rejection()` helper is unchanged and still throws when the delete succeeds, so **the
+   test still fails when no restrict violation occurs**. Proved by breach: deleting the
+   referencing line in AC-20b first (so the item delete succeeds) produced
+   `expected the database to refuse this delete through StockCountLine_itemId_fkey, but it
+   succeeded`, `1 failed`, exit 1; the file was restored with `git checkout` and is clean.
+
+Net effect of R10 on the branch: rounds 1–2 toggled item 5's `confdeltype` between `'r'` and
+`'a'` and ended where it started, so the diff contains **no** change to
+`referential.db.test.ts`; items 1–4 are the rename/migration-forced changes and are the ones
+AC-14 now enumerates.
+
+## R12 — the depot ordering in `listExportStockTakes` is kept, and its test is named
+
+The sort stays (`src/server/export/export-service.ts:353-357`). The test that fails without it
+is **`src/server/export/export-service.db.test.ts` → `AC-15: one stock take, one download per
+depot, newest first`** (`:297-311`). It expects the depots `[DUBLIN, CASHEL]`, the
+`Location.sortOrder`/`code` order; the counts arrive ordered by `locationId`, which puts
+`loc_cashel` first, so removing the sort yields `[CASHEL, DUBLIN]`. Proved by mutation:
+removing the sort loop turned that test red (`- "code": "DUBLIN"` / `+ "code": "CASHEL"`,
+`1 failed`, exit 1); restoring the file and re-running gave `1 passed`, exit 0. No new test
+was needed.
+
+## R13 — `progress/current.md`
+
+Replaced the stale feature-#11 session with the feature-#12 live state (`in_progress`, the
+gate result, what remains). Written while the work happened.
+
+## What is proved, and what is not
+
+- **Proved here:** typecheck, lint, all 1330 unit tests and all 584 db tests green; the R11
+  connection rule and its fail-fast; the R12 ordering test red-by-breach; the R10
+  `expectRestrictViolation` red-by-breach; the Clonmel→Cashel migration test green.
+- **Not proved here (out of gate, R9):** AC-12, AC-13 and AC-15's browser halves in
+  `tests/e2e/analysis-export.spec.ts`. The feature stays `in_progress`; it is not marked
+  `done` by this round.
