@@ -60,6 +60,17 @@ function stockDomainMigrationSql(): string {
   return readFileSync(`${MIGRATIONS_DIR}/${directory}/migration.sql`, "utf8");
 }
 
+/** R6's data-only rename, `20261013120000_rename_clonmel_to_cashel`. */
+function renameMigrationSql(): string {
+  const directory = readdirSync(MIGRATIONS_DIR, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name)
+    .find((name) => name.endsWith("_rename_clonmel_to_cashel"));
+
+  if (directory === undefined) throw new Error("rename_clonmel_to_cashel migration not found");
+  return readFileSync(`${MIGRATIONS_DIR}/${directory}/migration.sql`, "utf8");
+}
+
 /** A count needs a yard, a person and an item; an item needs a type. This builds all of it. */
 async function seedOneCountWithAnItem(): Promise<{ stockCountId: string; itemId: string }> {
   const suffix = randomBytes(6).toString("hex");
@@ -213,14 +224,23 @@ describe("the database the migrations produce", () => {
     });
   });
 
-  it("AC-21: re-running the migration's insert adds no row and raises no error", async () => {
+  it("AC-21, amended by 012 AC-16 (R6): re-running the migration's insert adds no row, and R6's rename then reaches today's two yards", async () => {
     const insert = stockDomainMigrationSql().slice(
       stockDomainMigrationSql().indexOf('INSERT INTO "Location"'),
     );
 
-    // The statement out of the committed migration, executed verbatim a second time.
+    // R6 renamed the second yard to Cashel, so the committed insert's `CLONMEL` row no
+    // longer conflicts with the current row. Run it against an empty table (idempotency is
+    // still exactly what is being proved: two inserts, two rows), then apply R6's rename to
+    // reach the state every other test in this suite starts from.
+    await db.location.deleteMany();
     await db.$executeRawUnsafe(insert);
     await db.$executeRawUnsafe(insert);
+
+    const inserted = await db.location.findMany({ orderBy: { sortOrder: "asc" } });
+    expect(inserted.map((row) => row.id)).toEqual(["loc_dublin", "loc_clonmel"]);
+
+    await db.$executeRawUnsafe(renameMigrationSql());
 
     const rows = await db.location.findMany({ orderBy: { sortOrder: "asc" } });
     expect(rows).toHaveLength(2);

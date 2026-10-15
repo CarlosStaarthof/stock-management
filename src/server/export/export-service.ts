@@ -328,6 +328,9 @@ export async function listExportStockTakes(
 
   const [depots, counts] = await Promise.all([readDepots(), readApprovedCounts()]);
   const byId = new Map(depots.map((depot) => [depot.id, depot]));
+  // The download order is the depot order the rest of the page uses - `Location.sortOrder`
+  // then `code` (the order `readDepots` returned) - not the order the counts came back in.
+  const orderByCode = new Map(depots.map((depot, index) => [depot.code, index]));
 
   const byPeriod = new Map<string, ExportStockTake>();
   for (const count of counts) {
@@ -345,6 +348,12 @@ export async function listExportStockTakes(
     }
 
     stockTake.depots.push({ code: depot.code, name: depot.name, countDate: count.countDate });
+  }
+
+  for (const stockTake of byPeriod.values()) {
+    stockTake.depots.sort(
+      (left, right) => (orderByCode.get(left.code) ?? 0) - (orderByCode.get(right.code) ?? 0),
+    );
   }
 
   return [...byPeriod.values()].sort((left, right) =>
