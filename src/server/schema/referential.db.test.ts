@@ -70,21 +70,28 @@ async function rejection(action: () => Promise<unknown>, refusedBy: string): Pro
 /**
  * A delete refused by a RESTRICT foreign key.
  *
- * Spec 004 AC-20 names Prisma's `P2003` / `P2014`. Prisma raises neither here, and the
- * reason is AC-19: the key is genuinely `ON DELETE RESTRICT`, so Postgres refuses with
- * SQLSTATE `23001` (`restrict_violation`) before Prisma's own referential layer is
- * involved, and Prisma relays that raw error as a `PrismaClientUnknownRequestError` with
- * no `code`. `P2003` is what a `NO ACTION` / `23503` key would produce.
- *
- * So the assertion is the stronger, true one: the refusal names the foreign key, and it
- * is a RESTRICT refusal. See progress/impl_domain_schema.md, "Deviations from the spec".
+ * Spec 004 AC-20 names Prisma's `P2003` / `P2014`, and AC-19 is what makes the refusal a
+ * `RESTRICT` one rather than `NO ACTION`. Prisma's engine maps the PostgreSQL refusal to
+ * `P2003` and renders it as "Foreign key constraint violated on the constraint: ..." with
+ * the key in `meta.constraint`; it does NOT relay the raw SQLSTATE (`23001`,
+ * `restrict_violation`) that older engines surfaced as a `PrismaClientUnknownRequestError`.
+ * So the refusal is proved by what the engine does expose - a foreign-key violation naming
+ * the constraint - and the RESTRICT setting itself is read from `pg_constraint.confdeltype`
+ * (`'r'`, where `NO ACTION` is `'a'`). Together they are the stronger, true statement the
+ * earlier raw-message assertion made: the named key exists, it is RESTRICT, and it is what
+ * refused the delete. See progress/impl_domain_schema.md, "Deviations from the spec".
  */
-function expectRestrictViolation(error: unknown, constraintName: string): void {
-  const text = String(error);
+async function expectRestrictViolation(error: unknown, constraintName: string): Promise<void> {
+  const refusal = error as { code?: string; meta?: { constraint?: string } };
 
-  expect(text, "SQLSTATE 23001, restrict_violation").toContain('code: "23001"');
-  expect(text).toContain("violates RESTRICT setting of foreign key constraint");
-  expect(text).toContain(constraintName);
+  expect(refusal.code, "P2003, foreign key violation").toBe("P2003");
+  expect(refusal.meta?.constraint, "the refusing constraint").toBe(constraintName);
+  expect(String(error)).toContain(constraintName);
+
+  const [key] = await db.$queryRaw<{ confdeltype: string }[]>`
+    SELECT confdeltype FROM pg_constraint
+    WHERE conname = ${constraintName} AND contype = 'f'`;
+  expect(key?.confdeltype, `${constraintName} is RESTRICT`).toBe("r");
 }
 
 function suffix(): string {
@@ -234,7 +241,7 @@ describe("history cannot be deleted, and archival does not touch it", () => {
       "StockCountLine_itemId_fkey",
     );
 
-    expectRestrictViolation(error, "StockCountLine_itemId_fkey");
+    await expectRestrictViolation(error, "StockCountLine_itemId_fkey");
     expect(await db.item.count({ where: { id: fixture.itemId } })).toBe(1);
     expect(await db.stockCountLine.count({ where: { id: fixture.stockCountLineId } })).toBe(1);
   });
@@ -247,7 +254,7 @@ describe("history cannot be deleted, and archival does not touch it", () => {
       "StockCount_createdById_fkey",
     );
 
-    expectRestrictViolation(error, "StockCount_createdById_fkey");
+    await expectRestrictViolation(error, "StockCount_createdById_fkey");
     expect(await db.user.count({ where: { id: fixture.userId } })).toBe(1);
 
     // The way a person is removed (#3's `active`, #21's `status`), and the signature keeps
