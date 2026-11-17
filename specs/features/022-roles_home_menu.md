@@ -19,10 +19,12 @@ exists to replace the old spreadsheet must not put money in a text cell.
   `YARD_STAFF`. A single `isAdminOrAbove` predicate decides the existing administrator
   surfaces; there is no second permission system. Tradeoff: every existing `ADMIN` guard is
   touched once, and a missed guard is a security defect, so the role matrix is tested.
-- **D2 — One super administrator, fixed by migration.** Exactly one profile holds
-  `SUPER_ADMIN`, with the username `carlos-staarthof`. The role is written by a migration,
-  never by a screen, an API or a seed. Tradeoff: the profile is created by deployment, and
-  its PIN must be set once with the existing operator command (`npm run pin:reset`).
+- **D2 — One super administrator, set by migration, never created by it.** At most one
+  profile holds `SUPER_ADMIN`, with the username `carlos-staarthof`. The role is written by
+  a migration, never by a screen, an API or a seed. The migration promotes the existing row
+  if it exists and does nothing if it does not; it never inserts a profile. Tradeoff: if the
+  profile is missing at deploy time there is no `SUPER_ADMIN` until the owner creates it and
+  a later migration promotes it; its PIN, when present, is set with `npm run pin:reset`.
 - **D3 — The home menu is the landing.** After sign-in every role lands on `/home` unless a
   valid `callbackUrl` was supplied. The calendar is no longer the automatic landing.
   Tradeoff: every existing sign-in test moves one navigation further on.
@@ -30,19 +32,39 @@ exists to replace the old spreadsheet must not put money in a text cell.
   section and keeps `/stock-entry`; moving the URL would touch every count link and every
   shipped calendar test for no user-visible gain. Tradeoff: the word "Stock Calendar" is a
   label on the home menu and the section heading, not a new route.
-- **D5 — Money visibility is unchanged by role.** `ADMIN` and `SUPER_ADMIN` see prices;
-  `YARD_STAFF` sees none. Feature #24 is expected to amend this for the sign-off review
-  only, and that amendment belongs to #24, not here.
+- **D5 — Money visibility is a role rule with no exception.** `ADMIN` and `SUPER_ADMIN` see
+  prices; `YARD_STAFF` sees no price, value or total on any surface, including the review and
+  sign-off of a count. `YARD_STAFF` cannot sign off. Feature #24 implements the two-step
+  finish-then-sign-off flow this requires; it does not create a staff money exception.
 - **D6 — Export prices are numbers.** Column E is a numeric cell with a euro number format,
   not a formatted string. Tradeoff: a workbook test now reads `cell.value` as a number and
   `cell.numFmt` for the currency, rather than reading cell text.
+
+## Owner rulings, 2026-11-17
+
+- **R1 — `YARD_STAFF` never sees money and cannot sign off.** No price, value or total on
+  any staff surface, at sign-off included. A `YARD_STAFF` counter finishes the count and an
+  `ADMIN` or `SUPER_ADMIN` prices the open items and signs it off. When an `ADMIN` or
+  `SUPER_ADMIN` counts, review, pricing and sign-off remain one step for that same person.
+  This replaces the draft's allowance in D5 for a review-only exception and is implemented
+  by #24.
+- **R2 — The migration promotes; it never creates.** If `carlos-staarthof` exists its role
+  becomes `SUPER_ADMIN`; if it does not the migration does nothing. It never inserts a
+  profile. This replaces the draft AC-2 behaviour that created the row when absent.
+- **R3 — A record is one approved `StockCount`**, one per depot per stock take, matching the
+  export's one file per depot. Recorded and implemented in #23; this spec is unchanged.
+- **R4 — Legacy `SUBMITTED` counts stay approvable once by an `ADMIN` or `SUPER_ADMIN`**,
+  with no data conversion. #24 owns the retained legacy path; the `isAdminOrAbove` predicate
+  in this spec is what lets `SUPER_ADMIN` use it.
 
 ## User stories
 
 - As the owner, I sign in and choose the section I want from one menu, instead of being
   dropped on whichever screen my role happened to land on.
-- As a `YARD_STAFF` user, I see the calendar and can start a count, and I am not offered
-  Export, Stock or Dashboard.
+- As the owner, the migration makes my existing `carlos-staarthof` profile the only
+  super administrator, without creating a second profile.
+- As a `YARD_STAFF` user, I see the calendar and can start a count, I am not offered
+  Export, Stock or Dashboard, and I never see a price or total.
 - As an `ADMIN`, I see Export and Stock beside the calendar, and every price those screens
   already showed me.
 - As the `SUPER_ADMIN`, I see the Dashboard tile as well, and I am treated as an
@@ -55,8 +77,9 @@ exists to replace the old spreadsheet must not put money in a text cell.
 - `prisma/schema.prisma`: `Role` gains `SUPER_ADMIN`. No other model changes.
 - Two migrations, in this order:
   1. add the enum value `SUPER_ADMIN`;
-  2. ensure the one `carlos-staarthof` profile holds it.
-- `User` is written only by migration 2. No new table. `TRUNCATED_TABLES` is unchanged.
+  2. promote the existing `carlos-staarthof` profile, if any, and insert nothing.
+- `User` is written only by migration 2, and only when that row already exists. No new
+  table and no new column. `TRUNCATED_TABLES` is unchanged.
 - No stock-domain model, count, line, price or item is touched.
 
 ## Contract
@@ -132,23 +155,25 @@ inputs, and a source scan finds no second spelling of the hierarchy in `src/serv
 `src/app/`. *Proved by* `src/server/auth/roles.test.ts` and `tests/unit/role-hierarchy.test.ts`
 (created by this feature).
 
-**AC-2 — The migration leaves exactly one SUPER_ADMIN.** Applying the two migrations to an
-empty database leaves exactly one `User` row with role `SUPER_ADMIN`: username
-`carlos-staarthof`, status `ACTIVE`, no `pinHash`, no `pinKeyId`. Applying them to a database
-that already holds `carlos-staarthof` changes that row's role to `SUPER_ADMIN` and changes no
-other column. The data migration raises an error, and the migration fails, if it cannot leave
-exactly one such row. The enum migration carries a `-- contract-step:` line, so #16's
-migration-safety test accepts the enum addition. *Proved by*
+**AC-2 — The migration promotes the existing profile or does nothing.** Applying the two
+migrations to a database with no `carlos-staarthof` row inserts no `User` row, leaves zero
+`SUPER_ADMIN` rows and succeeds. Applying them to a database that already holds
+`carlos-staarthof` changes that row's role to `SUPER_ADMIN` and changes no other column: its
+status, username, PIN columns and epoch are byte-identical. Neither migration creates a
+profile. The data migration is idempotent and refuses, rolling back, if applying it would
+leave more than one `SUPER_ADMIN`. The enum migration carries a `-- contract-step:` line, so
+#16's migration-safety test accepts the enum addition. *Proved by*
 `src/server/auth/super-admin-migration.db.test.ts`.
 
-**AC-3 — No normal path creates, promotes or removes a SUPER_ADMIN.** Every profile form and
-server action accepts only `YARD_STAFF` and `ADMIN`; `approveProfile`, `createProfile` and
+**AC-3 — No application path creates, promotes or removes a SUPER_ADMIN.** Every profile form
+and server action accepts only `YARD_STAFF` and `ADMIN`; `approveProfile`, `createProfile` and
 `changeProfileRole` refuse a requested `SUPER_ADMIN` with a typed `ValidationError`;
 `changeProfileRole` and `deactivateProfile` refuse a target whose current role is
-`SUPER_ADMIN`. The operator/test helper `createActiveProfile` remains the only code that can
-create a `SUPER_ADMIN` fixture; no route or form reaches it, and e2e specs delete every
-fixture they create. *Proved by* `src/server/auth/profile-admin-service.db.test.ts` and a
-source scan in `tests/unit/role-hierarchy.test.ts`.
+`SUPER_ADMIN`. The migrations are the only code that writes the role, and they only promote
+an existing row. The operator/test helper `createActiveProfile` remains the only other code
+that can create a `SUPER_ADMIN` fixture; no route or form reaches it, and e2e specs delete
+every fixture they create. *Proved by* `src/server/auth/profile-admin-service.db.test.ts` and
+a source scan in `tests/unit/role-hierarchy.test.ts`.
 
 **AC-4 — Every role lands on `/home`.** After a successful sign-in with no `callbackUrl`,
 `YARD_STAFF`, `ADMIN` and `SUPER_ADMIN` all land on `/home`; with a valid `callbackUrl` they
@@ -190,11 +215,13 @@ formula keep the values they have today. A downloaded workbook can be read back 
 ExcelJS and yields a number in E. *Proved by*
 `tests/unit/export-workbook.test.ts` and `src/server/export/export-service.test.ts`.
 
-**AC-9 — YARD_STAFF still receives no money.** On the home menu, the calendar, count entry,
-the count detail, the review page and every other staff-readable response there is no price,
-value, total or amount at any depth, and the existing money-boundary walks still pass. The
-home menu adds no figure of any kind. The role change does not widen a staff response: the
-admin shape is built only when `isAdminOrAbove` is true. *Proved by* the existing
+**AC-9 — YARD_STAFF receives no money on any surface.** On the home menu, the calendar, count
+entry, the count detail, the staff rendering of the review/finish page and every other
+staff-readable response there is no price, value, total or amount at any depth, and the
+existing money-boundary walks still pass. The home menu adds no figure of any kind. The role
+change does not widen a staff response: the admin shape is built only when `isAdminOrAbove`
+is true. #24's review may carry money for an `ADMIN` or `SUPER_ADMIN`; the staff rendering of
+that page remains money-free and is asserted by #24's money walk. *Proved by* the existing
 `src/lib/money-boundary.test.ts`, the e2e money walks, and a new walk over `/home`.
 
 **AC-10 — The shipped role and sign-in tests change mechanically, and nothing is weakened.**
@@ -221,20 +248,23 @@ is updated for the third enum member and passes. `TRUNCATED_TABLES` is unchanged
 
 - The Dashboard's contents. #23 owns the profile list, profile actions and records view.
 - Any change to what `ADMIN` can see or do, other than `SUPER_ADMIN` also being allowed.
-- Any new money for `YARD_STAFF`. #24 may amend the sign-off review; this feature does not.
+- Any new money for `YARD_STAFF`, including on #24's review or sign-off. #24 adds money only
+  for `ADMIN` and `SUPER_ADMIN`.
 - Renaming `/stock-entry`, `/stock-takes`, `/analysis` or `/item-master`.
+- Creating the `carlos-staarthof` profile when it is missing. Per R2 the migration inserts
+  nothing; the owner or deployment creates the profile first.
 - Adding a second super administrator, a UI to promote to `SUPER_ADMIN`, or a seeded PIN.
 - Moving any stock-domain model, adding a table, or changing a count line.
 - Changing the export's Value column, its formula or its sheet shape.
 
 ## Open questions
 
-- **Q1:** Is `Carlos Staarthof` the display name the migration should create when the
-  `carlos-staarthof` profile does not exist yet? The migration can create the row with that
-  name and no PIN, and the owner then sets a PIN with `npm run pin:reset`.
-- **Q2:** Should the "exactly one" rule also be a database constraint (a partial unique index
+- **Q1:** Should the "at most one" rule also be a database constraint (a partial unique index
   on the `SUPER_ADMIN` role), which would make e2e fixtures unable to create a second
   super administrator? This spec enforces it in the migration and in the profile services.
-- **Q3:** The owner's instruction says the calendar is "moved to its own section". This spec
+- **Q2:** The owner's instruction says the calendar is "moved to its own section". This spec
   keeps the `/stock-entry` address and makes it a menu section. Confirm that no URL rename is
   wanted.
+- **Q3:** If `carlos-staarthof` does not exist at deploy time, should the owner expect to
+  create the profile and run a follow-up promotion, or is a future deployment script expected
+  to cover it? This spec follows R2 and does nothing in the migration.

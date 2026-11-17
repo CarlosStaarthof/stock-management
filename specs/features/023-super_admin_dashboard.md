@@ -22,10 +22,13 @@ the records the product now holds are readable only one count at a time.
   one operation it did not have — *activate* — and otherwise calls the same services. The
   tradeoff: the self-protection rule must live in the service, because `/profiles` can also
   be opened by a `SUPER_ADMIN`.
-- **D3 — A record is a signed-off stock take.** The records view lists `APPROVED` counts, one
-  row per count. A `DRAFT` has no final value and no sign-off; a legacy `SUBMITTED` count has
-  not been signed off by this product's rules. Tradeoff: the view answers "what is closed",
-  not "what is in progress", and the calendar already answers the second question.
+- **D3 — A record is a signed-off stock take, one row per approved count.** The records view
+  lists `APPROVED` counts, one row per `StockCount` — which is one row per depot per stock
+  take, matching the export's one depot file. A `DRAFT` or `PENDING_SIGN_OFF` count has no
+  final value and no sign-off; a legacy `SUBMITTED` count has not been signed off yet but can
+  still be approved once by an `ADMIN` or `SUPER_ADMIN` (#24), after which it appears like
+  any other approved count. Tradeoff: the view answers "what is closed", not "what is in
+  progress", and the calendar already answers the second question.
 - **D4 — More record kinds are expected.** The view renders a common `DashboardRecord` shape
   from a list of sources. Adding a second kind (for example a truck reading later) is one
   source and no change to the page's JSX. Tradeoff: the shared shape is the narrow set of
@@ -34,6 +37,18 @@ the records the product now holds are readable only one count at a time.
   activated profile cannot sign in without one. The activation response returns a newly
   generated PIN once, exactly as a reset does. Tradeoff: activation is never silent; the
   person at the screen must hand the PIN over.
+
+## Owner rulings, 2026-11-17
+
+- **R1 — `YARD_STAFF` never sees money and cannot sign off.** The dashboard is unaffected:
+  it remains `SUPER_ADMIN` only, and no `ADMIN` or `YARD_STAFF` response contains its totals.
+- **R2 — The #22 migration promotes `carlos-staarthof` only if that profile exists** and
+  never creates one. The dashboard adds no migration and creates no profile.
+- **R3 — One row per approved `StockCount`.** That is one per depot per stock take, matching
+  the one-file-per-depot export. This answers the draft's Q1 and fixes D3 and AC-8.
+- **R4 — Legacy `SUBMITTED` counts stay approvable once by an `ADMIN` or `SUPER_ADMIN`**,
+  with no data conversion. They are absent from Records while `SUBMITTED` and appear once
+  approved, carrying the approver and the approval instant. #24 owns that retained path.
 
 ## User stories
 
@@ -92,10 +107,13 @@ dashboard service, so a direct call is a `ForbiddenError` naming `SUPER_ADMIN`.
 
 `listDashboardRecords` reads all approved counts and their lines in a bounded number of
 queries; it never queries per row. The `stock_take` source reads `approvedBy` and
-`approvedAt` as the sign-off, because #24 makes the signer the approver. Its total is
-`Σ quantity × unitPriceSnapshot` for the count's lines, plus (after #24) each open item's
-`quantity × unitPrice`, using the same decimal-string helpers as `/summary`, `/analysis` and
-the export.
+`approvedAt` as the sign-off. For a count created under #24 the signer and approver are the
+same person and instant, so this is exactly the sign-off. For a legacy `SUBMITTED` count
+approved through #24's retained path, `approvedBy`/`approvedAt` are the approver and the
+approval instant — the act that closed the record — while the original `signedBy` stays
+untouched. Its total is `Σ quantity × unitPriceSnapshot` for the count's lines, plus (after
+#24) each open item's `quantity × unitPrice`, using the same decimal-string helpers as
+`/summary`, `/analysis` and the export.
 
 **Profile row**
 
@@ -198,14 +216,18 @@ allowed. A second `SUPER_ADMIN` cannot be created or promoted by either surface,
 protected here is the only one. *Proved by* `src/server/dashboard/dashboard-service.db.test.ts`,
 `src/server/auth/profile-admin-service.db.test.ts` and `tests/e2e/dashboard-profiles.spec.ts`.
 
-**AC-8 — The records view is one row per signed-off stock take.** For two approved counts at
+**AC-8 — The records view is one row per approved StockCount.** For two approved counts at
 different depots and dates, the Records section shows exactly two rows, ordered newest count
 date first, with the depot name, the count date, the exact derived total, the signer's name
-and the sign-off instant. The total equals the sum of the count's exact line values, formatted
-once for display; a count with no lines totals zero and is still a row. A `DRAFT` or legacy
-`SUBMITTED` count is not listed. A signed-off count whose `approvedById` is null is shown
-with a missing-signer marker rather than being hidden. *Proved by*
-`tests/e2e/dashboard-records.spec.ts` and `src/server/dashboard/record-service.db.test.ts`.
+and the sign-off instant. That is one row per depot per stock take, matching the export's one
+file per depot; two counts at the same depot and different dates are two rows, and a count is
+never split by line. The total equals the sum of the count's exact line values, formatted
+once for display; a count with no lines totals zero and is still a row. A `DRAFT`,
+`PENDING_SIGN_OFF` or still-`SUBMITTED` legacy count is not listed; a legacy `SUBMITTED` count
+approved once after #24 appears with its approver and approval instant (R4). A signed-off
+count whose `approvedById` is null is shown with a missing-signer marker rather than being
+hidden. *Proved by* `tests/e2e/dashboard-records.spec.ts` and
+`src/server/dashboard/record-service.db.test.ts`.
 
 **AC-9 — More record kinds need no page change.** `DASHBOARD_RECORD_SOURCES` is an exported
 array of sources, each with a `kind` and a `list`. `listDashboardRecords` returns the flat
@@ -258,16 +280,17 @@ run in `progress/impl_super_admin_dashboard.md`.
 
 ## Open questions
 
-- **Q1:** Does "one row per stock take" mean one row per approved count (this spec) or one
-  row per *period*, combining a depot pair into a single total? The five named columns —
-  depot, count date, value, signer, time — are per count, which is why this spec chooses
-  per count.
+- **Q1:** For a legacy `SUBMITTED` count approved after #24, should the Records row name the
+  original signer or the approver who closed it? This spec follows the five requested
+  columns and names the approver, because that is who signed it off in the product's current
+  sense.
 - **Q2:** Should activating a deactivated profile reuse the existing PIN if it survived, or
   always issue a new one? #21 clears the PIN on deactivation, so this spec always issues a
   new one.
 - **Q3:** Should an `ADMIN` be able to see the records view without the profile controls (a
   narrower read-only dashboard)? This spec keeps the whole dashboard `SUPER_ADMIN` only.
 
-*Dependency note:* #24 changes what a sign-off is and adds open items to the total. #23's
-records source is written against the common total helper so that #24 changes the helper and
-the row count, not the dashboard.
+*Dependency note:* #24 adds `PENDING_SIGN_OFF` and open items, and makes sign-off an
+`ADMIN`/`SUPER_ADMIN` act. #23's records source is written against the common total helper
+so that #24 changes the helper and the status filter, not the dashboard's columns or row
+model. Legacy `SUBMITTED` rows remain approvable and appear once approved (R4).

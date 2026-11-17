@@ -57,3 +57,37 @@ The specs record every decision and open question. The three that block final ap
 
 No spec is `approved`; no feature is `pending` implementation until the owner approves these
 answers.
+
+## Round 2 — owner rulings applied, 2026-11-17
+
+The owner answered the four blocking questions. All three specs now carry a
+`## Owner rulings, 2026-11-17` section, and the affected decisions, criteria, out-of-scope
+boundaries and open questions were amended; no implementation or schema file was touched.
+
+| Ruling | Applied in |
+|---|---|
+| R1 — `YARD_STAFF` never sees a price or total and cannot sign off. A staff counter finishes unsigned; an `ADMIN`/`SUPER_ADMIN` reviews, prices and signs off. An administrator who counts signs off in one step. | #22 D5/AC-9; #24 D2–D6, D11, AC-5–AC-8, AC-13, AC-14 and the change list |
+| R2 — The #22 migration promotes `carlos-staarthof` only if it exists and never creates a profile. | #22 D2, AC-2, AC-3, Data touched, out of scope, Q3 |
+| R3 — One records row per approved `StockCount`, one per depot per stock take, matching the export. | #23 D3/AC-8; #24 AC-12 |
+| R4 — Legacy `SUBMITTED` counts stay approvable once by an `ADMIN` or `SUPER_ADMIN`, with no conversion. | #23 D3/AC-8/dependency note; #24 D7, AC-13, change list, out of scope |
+
+### #24 design consequence
+
+The draft's review-only money exception is gone. To keep the legacy `SUBMITTED` approval
+unambiguous, #24 adds a fourth status, `PENDING_SIGN_OFF` ("Awaiting sign-off"): a staff
+finish writes it, and only `signOffCount` (an `ADMIN`/`SUPER_ADMIN`) leaves it for
+`APPROVED`. `SUBMITTED` is never written for a new count. This is recorded as D11, AC-1,
+AC-13 and changes 5, 6, 9 and 11.
+
+### Verification
+
+```
+node -e "require('./feature_list.json')"
+  -> parses; #22 pending/draft 12 ACs, #23 pending/draft 13 ACs, #24 pending/draft 15 ACs
+git diff --stat
+  -> feature_list.json, the three specs and this progress file; no source, schema,
+     migration or test file
+```
+
+No gate was run: this round changes Markdown and the feature registry only. No feature is
+`approved`; all three remain `pending` with `spec_status: draft` for the owner's approval.
