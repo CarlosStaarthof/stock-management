@@ -938,12 +938,13 @@ describe("021 AC-22: /profiles is an ADMIN's, refused as a service", () => {
       const start = source.indexOf(`export async function ${name}(`);
       const bodyStart = source.indexOf("{\n", source.indexOf("): Promise<", start));
       const firstStatement = source.slice(bodyStart + 2).trimStart().split("\n")[0];
-      // The guard may bind its result (022 AC-3 needs the actor's id for the one allowed
-      // self-reset); either form is the first statement of the function.
-      expect(
-        ["assertAdminOrAbove(actor);", "const user = assertAdminOrAbove(actor);"],
-        name,
-      ).toContain(firstStatement);
+      // Only resetProfilePin may bind the guard's result: 022 AC-3 needs the actor's id for
+      // the one allowed self-reset. Every other function must use the bare call.
+      const expected =
+        name === "resetProfilePin"
+          ? "const user = assertAdminOrAbove(actor);"
+          : "assertAdminOrAbove(actor);";
+      expect(firstStatement, name).toBe(expected);
     }
   });
 

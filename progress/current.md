@@ -3,7 +3,7 @@
 **Feature:** #22 `roles_home_menu`
 **Spec:** `specs/features/022-roles_home_menu.md` (owner rulings 2026-11-17)
 **Started:** 2026-11-17
-**Status:** in_progress — implementation and gate green, awaiting review
+**Status:** in_progress — review changes applied, awaiting re-review
 
 ## Plan
 
@@ -16,6 +16,11 @@ Feature #22 is built on this branch across three rounds:
   updated the shipped landing/export assertions and added the e2e home-menu/role-access cases.
 - **Round 3:** re-ran the full gate (typecheck, lint, test:unit, test:db), each as its own
   command, and recorded the summaries in `progress/impl_roles_home_menu.md`.
+- **Round 4 (this round, `hermes/mwkr46sw`):** applied every required change in
+  `progress/review_mwknuude.md` — reverted #12's unrequested `done`, restored the exact
+  per-function guard assertion in `pin-auth-contract.test.ts`, recorded all unit amendments in
+  the AC-33 form and raised the two forced spec amendments as `QUESTION`s, and marked the
+  e2e-only ACs as unexecuted. No new scope.
 
 ## Verification
 
@@ -28,6 +33,16 @@ npx prisma validate -> schema valid
 ```
 
 `npm run test:e2e` is out of this goal's gate. `Samples/` unchanged; no dependency added.
+
+## Round 4 verification
+
+```
+npx prisma generate -> client regenerated for the third Role member
+npm run typecheck   -> exit 0
+npm run lint        -> exit 0 (--max-warnings 0)
+npm run test:unit   -> 89/90 files, 1346/1347 tests; only tests/unit/env-file.test.ts (.env absent)
+bash init.sh        -> "[ok] 23 features, 1 in progress"; prisma validate red for no DATABASE_URL
+```
 
 ## Not done / remains
 
