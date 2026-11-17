@@ -11,7 +11,7 @@ import type {
   ExportRow,
 } from "@/lib/excel/workbook-writer";
 import { multiplyDecimal } from "@/lib/money";
-import { assertRole } from "@/server/auth/guards";
+import { assertAdminOrAbove } from "@/server/auth/guards";
 import type { SessionUser } from "@/server/auth/session-user";
 import { getLifecycleFacts } from "@/server/counts/count-lifecycle-service";
 import { formatPeriodKey, parseMonthKey } from "@/server/counts/period";
@@ -272,7 +272,7 @@ export async function exportWorkbook(
   actor: SessionUser | null,
   options: { showAll: boolean; locationCode: string; periodKey: string },
 ): Promise<{ fileName: string; bytes: Buffer }> {
-  const user = assertRole(actor, "ADMIN");
+  const user = assertAdminOrAbove(actor);
 
   const asOf = todayIso();
   const depot = await readDepotByCode(options.locationCode);
@@ -324,7 +324,7 @@ export type ExportStockTake = {
 export async function listExportStockTakes(
   actor: SessionUser | null,
 ): Promise<ExportStockTake[]> {
-  assertRole(actor, "ADMIN");
+  assertAdminOrAbove(actor);
 
   const [depots, counts] = await Promise.all([readDepots(), readApprovedCounts()]);
   const byId = new Map(depots.map((depot) => [depot.id, depot]));

@@ -162,10 +162,18 @@ describe("AC-2: a depot sheet is the sample's shape", () => {
     expect(valueOf(dublin, "B3")).toBe("Kestrel");
     expect(valueOf(dublin, "C3")).toBe("Logo");
     expect(valueOf(dublin, "D3")).toBe("1 Unit");
-    expect(valueOf(dublin, "E3")).toBe("€1.005");
+    // 022 AC-8: column E is a NUMBER with a euro display format, never the formatted string.
+    expect(valueOf(dublin, "E3")).toBe(1.005);
+    expect(dublin.getCell("E3").numFmt).toBe('"€"#,##0.00');
 
     expect(valueOf(dublin, "A4")).toBe("Widget B");
     expect(valueOf(dublin, "B4")).toBe(NO_SUPPLIER);
+
+    // A row with no current price leaves E blank, not an empty string (022 AC-8).
+    const noPrice = baseInput();
+    noPrice.rows[0].currentPrice = null;
+    const blank = sheet(await load(noPrice), "Dublin");
+    expect(blank.getCell("E3").value).toBeNull();
   });
 });
 

@@ -3,7 +3,7 @@ import {
   itemTypeHasItems,
   itemTypeNotFound,
 } from "@/lib/item-master-messages";
-import { assertRole } from "@/server/auth/guards";
+import { assertAdminOrAbove } from "@/server/auth/guards";
 import type { SessionUser } from "@/server/auth/session-user";
 import { db } from "@/server/db";
 import { ConflictError, NotFoundError } from "@/server/errors";
@@ -31,7 +31,7 @@ export type ItemTypeRow = {
 };
 
 export async function listItemTypes(actor: SessionUser): Promise<ItemTypeRow[]> {
-  assertRole(actor, "ADMIN");
+  assertAdminOrAbove(actor);
 
   const types = await db.itemType.findMany({
     select: {
@@ -78,7 +78,7 @@ async function assertCodeFree(code: string, exceptId: string | null): Promise<vo
 }
 
 export async function createItemType(actor: SessionUser, raw: unknown): Promise<ItemTypeRow> {
-  assertRole(actor, "ADMIN");
+  assertAdminOrAbove(actor);
 
   const input = parseItemTypeInput(raw);
   await assertCodeFree(input.code, null);
@@ -104,7 +104,7 @@ export async function updateItemType(
   id: string,
   raw: unknown,
 ): Promise<ItemTypeRow> {
-  assertRole(actor, "ADMIN");
+  assertAdminOrAbove(actor);
 
   const input = parseItemTypeInput(raw);
   await requireItemType(id);
@@ -136,7 +136,7 @@ export async function moveItemType(
   id: string,
   rawDirection: string,
 ): Promise<void> {
-  assertRole(actor, "ADMIN");
+  assertAdminOrAbove(actor);
 
   const direction = parseMoveDirection(rawDirection);
   await requireItemType(id);
@@ -161,7 +161,7 @@ export async function moveItemType(
 }
 
 export async function deleteItemType(actor: SessionUser, id: string): Promise<void> {
-  assertRole(actor, "ADMIN");
+  assertAdminOrAbove(actor);
 
   const type = await requireItemType(id);
 

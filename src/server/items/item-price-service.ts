@@ -1,5 +1,5 @@
 import { itemNotFound, priceDateAlreadyUsed } from "@/lib/item-master-messages";
-import { assertRole } from "@/server/auth/guards";
+import { assertAdminOrAbove } from "@/server/auth/guards";
 import type { SessionUser } from "@/server/auth/session-user";
 import { db } from "@/server/db";
 import { ConflictError, NotFoundError } from "@/server/errors";
@@ -37,7 +37,7 @@ const PRICE_SELECT = {
 
 /** Newest `effectiveFrom` first — the order the price panel reads (006 § Contract). */
 export async function listPrices(actor: SessionUser, itemId: string): Promise<PriceRow[]> {
-  assertRole(actor, "ADMIN");
+  assertAdminOrAbove(actor);
 
   const prices = (await db.itemPrice.findMany({
     where: { itemId },
@@ -49,7 +49,7 @@ export async function listPrices(actor: SessionUser, itemId: string): Promise<Pr
 }
 
 export async function addPrice(actor: SessionUser, raw: unknown): Promise<PriceRow> {
-  assertRole(actor, "ADMIN");
+  assertAdminOrAbove(actor);
 
   const input = parsePriceInput(raw);
 

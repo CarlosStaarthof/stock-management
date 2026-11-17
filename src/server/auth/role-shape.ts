@@ -1,4 +1,5 @@
 import type { SessionUser } from "@/server/auth/session-user";
+import { isAdminOrAbove } from "@/server/auth/roles";
 
 /**
  * Choose a response shape from the session role, and build ONLY that one.
@@ -9,7 +10,8 @@ import type { SessionUser } from "@/server/auth/session-user";
  * it ships here, tested, before there is any money to leak.
  *
  * Both branches are thunks so the admin shape is never even constructed for a
- * YARD_STAFF user — an unbuilt object cannot be serialised by accident.
+ * YARD_STAFF user — an unbuilt object cannot be serialised by accident. Feature #22
+ * AC-7: ADMIN and SUPER_ADMIN get the admin shape through the one hierarchy predicate.
  *
  * It takes `user`, never a role from a query parameter, a header or a body: the only
  * argument that decides is one the client cannot set (AC-17, AC-18).
@@ -18,5 +20,5 @@ export function shapeForRole<S, A>(
   user: SessionUser,
   shapes: { forStaff: () => S; forAdmin: () => A },
 ): S | A {
-  return user.role === "ADMIN" ? shapes.forAdmin() : shapes.forStaff();
+  return isAdminOrAbove(user.role) ? shapes.forAdmin() : shapes.forStaff();
 }

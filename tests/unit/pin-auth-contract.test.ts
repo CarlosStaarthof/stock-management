@@ -929,7 +929,7 @@ describe("021 AC-22: /profiles is an ADMIN's, refused as a service", () => {
     expect(body.indexOf('await requireAdminPage("profiles")')).toBeLessThan(body.indexOf("listProfiles("));
   });
 
-  it("AC-22: each of the ten exported functions of profile-admin-service.ts asserts ADMIN as its first statement", () => {
+  it("AC-22, amended by 022 AC-1: each of the ten exported functions of profile-admin-service.ts asserts admin-or-above as its first statement", () => {
     const source = read("src/server/auth/profile-admin-service.ts") ?? "";
     const exported = [...source.matchAll(/^export async function (\w+)\(/gm)].map((match) => match[1]);
     expect(exported.filter((name) => name !== "toProfileListEntry").sort()).toEqual([...ADMIN_FUNCTIONS].sort());
@@ -938,7 +938,12 @@ describe("021 AC-22: /profiles is an ADMIN's, refused as a service", () => {
       const start = source.indexOf(`export async function ${name}(`);
       const bodyStart = source.indexOf("{\n", source.indexOf("): Promise<", start));
       const firstStatement = source.slice(bodyStart + 2).trimStart().split("\n")[0];
-      expect(firstStatement, name).toBe('assertRole(actor, "ADMIN");');
+      // The guard may bind its result (022 AC-3 needs the actor's id for the one allowed
+      // self-reset); either form is the first statement of the function.
+      expect(
+        ["assertAdminOrAbove(actor);", "const user = assertAdminOrAbove(actor);"],
+        name,
+      ).toContain(firstStatement);
     }
   });
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { assertRole, assertUser } from "@/server/auth/guards";
+import { assertAdminOrAbove, assertRole, assertUser } from "@/server/auth/guards";
 import type { SessionUser } from "@/server/auth/session-user";
 import { ForbiddenError, UnauthorizedError } from "@/server/errors";
 
@@ -12,6 +12,12 @@ const staff: SessionUser = {
 };
 
 const admin: SessionUser = { ...staff, id: "u_admin", username: "admin", role: "ADMIN" };
+const superAdmin: SessionUser = {
+  ...staff,
+  id: "u_super",
+  username: "carlos-staarthof",
+  role: "SUPER_ADMIN",
+};
 
 describe("assertUser", () => {
   it("AC-16: returns the user when there is a session", () => {
@@ -55,5 +61,28 @@ describe("assertRole", () => {
   it("AC-15: YARD_STAFF is refused an ADMIN-only action, ADMIN is not refused a YARD_STAFF one", () => {
     expect(() => assertRole(staff, "ADMIN")).toThrowError(ForbiddenError);
     expect(() => assertRole(admin, "YARD_STAFF")).toThrowError(ForbiddenError);
+  });
+});
+
+describe("assertAdminOrAbove", () => {
+  it("022 AC-1: ADMIN and SUPER_ADMIN pass", () => {
+    expect(assertAdminOrAbove(admin)).toBe(admin);
+    expect(assertAdminOrAbove(superAdmin)).toBe(superAdmin);
+  });
+
+  it("022 AC-1: YARD_STAFF is refused with the same ADMIN message", () => {
+    let thrown: unknown;
+    try {
+      assertAdminOrAbove(staff);
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(ForbiddenError);
+    expect((thrown as Error).message).toContain("ADMIN");
+  });
+
+  it("022 AC-1: no session is UnauthorizedError, not ForbiddenError", () => {
+    expect(() => assertAdminOrAbove(null)).toThrowError(UnauthorizedError);
   });
 });

@@ -105,7 +105,7 @@ function ProfileRow({ profile }: { profile: ProfileListEntry }): JSX.Element {
       {profile.status === "PENDING" && profile.requestedUsername !== null ? (
         <PendingProfileActions id={profile.id} requestedUsername={profile.requestedUsername} />
       ) : null}
-      {profile.status === "ACTIVE" ? (
+      {profile.status === "ACTIVE" && profile.role !== "SUPER_ADMIN" ? (
         <ActiveProfileActions
           id={profile.id}
           name={profile.name}

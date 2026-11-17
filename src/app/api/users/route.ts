@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { errorResponse } from "@/app/api/error-response";
-import { requireRole } from "@/server/auth/session";
+import { requireAdminOrAbove } from "@/server/auth/session";
 import { listUsers } from "@/server/auth/user-service";
 
 /**
@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET(): Promise<NextResponse> {
   try {
-    await requireRole("ADMIN");
+    await requireAdminOrAbove();
 
     return NextResponse.json({ users: await listUsers() });
   } catch (error) {

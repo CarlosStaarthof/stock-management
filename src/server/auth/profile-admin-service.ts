@@ -1,6 +1,7 @@
 import {
   LAST_ADMIN_MESSAGE,
   ONLY_ACTIVE_PIN_RESET,
+  SUPER_ADMIN_PROTECTED_MESSAGE,
   USERNAME_TAKEN_MESSAGE,
 } from "@/lib/auth-messages";
 import { applyOutcome, isLocked, type AccountLockState } from "@/server/auth/account-lock";
@@ -25,13 +26,13 @@ import {
   parseUsername,
   type PinLength,
 } from "@/server/auth/credential-rules";
-import { assertRole } from "@/server/auth/guards";
+import { assertAdminOrAbove } from "@/server/auth/guards";
 import { accountKey, currentPinKeyId, hashPin } from "@/server/auth/password";
 import type { ProfileStatus } from "@/server/auth/profile-status";
-import { isRole, type Role } from "@/server/auth/roles";
+import type { Role } from "@/server/auth/roles";
 import type { SessionUser } from "@/server/auth/session-user";
 import { db } from "@/server/db";
-import { ConflictError, NotFoundError, ValidationError } from "@/server/errors";
+import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "@/server/errors";
 
 /**
  * The admin section's services (spec 021 D4, S10, S14, `/profiles`). ADMIN-only, refused
@@ -200,11 +201,23 @@ export async function toProfileListEntry(
   return toEntry(row, lockRow, failures, keyId, now);
 }
 
+/**
+ * A role a form may assign: only YARD_STAFF and ADMIN. SUPER_ADMIN is written by the
+ * migration alone, so a forged request asking for it is a field error, never a promotion
+ * (022 AC-3).
+ */
 function parseRole(role: unknown): Role {
-  if (!isRole(role)) {
+  if (role !== "YARD_STAFF" && role !== "ADMIN") {
     throw new ValidationError("role", ROLE_REQUIRED_MESSAGE);
   }
   return role;
+}
+
+/** The one target-row refusal: only a migration may change the SUPER_ADMIN profile (AC-3). */
+function assertTargetIsNotSuperAdmin(row: { role: Role }): void {
+  if (row.role === "SUPER_ADMIN") {
+    throw new ForbiddenError(SUPER_ADMIN_PROTECTED_MESSAGE);
+  }
 }
 
 /** The target row, locked for this transaction. */
@@ -274,7 +287,7 @@ async function settleLock(
  * failures in the last 30 days (AC-26).
  */
 export async function listProfiles(actor: SessionUser | null): Promise<ProfileListEntry[]> {
-  assertRole(actor, "ADMIN");
+  assertAdminOrAbove(actor);
 
   const now = new Date();
   const keyId = currentPinKeyId();
@@ -336,7 +349,7 @@ export async function approveProfile(
   role: Role,
   username?: string,
 ): Promise<ProfileListEntry> {
-  assertRole(actor, "ADMIN");
+  assertAdminOrAbove(actor);
   const chosenRole = parseRole(role);
   const given = username === undefined ? undefined : parseUsername(username);
 
@@ -345,6 +358,7 @@ export async function approveProfile(
     return await db.$transaction(async (tx) => {
       const now = new Date();
       const row = await lockProfile(tx, id);
+      assertTargetIsNotSuperAdmin(row);
       if (row.status !== "PENDING" || row.requestedUsername === null) {
         throw new ConflictError(NOT_PENDING_MESSAGE);
       }
@@ -380,11 +394,12 @@ export async function approveProfile(
  * cleared. The row is kept.
  */
 export async function rejectProfile(actor: SessionUser | null, id: string): Promise<ProfileListEntry> {
-  assertRole(actor, "ADMIN");
+  assertAdminOrAbove(actor);
 
   return db.$transaction(async (tx) => {
     const now = new Date();
     const row = await lockProfile(tx, id);
+    assertTargetIsNotSuperAdmin(row);
     if (row.status !== "PENDING") {
       throw new ConflictError(NOT_PENDING_MESSAGE);
     }
@@ -409,13 +424,14 @@ export async function changeProfileRole(
   id: string,
   role: Role,
 ): Promise<ProfileListEntry> {
-  assertRole(actor, "ADMIN");
+  assertAdminOrAbove(actor);
   const chosenRole = parseRole(role);
 
   return db.$transaction(async (tx) => {
     const now = new Date();
     const admins = await lockActiveAdmins(tx);
     const row = await lockProfile(tx, id);
+    assertTargetIsNotSuperAdmin(row);
     if (row.status !== "ACTIVE") {
       throw new ConflictError(ONLY_ACTIVE_PROFILE_CHANGE);
     }
@@ -442,7 +458,7 @@ export async function resetProfilePin(
   id: string,
   length: PinLength,
 ): Promise<{ profile: ProfileListEntry; newPin: string }> {
-  assertRole(actor, "ADMIN");
+  const user = assertAdminOrAbove(actor);
 
   const newPin = generatePin(length);
   const { pinHash, pinKeyId } = await hashPin(newPin);
@@ -450,6 +466,12 @@ export async function resetProfilePin(
   const profile = await db.$transaction(async (tx) => {
     const now = new Date();
     const row = await lockProfile(tx, id);
+    // The SUPER_ADMIN profile is protected from every other actor. Its own PIN reset is the
+    // one allowed exception (022 AC-3, #23 AC-7): an ADMIN resetting it would otherwise
+    // receive a PIN for the most privileged row and could sign in as it.
+    if (row.role === "SUPER_ADMIN" && user.id !== id) {
+      throw new ForbiddenError(SUPER_ADMIN_PROTECTED_MESSAGE);
+    }
     // A profile with no username cannot hold a PIN (`User_pin_needs_username`); only the
     // operator's script can give a migrated profile both.
     if (row.status !== "ACTIVE" || row.username === null) {
@@ -479,12 +501,13 @@ export async function deactivateProfile(
   actor: SessionUser | null,
   id: string,
 ): Promise<ProfileListEntry> {
-  assertRole(actor, "ADMIN");
+  assertAdminOrAbove(actor);
 
   return db.$transaction(async (tx) => {
     const now = new Date();
     const admins = await lockActiveAdmins(tx);
     const row = await lockProfile(tx, id);
+    assertTargetIsNotSuperAdmin(row);
     if (row.status !== "ACTIVE") {
       throw new ConflictError(ONLY_ACTIVE_PROFILE_CHANGE);
     }
@@ -508,14 +531,14 @@ export async function deactivateProfile(
  * guesses, not a fresh run. No event is written.
  */
 export async function clearAccountLock(actor: SessionUser | null, id: string): Promise<ProfileListEntry> {
-  assertRole(actor, "ADMIN");
+  assertAdminOrAbove(actor);
 
   return db.$transaction(async (tx) => {
     const now = new Date();
-    const row = await tx.user.findUnique({ where: { id }, select: { username: true } });
-    if (row === null) {
-      throw new NotFoundError(`Profile ${id} does not exist`);
-    }
+    // Read the target's role under the same row lock every other mutation takes, so a
+    // changed role cannot slip between the check and the write.
+    const row = await lockProfile(tx, id);
+    assertTargetIsNotSuperAdmin(row);
     if (row.username !== null) {
       await settleLock(tx, accountKey(row.username), "CLEARED", now);
     }
@@ -533,7 +556,7 @@ export async function createProfile(
   actor: SessionUser | null,
   input: { name: string; username: string; role: Role; length: PinLength },
 ): Promise<{ profile: ProfileListEntry; newPin: string }> {
-  assertRole(actor, "ADMIN");
+  assertAdminOrAbove(actor);
   const name = parseProfileName(input.name);
   const username = parseUsername(input.username);
   const role = parseRole(input.role);
@@ -574,7 +597,7 @@ export async function createProfile(
  * because the attempt's username was malformed.
  */
 export async function pinFailureSummary(actor: SessionUser | null): Promise<PinFailureSummary> {
-  assertRole(actor, "ADMIN");
+  assertAdminOrAbove(actor);
 
   const now = new Date();
   const events = await db.authEvent.findMany({
@@ -618,7 +641,7 @@ export async function pinFailureSummary(actor: SessionUser | null): Promise<PinF
  * was on screen a moment ago would otherwise do.
  */
 export async function resumeNewDeviceSignIn(actor: SessionUser | null): Promise<void> {
-  assertRole(actor, "ADMIN");
+  assertAdminOrAbove(actor);
 
   await db.$transaction(async (tx) => {
     const now = new Date();

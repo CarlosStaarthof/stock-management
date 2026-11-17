@@ -247,7 +247,8 @@ describe("prisma schema declarations", () => {
         .map((line) => line.trim())
         .filter((line) => line.length > 0 && !line.startsWith("//"));
 
-    expect(valuesOf("Role")).toEqual(["YARD_STAFF", "ADMIN"]);
+    // Feature #22 AC-1 adds SUPER_ADMIN above ADMIN; the first two labels keep their order.
+    expect(valuesOf("Role")).toEqual(["YARD_STAFF", "ADMIN", "SUPER_ADMIN"]);
     expect(valuesOf("CountStatus")).toEqual(["DRAFT", "SUBMITTED", "APPROVED"]);
     expect(valuesOf("UnitKind")).toEqual([
       "TONNE",

@@ -13,6 +13,8 @@ export const SIGN_IN_PATH = "/sign-in";
 
 /** Every route the middleware refuses to a signed-out request. */
 export const PROTECTED_PATHS = [
+  // Feature #22: every role lands on the one home menu, so it is protected too.
+  "/home",
   "/stock-entry",
   "/stock-takes",
   "/analysis",
@@ -22,6 +24,8 @@ export const PROTECTED_PATHS = [
   // Feature #21: the admin section. Signed in or not, and nothing else; ADMIN is decided
   // from the stored row by `requireAdminPage` and by every service it calls (021 AC-22).
   "/profiles",
+  // Feature #22 places the SUPER_ADMIN dashboard in the protected list; #23 delivers it.
+  "/dashboard",
 ] as const;
 
 /** Spec 003 "Open questions": 7 days, refreshed at most once every 24 hours. */

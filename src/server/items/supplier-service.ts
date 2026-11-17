@@ -3,7 +3,7 @@ import {
   supplierNameAlreadyExists,
   supplierNotFound,
 } from "@/lib/item-master-messages";
-import { assertRole } from "@/server/auth/guards";
+import { assertAdminOrAbove } from "@/server/auth/guards";
 import type { SessionUser } from "@/server/auth/session-user";
 import { db } from "@/server/db";
 import { ConflictError, NotFoundError } from "@/server/errors";
@@ -38,7 +38,7 @@ export async function listSuppliers(
   actor: SessionUser,
   options: ListSuppliersOptions = {},
 ): Promise<SupplierRow[]> {
-  assertRole(actor, "ADMIN");
+  assertAdminOrAbove(actor);
 
   const suppliers = await db.supplier.findMany({
     where: options.includeArchived === true ? {} : { active: true },
@@ -75,7 +75,7 @@ async function assertNameFree(name: string, exceptId: string | null): Promise<vo
 }
 
 export async function createSupplier(actor: SessionUser, raw: unknown): Promise<SupplierRow> {
-  assertRole(actor, "ADMIN");
+  assertAdminOrAbove(actor);
 
   const { name } = parseSupplierName(raw);
   await assertNameFree(name, null);
@@ -90,7 +90,7 @@ export async function renameSupplier(
   id: string,
   raw: unknown,
 ): Promise<SupplierRow> {
-  assertRole(actor, "ADMIN");
+  assertAdminOrAbove(actor);
 
   const { name } = parseSupplierName(raw);
   await requireSupplier(id);
@@ -117,14 +117,14 @@ export async function setSupplierActive(
   id: string,
   active: boolean,
 ): Promise<void> {
-  assertRole(actor, "ADMIN");
+  assertAdminOrAbove(actor);
 
   await requireSupplier(id);
   await db.supplier.update({ where: { id }, data: { active } });
 }
 
 export async function deleteSupplier(actor: SessionUser, id: string): Promise<void> {
-  assertRole(actor, "ADMIN");
+  assertAdminOrAbove(actor);
 
   const supplier = await requireSupplier(id);
 

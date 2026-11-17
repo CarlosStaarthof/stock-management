@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { SIGN_IN_PATH } from "@/lib/auth-config";
-import { getCurrentUser, requireRole } from "@/server/auth/session";
+import { getCurrentUser, requireAdminOrAbove } from "@/server/auth/session";
 import type { SessionUser } from "@/server/auth/session-user";
 import { ForbiddenError, UnauthorizedError } from "@/server/errors";
 
@@ -28,7 +28,7 @@ export async function requireUserPage(): Promise<SessionUser> {
  */
 export async function requireAdminPage(deniedKey: string): Promise<SessionUser> {
   try {
-    return await requireRole("ADMIN");
+    return await requireAdminOrAbove();
   } catch (error) {
     if (error instanceof ForbiddenError) {
       redirect(`/stock-entry?denied=${encodeURIComponent(deniedKey)}`);

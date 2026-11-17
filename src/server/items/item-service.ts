@@ -6,7 +6,7 @@ import {
   itemNotFound,
   cannotMarkReviewed,
 } from "@/lib/item-master-messages";
-import { assertRole } from "@/server/auth/guards";
+import { assertAdminOrAbove } from "@/server/auth/guards";
 import type { SessionUser } from "@/server/auth/session-user";
 import { db } from "@/server/db";
 import { ConflictError, NotFoundError, ValidationError } from "@/server/errors";
@@ -169,7 +169,7 @@ export async function listItems(
   query: ItemListQuery,
   asOf: string = todayIso(),
 ): Promise<ItemListPage> {
-  assertRole(actor, "ADMIN");
+  assertAdminOrAbove(actor);
 
   const items = (await db.item.findMany({ include: ITEM_INCLUDE })) as ItemWithRelations[];
 
@@ -220,7 +220,7 @@ export async function getItem(
   id: string,
   asOf: string = todayIso(),
 ): Promise<ItemDetail> {
-  assertRole(actor, "ADMIN");
+  assertAdminOrAbove(actor);
 
   const item = await loadItem(id);
   const prices = toPriceRows(item.prices);
@@ -293,7 +293,7 @@ async function assertReferencesExist(input: ItemInput): Promise<void> {
 }
 
 export async function createItem(actor: SessionUser, raw: unknown): Promise<ItemDetail> {
-  assertRole(actor, "ADMIN");
+  assertAdminOrAbove(actor);
 
   const input = parseItemInput(raw);
   await assertReferencesExist(input);
@@ -333,7 +333,7 @@ export async function updateItem(
   id: string,
   raw: unknown,
 ): Promise<ItemDetail> {
-  assertRole(actor, "ADMIN");
+  assertAdminOrAbove(actor);
 
   const input = parseItemInput(raw);
   const existing = await loadItem(id);
@@ -376,7 +376,7 @@ export async function setItemActive(
   id: string,
   active: boolean,
 ): Promise<ItemDetail> {
-  assertRole(actor, "ADMIN");
+  assertAdminOrAbove(actor);
 
   await loadItem(id);
   await db.item.update({ where: { id }, data: { active } });
@@ -385,7 +385,7 @@ export async function setItemActive(
 }
 
 export async function markItemReviewed(actor: SessionUser, id: string): Promise<ItemDetail> {
-  assertRole(actor, "ADMIN");
+  assertAdminOrAbove(actor);
 
   const item = await loadItem(id);
   const outstanding = reviewReasons({
@@ -410,7 +410,7 @@ export async function markItemReviewed(actor: SessionUser, id: string): Promise<
  * rather than reading a Prisma error code that is not there.
  */
 export async function deleteItem(actor: SessionUser, id: string): Promise<void> {
-  assertRole(actor, "ADMIN");
+  assertAdminOrAbove(actor);
 
   const item = await loadItem(id);
 

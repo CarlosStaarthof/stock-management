@@ -1,5 +1,5 @@
 import { itemNotAssigned, itemNotFound, locationNotFound } from "@/lib/item-master-messages";
-import { assertRole, assertUser } from "@/server/auth/guards";
+import { assertAdminOrAbove, assertUser } from "@/server/auth/guards";
 import type { SessionUser } from "@/server/auth/session-user";
 import { db } from "@/server/db";
 import { NotFoundError } from "@/server/errors";
@@ -98,11 +98,11 @@ function toStaffEntry(link: LinkRecord): StaffSheetEntry {
  * The yard sheet, ROLE-SHAPED (007 AC-14).
  *
  * THE GUARD MOVED, AND ONLY HERE. Until #7 every screen that could reach a sheet was
- * `ADMIN`-only, so `assertRole(actor, "ADMIN")` was enough. `specs/domain-model.md` Part 6
+ * `ADMIN`-only, so `assertAdminOrAbove(actor)` was enough. `specs/domain-model.md` Part 6
  * puts "create and edit a DRAFT count" in BOTH role columns, and the caller that needs a
  * sheet most is now a `YARD_STAFF` user starting a count — so this function and
  * `locationName` accept any signed-in actor, and `listSheet`'s RETURN VALUE is shaped from
- * `actor.role` instead. Every mutation below keeps `assertRole(actor, "ADMIN")`.
+ * `actor.role` instead. Every mutation below keeps `assertAdminOrAbove(actor)`.
  *
  * A staff reader never has a price BUILT for them: `sheetEntriesForRole` takes the price
  * builder as a thunk and calls it only in the admin branch, so "not hidden — not sent"
@@ -175,7 +175,7 @@ export async function assignItemToLocation(
   itemId: string,
   locationCode: string,
 ): Promise<void> {
-  assertRole(actor, "ADMIN");
+  assertAdminOrAbove(actor);
 
   const location = await locationByCode(locationCode);
   await requireItem(itemId);
@@ -218,7 +218,7 @@ export async function unassignItemFromLocation(
   itemId: string,
   locationCode: string,
 ): Promise<void> {
-  assertRole(actor, "ADMIN");
+  assertAdminOrAbove(actor);
 
   const location = await locationByCode(locationCode);
   const item = await requireItem(itemId);
@@ -242,7 +242,7 @@ export async function moveItemInSheet(
   locationCode: string,
   rawDirection: string,
 ): Promise<void> {
-  assertRole(actor, "ADMIN");
+  assertAdminOrAbove(actor);
 
   const direction: MoveDirection = parseMoveDirection(rawDirection);
   const location = await locationByCode(locationCode);

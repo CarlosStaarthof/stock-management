@@ -28,11 +28,13 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
-/// The two roles of specs/domain-model.md Part 6. There is no third role and no
-/// yard-scoped user: YARD_STAFF counts and never sees a euro, ADMIN approves and prices.
+/// The roles of specs/domain-model.md Part 6, extended by #22 (D1): SUPER_ADMIN sits above
+/// ADMIN. There is no yard-scoped user: YARD_STAFF counts and never sees a euro, ADMIN
+/// approves and prices, and SUPER_ADMIN is treated as an administrator everywhere.
 enum Role {
   YARD_STAFF
   ADMIN
+  SUPER_ADMIN
 }
 
 /// The count lifecycle of specs/domain-model.md Part 3. Which transitions are legal, and

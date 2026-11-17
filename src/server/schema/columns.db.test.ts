@@ -161,7 +161,7 @@ describe("the database the migrations produce", () => {
 
     expect(unitKind.labels).toBe("{TONNE,KILOGRAM,LITRE,UNIT,LINEAR_METRE}");
     expect(countStatus.labels).toBe("{DRAFT,SUBMITTED,APPROVED}");
-    expect(role.labels).toBe("{YARD_STAFF,ADMIN}");
+    expect(role.labels).toBe("{YARD_STAFF,ADMIN,SUPER_ADMIN}");
   });
 
   it("AC-5, amended by 021 AC-1: User has #21's eleven columns, with Part 3's types and nullabilities", async () => {

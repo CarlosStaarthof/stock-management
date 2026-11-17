@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 
-import { requireRole } from "@/server/auth/session";
+import { requireAdminOrAbove } from "@/server/auth/session";
 import { ConflictError, NotFoundError, ValidationError } from "@/server/errors";
 import {
   assignItemToLocation,
@@ -39,7 +39,7 @@ import type { FormState } from "@/app/item-master/form-state";
  * TWO RULES, both asserted by a source scan of this file (006 AC-5).
  *
  * 1. THE ACTOR COMES FROM THE SESSION. Every exported action begins with
- *    `await requireRole("ADMIN")` — one call each, no wrapper, no helper that could grow
+ *    `await requireAdminOrAbove()` — one call each, no wrapper, no helper that could grow
  *    a second path — and the role is read from the stored `User` row on every request
  *    (003 AC-18). Nothing here reads `role`, `actor`, `actorId` or `userId` from a
  *    `FormData`: a form field is something the sender chooses.
@@ -116,7 +116,7 @@ export async function createItemAction(
   previous: FormState,
   formData: FormData,
 ): Promise<FormState> {
-  const actor = await requireRole("ADMIN");
+  const actor = await requireAdminOrAbove();
   const values = valuesOf(formData, ITEM_FIELDS);
 
   let createdId: string;
@@ -140,7 +140,7 @@ export async function updateItemAction(
   previous: FormState,
   formData: FormData,
 ): Promise<FormState> {
-  const actor = await requireRole("ADMIN");
+  const actor = await requireAdminOrAbove();
   const values = valuesOf(formData, ITEM_FIELDS);
   const itemId = stringField(formData, "itemId");
 
@@ -160,7 +160,7 @@ export async function updateItemAction(
 }
 
 export async function archiveItemAction(formData: FormData): Promise<void> {
-  const actor = await requireRole("ADMIN");
+  const actor = await requireAdminOrAbove();
   const itemId = stringField(formData, "itemId");
 
   const error = await outcomeOf(() => setItemActive(actor, itemId, false));
@@ -169,7 +169,7 @@ export async function archiveItemAction(formData: FormData): Promise<void> {
 }
 
 export async function restoreItemAction(formData: FormData): Promise<void> {
-  const actor = await requireRole("ADMIN");
+  const actor = await requireAdminOrAbove();
   const itemId = stringField(formData, "itemId");
 
   const error = await outcomeOf(() => setItemActive(actor, itemId, true));
@@ -178,7 +178,7 @@ export async function restoreItemAction(formData: FormData): Promise<void> {
 }
 
 export async function deleteItemAction(formData: FormData): Promise<void> {
-  const actor = await requireRole("ADMIN");
+  const actor = await requireAdminOrAbove();
   const itemId = stringField(formData, "itemId");
 
   const error = await outcomeOf(() => deleteItem(actor, itemId));
@@ -193,7 +193,7 @@ export async function deleteItemAction(formData: FormData): Promise<void> {
 }
 
 export async function markItemReviewedAction(formData: FormData): Promise<void> {
-  const actor = await requireRole("ADMIN");
+  const actor = await requireAdminOrAbove();
   const itemId = stringField(formData, "itemId");
 
   const error = await outcomeOf(() => markItemReviewed(actor, itemId));
@@ -207,7 +207,7 @@ export async function addItemPriceAction(
   previous: FormState,
   formData: FormData,
 ): Promise<FormState> {
-  const actor = await requireRole("ADMIN");
+  const actor = await requireAdminOrAbove();
   const values = valuesOf(formData, PRICE_FIELDS);
 
   try {
@@ -227,7 +227,7 @@ export async function addItemPriceAction(
 /* ------------------------------------------------------------------ assignments */
 
 export async function assignItemAction(formData: FormData): Promise<void> {
-  const actor = await requireRole("ADMIN");
+  const actor = await requireAdminOrAbove();
   const itemId = stringField(formData, "itemId");
   const locationCode = stringField(formData, "locationCode");
   const returnTo = stringField(formData, "returnTo");
@@ -240,7 +240,7 @@ export async function assignItemAction(formData: FormData): Promise<void> {
 }
 
 export async function unassignItemAction(formData: FormData): Promise<void> {
-  const actor = await requireRole("ADMIN");
+  const actor = await requireAdminOrAbove();
   const itemId = stringField(formData, "itemId");
   const locationCode = stringField(formData, "locationCode");
   const returnTo = stringField(formData, "returnTo");
@@ -253,7 +253,7 @@ export async function unassignItemAction(formData: FormData): Promise<void> {
 }
 
 export async function moveItemInSheetAction(formData: FormData): Promise<void> {
-  const actor = await requireRole("ADMIN");
+  const actor = await requireAdminOrAbove();
   const itemId = stringField(formData, "itemId");
   const locationCode = stringField(formData, "locationCode");
   const direction = stringField(formData, "direction");
@@ -278,7 +278,7 @@ export async function createSupplierAction(
   previous: FormState,
   formData: FormData,
 ): Promise<FormState> {
-  const actor = await requireRole("ADMIN");
+  const actor = await requireAdminOrAbove();
   const values = valuesOf(formData, ["name"]);
 
   try {
@@ -296,7 +296,7 @@ export async function createSupplierAction(
  * the table rather than beside one row of it.
  */
 export async function renameSupplierAction(formData: FormData): Promise<void> {
-  const actor = await requireRole("ADMIN");
+  const actor = await requireAdminOrAbove();
   const supplierId = stringField(formData, "supplierId");
   const name = stringField(formData, "name");
 
@@ -306,7 +306,7 @@ export async function renameSupplierAction(formData: FormData): Promise<void> {
 }
 
 export async function archiveSupplierAction(formData: FormData): Promise<void> {
-  const actor = await requireRole("ADMIN");
+  const actor = await requireAdminOrAbove();
   const supplierId = stringField(formData, "supplierId");
 
   const error = await outcomeOf(() => setSupplierActive(actor, supplierId, false));
@@ -315,7 +315,7 @@ export async function archiveSupplierAction(formData: FormData): Promise<void> {
 }
 
 export async function restoreSupplierAction(formData: FormData): Promise<void> {
-  const actor = await requireRole("ADMIN");
+  const actor = await requireAdminOrAbove();
   const supplierId = stringField(formData, "supplierId");
 
   const error = await outcomeOf(() => setSupplierActive(actor, supplierId, true));
@@ -324,7 +324,7 @@ export async function restoreSupplierAction(formData: FormData): Promise<void> {
 }
 
 export async function deleteSupplierAction(formData: FormData): Promise<void> {
-  const actor = await requireRole("ADMIN");
+  const actor = await requireAdminOrAbove();
   const supplierId = stringField(formData, "supplierId");
 
   const error = await outcomeOf(() => deleteSupplier(actor, supplierId));
@@ -338,7 +338,7 @@ export async function createItemTypeAction(
   previous: FormState,
   formData: FormData,
 ): Promise<FormState> {
-  const actor = await requireRole("ADMIN");
+  const actor = await requireAdminOrAbove();
   const values = valuesOf(formData, ["code", "name"]);
 
   try {
@@ -351,7 +351,7 @@ export async function createItemTypeAction(
 }
 
 export async function renameItemTypeAction(formData: FormData): Promise<void> {
-  const actor = await requireRole("ADMIN");
+  const actor = await requireAdminOrAbove();
   const itemTypeId = stringField(formData, "itemTypeId");
   const code = stringField(formData, "code");
   const name = stringField(formData, "name");
@@ -362,7 +362,7 @@ export async function renameItemTypeAction(formData: FormData): Promise<void> {
 }
 
 export async function moveItemTypeAction(formData: FormData): Promise<void> {
-  const actor = await requireRole("ADMIN");
+  const actor = await requireAdminOrAbove();
   const itemTypeId = stringField(formData, "itemTypeId");
   const direction = stringField(formData, "direction");
 
@@ -372,7 +372,7 @@ export async function moveItemTypeAction(formData: FormData): Promise<void> {
 }
 
 export async function deleteItemTypeAction(formData: FormData): Promise<void> {
-  const actor = await requireRole("ADMIN");
+  const actor = await requireAdminOrAbove();
   const itemTypeId = stringField(formData, "itemTypeId");
 
   const error = await outcomeOf(() => deleteItemType(actor, itemTypeId));

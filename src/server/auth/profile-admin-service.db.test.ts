@@ -17,6 +17,7 @@ import {
   NO_PENDING_PROFILES,
   PIN_FAILURES_SUMMARY,
   RESUME_NEW_DEVICES_LABEL,
+  SUPER_ADMIN_PROTECTED_MESSAGE,
   USERNAME_FORMAT_MESSAGE,
   USERNAME_TAKEN_MESSAGE,
 } from "@/lib/auth-messages";
@@ -979,6 +980,83 @@ describe("021 AC-33: the admin section logs, returns and stores no PIN, digest, 
     for (const pin of [created.newPin, reset.newPin]) {
       expect(stored.filter((value) => value === pin)).toHaveLength(0);
     }
+  });
+});
+
+/* ------------------------------------------------------------------- 022 AC-3 */
+
+describe("022 AC-3: no application path creates, promotes, demotes or removes a SUPER_ADMIN", () => {
+  it("AC-3: a requested SUPER_ADMIN is a ValidationError from createProfile, approveProfile and changeProfileRole", async () => {
+    const admin = await active("ADMIN");
+    const staff = await active();
+    const pending = await request();
+    const before = await snapshot();
+
+    for (const work of [
+      createProfile(admin.user, {
+        name: "Forged super",
+        username: newUsername(),
+        role: "SUPER_ADMIN",
+        length: 6,
+      }),
+      approveProfile(admin.user, pending.id, "SUPER_ADMIN"),
+      changeProfileRole(admin.user, staff.user.id, "SUPER_ADMIN"),
+    ]) {
+      expect(await caught(work)).toBeInstanceOf(ValidationError);
+    }
+
+    expect(await snapshot()).toBe(before);
+    expect(await db.user.count({ where: { role: "SUPER_ADMIN" } })).toBe(0);
+  });
+
+  it("AC-3: every target-mutating service refuses the SUPER_ADMIN row and leaves it byte-identical", async () => {
+    const superAdmin = await active("SUPER_ADMIN");
+    const admin = await active("ADMIN");
+    await lockUsername(superAdmin.user.username, {
+      consecutiveFailures: 3,
+      level: 2,
+      lockedUntil: new Date(Date.now() + 600_000),
+    });
+    const before = await snapshot();
+
+    const calls = [
+      approveProfile(admin.user, superAdmin.user.id, "ADMIN"),
+      rejectProfile(admin.user, superAdmin.user.id),
+      changeProfileRole(admin.user, superAdmin.user.id, "ADMIN"),
+      deactivateProfile(admin.user, superAdmin.user.id),
+      resetProfilePin(admin.user, superAdmin.user.id, 6),
+      clearAccountLock(admin.user, superAdmin.user.id),
+    ];
+
+    for (const work of calls) {
+      const error = await caught(work);
+      expect(error).toBeInstanceOf(ForbiddenError);
+      expect((error as Error).message).toBe(SUPER_ADMIN_PROTECTED_MESSAGE);
+    }
+
+    // No PIN was returned, no column changed, no session ended, and the lock is intact.
+    expect(await snapshot()).toBe(before);
+    const row = await db.user.findUniqueOrThrow({
+      where: { id: superAdmin.user.id },
+      select: { role: true, status: true, sessionEpoch: true, pinHash: true },
+    });
+    expect(row).toMatchObject({ role: "SUPER_ADMIN", status: "ACTIVE", sessionEpoch: 0 });
+    expect(await lockRow(superAdmin.user.username)).not.toBeNull();
+  });
+
+  it("AC-3: the SUPER_ADMIN may reset its own PIN, the one allowed exception", async () => {
+    const superAdmin = await active("SUPER_ADMIN");
+
+    const result = await resetProfilePin(superAdmin.user, superAdmin.user.id, 6);
+
+    expect(result.newPin).toMatch(/^\d{6}$/);
+    expect(result.newPin).not.toBe(superAdmin.pin);
+    expect(result.profile.role).toBe("SUPER_ADMIN");
+    const row = await db.user.findUniqueOrThrow({
+      where: { id: superAdmin.user.id },
+      select: { sessionEpoch: true },
+    });
+    expect(row.sessionEpoch).toBe(1);
   });
 });
 

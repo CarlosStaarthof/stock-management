@@ -622,7 +622,7 @@
         "AC-13: An ADMIN downloads a real, readable file end to end.",
         "AC-14: The rest of the product is unchanged."
       ],
-      "status": "in_progress"
+      "status": "done"
     },
     {
       "id": 14,
@@ -688,7 +688,7 @@
       "title": "Roles, home menu and export price format",
       "description": "Adds SUPER_ADMIN above ADMIN and YARD_STAFF, set by a migration that promotes the existing carlos-staarthof profile and never creates one; lands every role on a home menu of Stock Calendar, Export, Stock and Dashboard tiles; grants ADMIN and SUPER_ADMIN prices and keeps YARD_STAFF money-free on every surface; and makes the export Price column a euro-formatted number instead of text.",
       "spec_file": "specs/features/022-roles_home_menu.md",
-      "spec_status": "draft",
+      "spec_status": "approved",
       "acceptance": [
         "AC-1: The role union is closed and the hierarchy has one predicate. `prisma/schema.prisma` declares `Role { YARD_STAFF ADMIN SUPER_ADMIN }`; `src/server/auth/roles.ts` exports the same three strings, the matching union and `isRole`; and a single `isAdminOrAbove(role)` returns true for `ADMIN` and `SUPER_ADMIN` and false for `YARD_STAFF`. Unit tests cover all three inputs, and a source scan finds no second spelling of the hierarchy in `src/server/` or `src/app/`. *Proved by* `src/server/auth/roles.test.ts` and `tests/unit/role-hierarchy.test.ts` (created by this feature).",
         "AC-2: The migration promotes the existing profile or does nothing. Applying the two migrations to a database with no `carlos-staarthof` row inserts no `User` row, leaves zero `SUPER_ADMIN` rows and succeeds. Applying them to a database that already holds `carlos-staarthof` changes that row's role to `SUPER_ADMIN` and changes no other column: its status, username, PIN columns and epoch are byte-identical. Neither migration creates a profile. The data migration is idempotent and refuses, rolling back, if applying it would leave more than one `SUPER_ADMIN`. The enum migration carries a `-- contract-step:` line, so #16's migration-safety test accepts the enum addition. *Proved by* `src/server/auth/super-admin-migration.db.test.ts`.",
@@ -703,7 +703,7 @@
         "AC-11: The gate is green in full. `npx prisma validate`, `npm run typecheck`, `npm run lint`, `npm run test:unit`, `npx prisma migrate status`, `npm run test:db` and `npm run test:e2e` pass; `./init.sh` ends with `[OK] Environment ready` having executed the database checks. `git status --porcelain -- Samples` is empty. No new dependency is added. *Proved by* the recorded gate run in `progress/impl_roles_home_menu.md`.",
         "AC-12: The schema stays the domain model. The only schema change is the added enum value; no model, column, index or relation is added or removed. `tests/unit/schema-and-migration.test.ts` is updated for the third enum member and passes. `TRUNCATED_TABLES` is unchanged and `src/server/test-db.db.test.ts` still asserts the closure. *Proved by* those tests."
       ],
-      "status": "pending"
+      "status": "in_progress"
     },
     {
       "id": 23,
@@ -712,7 +712,7 @@
       "title": "Super Admin dashboard",
       "description": "SUPER_ADMIN-only screen listing every profile with role, status and lock state; resets a PIN; activates or deactivates a profile; changes a role between ADMIN and YARD_STAFF; and shows one row per approved StockCount, one per depot per stock take, with depot, count date, total value, signer and time, from a registry that more record kinds can join.",
       "spec_file": "specs/features/023-super_admin_dashboard.md",
-      "spec_status": "draft",
+      "spec_status": "approved",
       "acceptance": [
         "AC-1: SUPER_ADMIN only, at the page and at the service. A `SUPER_ADMIN` GET of `/dashboard` answers `200` and contains the Profiles and Records sections. An `ADMIN` or `YARD_STAFF` GET answers a `307` to `/home?denied=dashboard` and the body contains no profile name, username, role, status, lock, depot, count date, value or signer. Each dashboard service called directly with an `ADMIN` or `YARD_STAFF` actor throws `ForbiddenError` before reading any row. `/dashboard` is in `PROTECTED_PATHS` and the middleware matcher. *Proved by* `tests/e2e/dashboard-access.spec.ts` and `src/server/dashboard/dashboard-service.db.test.ts`.",
         "AC-2: Every profile is listed with role, status and lock state. With three fixtures — an active unlocked `ADMIN`, a deactivated profile whose username has a lock row, and a pending request — the Profiles section lists all three. Each row shows the name, the correct username (or requested username), the role, the status label and a lock state; the locked row names its `lockedUntil` and a non-locked row does not. `PENDING` rows come first. A row with no lock row reads as not locked with zero recent failures. *Proved by* `tests/e2e/dashboard-profiles.spec.ts` and the service test.",
@@ -737,7 +737,7 @@
       "title": "Open items, finish and sign-off",
       "description": "Lets a counter add count-local open items while a count is DRAFT. A YARD_STAFF counter finishes the count without seeing a price or total; an ADMIN or SUPER_ADMIN reviews it, prices the open items and signs it off, while an ADMIN or SUPER_ADMIN who counted does review, pricing and sign-off in one step. Includes open items in the count value, export and records view, and removes the two-step submit/approve flow for new counts except the retained legacy SUBMITTED path.",
       "spec_file": "specs/features/024-open_items_sign_off.md",
-      "spec_status": "draft",
+      "spec_status": "approved",
       "acceptance": [
         "AC-1: The schema adds one count-local model, one relation and one status value. `StockCountOpenItem` has exactly the fields above; `stockCountId` is required and cascades on count deletion; there is no `itemId`, supplier, type or price-list relation. `CountStatus` contains `PENDING_SIGN_OFF`; no existing status value is removed. A migration creates the table and adds the enum value (carrying a `-- contract-step:` line for #16's migration-safety test), and `TRUNCATED_TABLES` includes the table. Existing `SUBMITTED` rows are unchanged. `src/server/schema/columns.db.test.ts`, `src/server/schema/referential.db.test.ts` and `src/server/schema/constraints.db.test.ts` cover the new table. *Proved by* those tests and `src/server/counts/open-item-service.db.test.ts`.",
         "AC-2: An open item can be added only to a DRAFT, and it never creates a master item. With a draft count, adding `{description: \"Swept path markers\", unitLabel: \"Unit\", quantity: \"580\", jobReference: \"TRANSDEV-24\", note: null}` returns one open item with `unitPrice: null`; a dump of `Item`, `ItemLocation` and `ItemPrice` before and after is byte-identical. A supplied `unitPrice` in the add input is not written. Adding to a `PENDING_SIGN_OFF`, `SUBMITTED` or `APPROVED` count is a `ConflictError`; a blank description, a blank unit, an empty quantity and a quantity that fails the existing quantity grammar are each a `ValidationError` and write nothing. Both a `YARD_STAFF` and an `ADMIN` actor can add. *Proved by* `src/server/counts/open-item-service.db.test.ts` and `tests/unit/open-item-input.test.ts`.",

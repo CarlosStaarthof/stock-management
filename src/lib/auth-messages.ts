@@ -94,6 +94,10 @@ export const SETUP_PAUSED_MESSAGE =
 export const SETUP_COMPLETE_MESSAGE =
   "Your administrator profile is ready. Sign in with your username and PIN.";
 
+/** Feature #22 AC-3: only a migration may write the SUPER_ADMIN role. */
+export const SUPER_ADMIN_PROTECTED_MESSAGE =
+  "The super administrator profile cannot be changed here.";
+
 /** S10: the change would leave no active administrator who can sign in. */
 export const LAST_ADMIN_MESSAGE =
   "This is the last active administrator. Make another profile an administrator first.";

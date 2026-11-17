@@ -2,7 +2,7 @@ import { TREND_WINDOW } from "@/lib/analysis-chart";
 import { NO_SUPPLIER, formatMonthLabel } from "@/lib/analysis-messages";
 import { isHeld } from "@/lib/held";
 import { multiplyDecimal, subtractDecimals, sumDecimals } from "@/lib/money";
-import { assertRole } from "@/server/auth/guards";
+import { assertAdminOrAbove } from "@/server/auth/guards";
 import { shapeForRole } from "@/server/auth/role-shape";
 import type { SessionUser } from "@/server/auth/session-user";
 import { formatPeriodKey } from "@/server/counts/period";
@@ -537,7 +537,7 @@ export async function getAnalysis(
   actor: SessionUser | null,
   input: AnalysisInput,
 ): Promise<AnalysisForAdmin> {
-  const user = assertRole(actor, "ADMIN");
+  const user = assertAdminOrAbove(actor);
 
   return analysisForRole(
     user,
@@ -618,7 +618,7 @@ export async function getAnalysis(
  * empty state, and that clock belongs to the page rather than to this service.
  */
 export async function listApprovedPeriods(actor: SessionUser | null): Promise<string[]> {
-  assertRole(actor, "ADMIN");
+  assertAdminOrAbove(actor);
 
   return approvedPeriodKeysIn(await readCounts());
 }

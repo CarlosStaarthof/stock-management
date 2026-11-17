@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { errorResponse } from "@/app/api/error-response";
-import { requireRole } from "@/server/auth/session";
+import { requireAdminOrAbove } from "@/server/auth/session";
 import { exportWorkbook } from "@/server/export/export-service";
 
 /**
@@ -25,7 +25,7 @@ const XLSX_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.spreads
 
 export async function GET(request: Request): Promise<NextResponse> {
   try {
-    const actor = await requireRole("ADMIN");
+    const actor = await requireAdminOrAbove();
     const params = new URL(request.url).searchParams;
 
     const { fileName, bytes } = await exportWorkbook(actor, {

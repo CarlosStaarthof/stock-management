@@ -10,7 +10,7 @@ import {
 } from "@/lib/count-messages";
 import { logWarn } from "@/lib/log";
 import { parseSignaturePath } from "@/lib/signature-path";
-import { assertRole, assertUser } from "@/server/auth/guards";
+import { assertAdminOrAbove, assertUser } from "@/server/auth/guards";
 import type { SessionUser } from "@/server/auth/session-user";
 import { db } from "@/server/db";
 import { ConflictError, NotFoundError, ValidationError } from "@/server/errors";
@@ -49,7 +49,7 @@ import type {
  *     sentence, and the only way out is an audited reopen by an `ADMIN`.
  *
  * THE ACTOR IS THE SESSION, NEVER A FIELD. Every function takes an explicit actor and
- * begins with `assertUser` or `assertRole(actor, "ADMIN")`. It comes from `requireUser()`,
+ * begins with `assertUser` or `assertAdminOrAbove(actor)`. It comes from `requireUser()`,
  * `requireUserPage()` or `requireAdminPage()` and from nowhere else (AC-2, AC-27).
  *
  * EVERY WRITE IS A COMPARE-AND-SET. `updateMany({ where: { id, status: <the only status it
@@ -271,7 +271,7 @@ export async function approveCount(
   actor: SessionUser | null,
   countId: string,
 ): Promise<CountLifecycleFacts> {
-  const user = assertRole(actor, "ADMIN");
+  const user = assertAdminOrAbove(actor);
 
   const count = await countHeadOrThrow(countId);
 
@@ -316,7 +316,7 @@ export async function reopenCount(
   countId: string,
   reason: string,
 ): Promise<CountLifecycleFacts> {
-  const user = assertRole(actor, "ADMIN");
+  const user = assertAdminOrAbove(actor);
 
   const count = await countHeadOrThrow(countId);
 

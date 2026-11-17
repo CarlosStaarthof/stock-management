@@ -1,5 +1,5 @@
 import { logWarn } from "@/lib/log";
-import { assertRole, assertUser } from "@/server/auth/guards";
+import { assertAdminOrAbove, assertRole, assertUser } from "@/server/auth/guards";
 import { auth } from "@/server/auth/next-auth";
 import type { Role } from "@/server/auth/roles";
 import type { SessionUser } from "@/server/auth/session-user";
@@ -54,4 +54,13 @@ export async function requireUser(): Promise<SessionUser> {
  */
 export async function requireRole(role: Role): Promise<SessionUser> {
   return assertRole(await getCurrentUser(), role);
+}
+
+/**
+ * The administrator-or-above gate for routes and actions: `ADMIN` and `SUPER_ADMIN` pass,
+ * `YARD_STAFF` is refused, and no session is `UnauthorizedError` (022 AC-1, AC-7). It is
+ * the page-shaped mirror of `assertAdminOrAbove`.
+ */
+export async function requireAdminOrAbove(): Promise<SessionUser> {
+  return assertAdminOrAbove(await getCurrentUser());
 }

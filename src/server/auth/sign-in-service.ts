@@ -18,6 +18,7 @@ import {
   type Transaction,
 } from "@/server/auth/auth-event-log";
 import { parsePin, parseUsername } from "@/server/auth/credential-rules";
+import type { Role } from "@/server/auth/roles";
 import {
   accountKey,
   CredentialSecretError,
@@ -69,7 +70,7 @@ type ProfileRow = {
   id: string;
   username: string | null;
   name: string;
-  role: "YARD_STAFF" | "ADMIN";
+  role: Role;
   status: "PENDING" | "ACTIVE" | "REJECTED" | "DEACTIVATED";
   pinHash: string | null;
   pinKeyId: string | null;

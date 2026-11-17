@@ -11,7 +11,7 @@ import {
   VALUE_HEADER,
 } from "@/lib/export-messages";
 import { isHeld } from "@/lib/held";
-import { formatPriceExact, roundHalfUp, sumDecimals } from "@/lib/money";
+import { roundHalfUp, sumDecimals } from "@/lib/money";
 
 /**
  * Builds the workbook feature #12 exports for ONE depot's ONE stock take, from plain data and
@@ -107,6 +107,8 @@ export type ExportInput = {
 const QUANTITY_FORMAT = "0.####";
 /** A euro cell is displayed to the cent, by a format rather than by lossy rounding (AC-3). */
 const MONEY_FORMAT = "#,##0.00";
+/** Feature #22 AC-8: column E is a number a reader can sort and sum, shown in euros. */
+const PRICE_FORMAT = '"€"#,##0.00';
 
 /**
  * The column letter of a 1-based index. Excel's bijective base-26: index 1 is A, 26 is Z,
@@ -189,8 +191,13 @@ function writeDepotSheet(sheet: ExcelJS.Worksheet, input: ExportInput): number {
     sheet.getCell(ref(2, excelRow)).value = row.supplier ?? NO_SUPPLIER;
     sheet.getCell(ref(3, excelRow)).value = row.typeName;
     sheet.getCell(ref(4, excelRow)).value = row.unitLabel ?? "";
-    sheet.getCell(ref(5, excelRow)).value =
-      row.currentPrice === null ? "" : formatPriceExact(row.currentPrice);
+    // Column E: the current price as a NUMBER, never text (022 AC-8). An item with no
+    // price leaves the cell blank, not an empty string.
+    const priceCell = sheet.getCell(ref(5, excelRow));
+    if (row.currentPrice !== null) {
+      priceCell.value = numberOf(row.currentPrice);
+      priceCell.numFmt = PRICE_FORMAT;
+    }
 
     if (row.cell === null) return;
 

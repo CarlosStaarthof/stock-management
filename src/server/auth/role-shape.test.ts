@@ -11,6 +11,12 @@ const staff: SessionUser = {
 };
 
 const admin: SessionUser = { ...staff, id: "u_admin", username: "admin", role: "ADMIN" };
+const superAdmin: SessionUser = {
+  ...staff,
+  id: "u_super",
+  username: "carlos-staarthof",
+  role: "SUPER_ADMIN",
+};
 
 describe("shapeForRole", () => {
   it("AC-17: a YARD_STAFF user gets the staff shape and forAdmin is never called", () => {
@@ -29,6 +35,17 @@ describe("shapeForRole", () => {
     const forAdmin = vi.fn(() => ({ item: "White Extrusion 80/20", lineValue: "8748.7000" }));
 
     const result = shapeForRole(admin, { forStaff, forAdmin });
+
+    expect(result).toEqual({ item: "White Extrusion 80/20", lineValue: "8748.7000" });
+    expect(forAdmin).toHaveBeenCalledTimes(1);
+    expect(forStaff).toHaveBeenCalledTimes(0);
+  });
+
+  it("022 AC-7: a SUPER_ADMIN user gets the admin shape and forStaff is never called", () => {
+    const forStaff = vi.fn(() => ({ item: "White Extrusion 80/20", quantity: "9.8300" }));
+    const forAdmin = vi.fn(() => ({ item: "White Extrusion 80/20", lineValue: "8748.7000" }));
+
+    const result = shapeForRole(superAdmin, { forStaff, forAdmin });
 
     expect(result).toEqual({ item: "White Extrusion 80/20", lineValue: "8748.7000" });
     expect(forAdmin).toHaveBeenCalledTimes(1);

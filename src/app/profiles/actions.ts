@@ -17,7 +17,7 @@ import {
   resumeNewDeviceSignIn,
   ROLE_REQUIRED_MESSAGE,
 } from "@/server/auth/profile-admin-service";
-import { isRole, type Role } from "@/server/auth/roles";
+import type { Role } from "@/server/auth/roles";
 import { getCurrentUser } from "@/server/auth/session";
 import type { SessionUser } from "@/server/auth/session-user";
 import {
@@ -88,9 +88,13 @@ async function run<T>(work: (actor: SessionUser | null) => Promise<T>): Promise<
   return { ok: true, value };
 }
 
+/**
+ * A role a profile form may assign: only YARD_STAFF and ADMIN. SUPER_ADMIN is written by
+ * the migration alone, so it is refused here as well as in every service (022 AC-3).
+ */
 function roleField(formData: FormData): Role | null {
   const role = field(formData, "role");
-  return isRole(role) ? role : null;
+  return role === "YARD_STAFF" || role === "ADMIN" ? role : null;
 }
 
 function lengthField(formData: FormData): PinLength | null {

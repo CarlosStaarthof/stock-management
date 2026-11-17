@@ -69,9 +69,9 @@ describe("AC-5: the actor comes from the session, never from the request body", 
     expect(exportedActionNames().sort()).toEqual([...EXPECTED_ACTIONS].sort());
   });
 
-  it("AC-5: there is one requireRole(\"ADMIN\") call per exported action", () => {
+  it("AC-5, amended by 022 AC-1: there is one admin-or-above guard per exported action", () => {
     const actions = exportedActionNames();
-    const guards = [...ACTIONS_CODE.matchAll(/await requireRole\("ADMIN"\)/g)];
+    const guards = [...ACTIONS_CODE.matchAll(/await requireAdminOrAbove\(\)/g)];
 
     expect(actions.length).toBe(19);
     expect(guards.length).toBe(actions.length);
@@ -85,7 +85,7 @@ describe("AC-5: the actor comes from the session, never from the request body", 
     for (const body of bodies) {
       const firstStatement = body.slice(body.indexOf("{") + 1).trim().split("\n")[0].trim();
       expect(firstStatement, body.split("(")[0]).toBe(
-        'const actor = await requireRole("ADMIN");',
+        'const actor = await requireAdminOrAbove();',
       );
     }
   });
@@ -99,7 +99,7 @@ describe("AC-5: the actor comes from the session, never from the request body", 
       expect(ACTIONS_CODE).not.toMatch(new RegExp(`stringField\\([^)]*["']${field}["']`, "i"));
     }
 
-    // And no other route to a role: the only one is `requireRole`.
+    // And no other route to a role: the only one is `requireAdminOrAbove`.
     expect(ACTIONS_CODE).not.toContain("YARD_STAFF");
     expect(ACTIONS_CODE).not.toMatch(/headers\(\)/);
     expect(ACTIONS_CODE).not.toMatch(/cookies\(\)/);
