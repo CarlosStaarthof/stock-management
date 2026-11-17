@@ -100,7 +100,7 @@ describe("016 AC-7: the census reports counts and nothing else", () => {
       "[db:census] profiles: ADMIN ACTIVE 1, YARD_STAFF ACTIVE 1",
       "[db:census] stock counts: none",
       "[db:census] count lines: 0",
-      `[db:census] migrations: 4 applied, latest ${LATEST_MIGRATION}`,
+      `[db:census] migrations: 6 applied, latest ${LATEST_MIGRATION}`,
       "[db:census] pins: 1 of 2 made under the given PIN_PEPPER",
     ]);
     expect(leaks(run.printed, forbidden), "values printed that must never be").toBe(0);

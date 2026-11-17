@@ -194,7 +194,7 @@ test.describe("the sign-in page without JavaScript", () => {
       await addKnownDevice(page);
       await enterCredentials(page, user);
 
-      await page.waitForURL((url) => url.pathname === "/stock-entry");
+      await page.waitForURL((url) => url.pathname === "/home");
       await expect(page.getByTestId("signed-in-name")).toHaveText(user.name);
     } finally {
       await removeUser(user.username);

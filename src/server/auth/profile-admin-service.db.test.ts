@@ -1020,16 +1020,16 @@ describe("022 AC-3: no application path creates, promotes, demotes or removes a 
     const before = await snapshot();
 
     const calls = [
-      approveProfile(admin.user, superAdmin.user.id, "ADMIN"),
-      rejectProfile(admin.user, superAdmin.user.id),
-      changeProfileRole(admin.user, superAdmin.user.id, "ADMIN"),
-      deactivateProfile(admin.user, superAdmin.user.id),
-      resetProfilePin(admin.user, superAdmin.user.id, 6),
-      clearAccountLock(admin.user, superAdmin.user.id),
+      () => approveProfile(admin.user, superAdmin.user.id, "ADMIN"),
+      () => rejectProfile(admin.user, superAdmin.user.id),
+      () => changeProfileRole(admin.user, superAdmin.user.id, "ADMIN"),
+      () => deactivateProfile(admin.user, superAdmin.user.id),
+      () => resetProfilePin(admin.user, superAdmin.user.id, 6),
+      () => clearAccountLock(admin.user, superAdmin.user.id),
     ];
 
     for (const work of calls) {
-      const error = await caught(work);
+      const error = await caught(work());
       expect(error).toBeInstanceOf(ForbiddenError);
       expect((error as Error).message).toBe(SUPER_ADMIN_PROTECTED_MESSAGE);
     }

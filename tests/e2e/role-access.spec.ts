@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 
 import { ACCESS_DENIED_MESSAGE } from "@/lib/auth-messages";
 import { assertNoMoneyKeys, deepKeys } from "@/lib/money-boundary";
+import type { Role } from "@/server/auth/roles";
 
 import { skipWithoutDatabase } from "./support/database";
 import { createTestUser, removeUser, signIn, storedPinHash } from "./support/users";
@@ -24,7 +25,7 @@ test.afterAll(async () => {
   }
 });
 
-async function newUser(role: "YARD_STAFF" | "ADMIN"): Promise<TestUser> {
+async function newUser(role: Role): Promise<TestUser> {
   const user = await createTestUser(role);
   created.push(user.username);
   return user;
@@ -79,6 +80,25 @@ test("AC-15, AC-16: /analysis and /api/users refuse YARD_STAFF and admit ADMIN",
   expect(Array.isArray((await adminUsers.json()).users)).toBe(true);
 
   await adminContext.close();
+});
+
+test("AC-7: SUPER_ADMIN is an administrator on every shipped admin surface", async ({
+  page,
+}) => {
+  const superAdmin = await newUser("SUPER_ADMIN");
+  await signIn(page, superAdmin);
+
+  const session = await page.request.get("/api/session");
+  expect(await session.json()).toMatchObject({ role: "SUPER_ADMIN", landingPath: "/home" });
+
+  for (const path of ["/analysis", "/analysis/export", "/item-master", "/profiles"]) {
+    const response = await page.goto(path);
+    expect(response?.status(), path).toBe(200);
+  }
+
+  const users = await page.request.get("/api/users");
+  expect(users.status()).toBe(200);
+  expect(Array.isArray((await users.json()).users)).toBe(true);
 });
 
 test("AC-18: a query parameter, a header and a cookie cannot change the role", async ({

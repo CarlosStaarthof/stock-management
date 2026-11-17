@@ -176,6 +176,13 @@ describe("022 AC-2: the migrations promote an existing profile and never create 
     expect(await carlos()).toEqual(after);
 
     // --- more than one SUPER_ADMIN refuses, rolling the promote back ----------------
+    // Put carlos back as ADMIN and give another row SUPER_ADMIN, so the promote's UPDATE
+    // really would create a second one. The raised exception must roll that UPDATE back:
+    // carlos stays ADMIN, which a no-op promote could not prove.
+    await scoped.user.update({
+      where: { id: created.id },
+      data: { role: "ADMIN", sessionEpoch: 7, pinHash: "fixture-pin-hash", pinKeyId: "fixture-pin-key" },
+    });
     await scoped.user.create({
       data: {
         username: "another-super",
@@ -187,8 +194,9 @@ describe("022 AC-2: the migrations promote an existing profile and never create 
     });
 
     await expect(applyPromoteAtomically()).rejects.toThrow();
-    expect(await scoped.user.count({ where: { role: "SUPER_ADMIN" } })).toBe(2);
-    expect((await carlos()).role).toBe("SUPER_ADMIN");
+    expect((await carlos()).role).toBe("ADMIN");
+    expect(await scoped.user.count({ where: { role: "SUPER_ADMIN" } })).toBe(1);
+    expect(await carlos()).toEqual(before);
   });
 
   it("AC-2: neither file inserts a profile, and the enum file carries a contract-step line", () => {

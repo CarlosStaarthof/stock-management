@@ -238,8 +238,10 @@ describe("012 AC-2, AC-3, AC-6: the depot sheet, a derived value, one depot only
     expect(dublin.getCell("B3").value).toBe("Kelly");
     expect(dublin.getCell("C3").value).toBe("Beads");
     expect(dublin.getCell("D3").value).toBe("20 Kg");
-    // Column E is the CURRENT price (9.99), not the June snapshot (R4).
-    expect(dublin.getCell("E3").value).toBe("€9.99");
+    // Column E is the CURRENT price (9.99), not the June snapshot (R4), and #22 AC-8 makes
+    // it a NUMBER with a euro display format rather than the formatted string.
+    expect(dublin.getCell("E3").value).toBe(9.99);
+    expect(dublin.getCell("E3").numFmt).toBe('"€"#,##0.00');
 
     const cashel = sheet(await openWorkbook("CASHEL"), "Cashel");
     expect(cashel.getCell("B3").value).toBe(NO_SUPPLIER);

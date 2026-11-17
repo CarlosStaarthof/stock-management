@@ -121,14 +121,14 @@ async function mintSession(claims: Record<string, unknown>): Promise<string> {
 
 /* ------------------------------------------------------------------ AC-9 */
 
-test("AC-9: a YARD_STAFF profile signs in and lands on /stock-entry, with the header showing its name", async ({
+test("AC-9: a YARD_STAFF profile signs in and lands on /home, with the header showing its name", async ({
   page,
 }) => {
   const user = await newUser("YARD_STAFF");
 
   await signIn(page, user);
 
-  expect(new URL(page.url()).pathname).toBe("/stock-entry");
+  expect(new URL(page.url()).pathname).toBe("/home");
   await expect(page.getByTestId("signed-in-name")).toHaveText(user.name);
 
   const session = await page.request.get("/api/session");
@@ -140,20 +140,20 @@ test("AC-9: a YARD_STAFF profile signs in and lands on /stock-entry, with the he
     username: user.username,
     name: user.name,
     role: "YARD_STAFF",
-    landingPath: "/stock-entry",
+    landingPath: "/home",
   });
 
   expect(await sessionCookieNames(page.context())).toContain(SESSION_COOKIE);
 });
 
-test("AC-9: an ADMIN signs in and lands on /stock-takes", async ({ page }) => {
+test("AC-9: an ADMIN signs in and lands on /home", async ({ page }) => {
   const user = await newUser("ADMIN");
 
   await signIn(page, user);
 
-  expect(new URL(page.url()).pathname).toBe("/stock-takes");
+  expect(new URL(page.url()).pathname).toBe("/home");
   const session = await page.request.get("/api/session");
-  expect(await session.json()).toMatchObject({ role: "ADMIN", landingPath: "/stock-takes" });
+  expect(await session.json()).toMatchObject({ role: "ADMIN", landingPath: "/home" });
 });
 
 test("AC-9: the username typed in capitals, or with spaces around it, signs in the same profile", async ({
@@ -233,7 +233,7 @@ for (const javaScriptEnabled of [true, false]) {
     await context.close();
   });
 
-  test(`AC-9: ${mode}, a callbackUrl of any of the four off-site shapes is ignored, and an ADMIN lands on /stock-takes`, async ({
+  test(`AC-9: ${mode}, a callbackUrl of any of the four off-site shapes is ignored, and an ADMIN lands on /home`, async ({
     browser,
     baseURL,
   }) => {
@@ -255,7 +255,7 @@ for (const javaScriptEnabled of [true, false]) {
       }
       await page.waitForURL((url) => url.pathname !== "/sign-in");
       expect(new URL(page.url()).origin, label).toBe(origin);
-      expect(new URL(page.url()).pathname, label).toBe("/stock-takes");
+      expect(new URL(page.url()).pathname, label).toBe("/home");
       await expect(page.getByTestId("signed-in-name"), label).toHaveText(admin.name);
       await context.close();
     }
