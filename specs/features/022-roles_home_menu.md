@@ -28,10 +28,17 @@ exists to replace the old spreadsheet must not put money in a text cell.
 - **D3 — The home menu is the landing.** After sign-in every role lands on `/home` unless a
   valid `callbackUrl` was supplied. The calendar is no longer the automatic landing.
   Tradeoff: every existing sign-in test moves one navigation further on.
-- **D4 — The calendar keeps its address.** The existing calendar is the *Stock Calendar*
-  section and keeps `/stock-entry`; moving the URL would touch every count link and every
-  shipped calendar test for no user-visible gain. Tradeoff: the word "Stock Calendar" is a
-  label on the home menu and the section heading, not a new route.
+- **D4 — The calendar keeps its addresses, and the tile resolves per role.** The two
+  existing calendars keep their URLs: `/stock-entry` stays the counting calendar and
+  `/stock-takes` stays the history calendar where an administrator finds what needs
+  approving. The *Stock Calendar* home tile therefore resolves per role: `YARD_STAFF` →
+  `/stock-entry`, `ADMIN` and `SUPER_ADMIN` → `/stock-takes`, mirroring today's landing (staff
+  count in one tap; administrators review first). No URL moves,
+  so every shipped count link and calendar test stays. Tradeoff: one tile label opens two
+  different screens depending on role, and an administrator no longer lands on the calendar
+  automatically (D3) but reaches the history/approvals calendar in one tap. This is a
+  clarification recorded at review, not new scope. *(Clarified 2026-11-17 after review; see
+  also Q2.)*
 - **D5 — Money visibility is a role rule with no exception.** `ADMIN` and `SUPER_ADMIN` see
   prices; `YARD_STAFF` sees no price, value or total on any surface, including the review and
   sign-off of a count. `YARD_STAFF` cannot sign off. Feature #24 implements the two-step
@@ -98,6 +105,14 @@ exists to replace the old spreadsheet must not put money in a text cell.
 the role itself. `requireAdminPage` and `shapeForRole` use the same predicate, so a
 `SUPER_ADMIN` gets the admin shape and a `YARD_STAFF` still gets the staff shape.
 
+The profile-admin services additionally protect the `SUPER_ADMIN` row itself, because the
+admin-or-above guard now lets an `ADMIN` reach every service: `changeProfileRole`,
+`deactivateProfile`, `resetProfilePin`, `clearAccountLock`, `approveProfile` and
+`rejectProfile` refuse a target whose current role is `SUPER_ADMIN` with a typed error and
+leave the row unchanged, except a `SUPER_ADMIN` resetting its own PIN. The target role is
+re-read and locked inside the service transaction, so a missed page guard cannot turn an
+`ADMIN` into the `SUPER_ADMIN` by resetting and reading its PIN (AC-3).
+
 **Routes**
 
 | Route | Access | Behaviour |
@@ -118,13 +133,15 @@ total over the roles, so adding a fourth role without deciding its landing is a 
 
 | Test id | Label | Href | `YARD_STAFF` | `ADMIN` | `SUPER_ADMIN` |
 |---|---|---|---|---|---|
-| `home-calendar` | Stock Calendar | `/stock-entry` | yes | yes | yes |
+| `home-calendar` | Stock Calendar | `/stock-entry` for `YARD_STAFF`; `/stock-takes` for `ADMIN`/`SUPER_ADMIN` | yes | yes | yes |
 | `home-export` | Export | `/analysis/export` | no | yes | yes |
 | `home-stock` | Stock | `/item-master` | no | yes | yes |
 | `home-dashboard` | Dashboard | `/dashboard` | no | no | yes |
 
-Count entry remains reachable from the calendar exactly as today (an empty day, `Start a
-count`, or a count badge); the home menu adds no second entry path.
+Count entry remains reachable from `/stock-entry` exactly as today (an empty day, `Start a
+count`, or a count badge); the home menu adds no second entry path. The history and
+approval calendar remains at `/stock-takes` exactly as #10 shipped it, and the administrator
+reaches it from the *Stock Calendar* tile (D4).
 
 **Export**
 
@@ -165,15 +182,25 @@ leave more than one `SUPER_ADMIN`. The enum migration carries a `-- contract-ste
 #16's migration-safety test accepts the enum addition. *Proved by*
 `src/server/auth/super-admin-migration.db.test.ts`.
 
-**AC-3 — No application path creates, promotes or removes a SUPER_ADMIN.** Every profile form
-and server action accepts only `YARD_STAFF` and `ADMIN`; `approveProfile`, `createProfile` and
-`changeProfileRole` refuse a requested `SUPER_ADMIN` with a typed `ValidationError`;
-`changeProfileRole` and `deactivateProfile` refuse a target whose current role is
-`SUPER_ADMIN`. The migrations are the only code that writes the role, and they only promote
-an existing row. The operator/test helper `createActiveProfile` remains the only other code
-that can create a `SUPER_ADMIN` fixture; no route or form reaches it, and e2e specs delete
-every fixture they create. *Proved by* `src/server/auth/profile-admin-service.db.test.ts` and
-a source scan in `tests/unit/role-hierarchy.test.ts`.
+**AC-3 — No application path creates, promotes, demotes or removes a SUPER_ADMIN.** Every
+profile form and server action accepts only `YARD_STAFF` and `ADMIN`; `approveProfile`,
+`createProfile` and `changeProfileRole` refuse a requested `SUPER_ADMIN` with a typed
+`ValidationError`. In the profile-admin service, `changeProfileRole`, `deactivateProfile`,
+`resetProfilePin`, `clearAccountLock`, `approveProfile` and `rejectProfile` refuse a target
+whose current role is `SUPER_ADMIN` with a typed error and leave the target row byte-identical,
+**except** that the same `SUPER_ADMIN` may reset its own PIN (the one allowed case, per #23
+AC-7 and D2). In particular, an `ADMIN` actor's `resetProfilePin` or `clearAccountLock` on the
+`SUPER_ADMIN` returns no PIN, changes no column and ends no session, so widening
+`assertRole(actor, "ADMIN")` to admin-or-above cannot turn an `ADMIN` into the `SUPER_ADMIN`
+by reading a freshly reset PIN. `approveProfile` and `rejectProfile` only ever act on a
+`PENDING` row, which can never hold `SUPER_ADMIN`; they carry the same explicit target-role
+refusal as defence in depth, so a future status change cannot reopen the hole. The migrations
+are the only code that writes the role, and they only promote an existing row. The
+operator/test helper `createActiveProfile` remains the only other code that can create a
+`SUPER_ADMIN` fixture; no route or form reaches it, and e2e specs delete every fixture they
+create. *Proved by* `src/server/auth/profile-admin-service.db.test.ts` (including the
+`ADMIN`-resets-`SUPER_ADMIN` case: no PIN returned, no column changed) and a source scan in
+`tests/unit/role-hierarchy.test.ts`.
 
 **AC-4 — Every role lands on `/home`.** After a successful sign-in with no `callbackUrl`,
 `YARD_STAFF`, `ADMIN` and `SUPER_ADMIN` all land on `/home`; with a valid `callbackUrl` they
@@ -186,17 +213,22 @@ A request for `/home` with no session sends none of the menu. *Proved by*
 tiles in the table above and no others. A `YARD_STAFF` response contains one `home-*` test id,
 `home-calendar`, and no link to `/analysis/export`, `/item-master` or `/dashboard`. An `ADMIN`
 response contains `home-calendar`, `home-export` and `home-stock`, and no `home-dashboard`.
-A `SUPER_ADMIN` response contains all four. Each tile's label and `href` are the table's, and
-the identity header's `signed-in-name` and `sign-out` controls are present for every role.
-*Proved by* `tests/e2e/home-menu.spec.ts`.
+A `SUPER_ADMIN` response contains all four. Each tile's label and `href` are the table's: the
+`home-calendar` tile's `href` is `/stock-entry` for a `YARD_STAFF` response and `/stock-takes`
+for an `ADMIN` or `SUPER_ADMIN` response, and the other three tiles' `href`s are the table's
+for every role. The identity header's `signed-in-name` and `sign-out` controls are present
+for every role. *Proved by* `tests/e2e/home-menu.spec.ts`.
 
-**AC-6 — The Stock Calendar section keeps working as the calendar.** The Stock Calendar tile
-leads to `/stock-entry`; that page still renders the month grid, still starts a count from an
-empty day, and still opens a count badge, with the shipped calendar tests passing. It is no
-longer the automatic landing. The page does not become a second count-entry screen: the only
-count actions on it remain the ones it has today. *Proved by* the existing
-`tests/e2e/stock-takes-calendar.spec.ts`, `tests/e2e/stock-entry-start.spec.ts` and
-`tests/e2e/home-menu.spec.ts`.
+**AC-6 — The Stock Calendar section keeps working, and both calendars keep their addresses.**
+For a `YARD_STAFF` actor the *Stock Calendar* tile leads to `/stock-entry`; for an `ADMIN` or
+`SUPER_ADMIN` it leads to `/stock-takes` (D4). `/stock-entry` still renders the month grid,
+still starts a count from an empty day, and still opens a count badge; `/stock-takes` still
+renders its month grid, its yard/scope links and its history count page, with the shipped
+calendar tests passing. Neither page is the automatic landing any more. The pages do not
+become a second count-entry screen: the only count actions on `/stock-entry` remain the ones
+it has today, and `/stock-takes` stays read-only (#10). *Proved by* the existing
+`tests/e2e/stock-takes-calendar.spec.ts`, `tests/e2e/stock-takes-count.spec.ts`,
+`tests/e2e/stock-entry-start.spec.ts` and `tests/e2e/home-menu.spec.ts`.
 
 **AC-7 — SUPER_ADMIN is an administrator on every shipped admin surface.** With a
 `SUPER_ADMIN` session, `/analysis`, `/analysis/export`, `/item-master`, `/profiles` and
@@ -224,14 +256,27 @@ is true. #24's review may carry money for an `ADMIN` or `SUPER_ADMIN`; the staff
 that page remains money-free and is asserted by #24's money walk. *Proved by* the existing
 `src/lib/money-boundary.test.ts`, the e2e money walks, and a new walk over `/home`.
 
-**AC-10 — The shipped role and sign-in tests change mechanically, and nothing is weakened.**
-`tests/e2e/support/users.ts` can create a `SUPER_ADMIN` fixture, and its sign-in helper learns
-the new landing without hiding a failure. Every existing spec that signs in and expects a
-specific landing either supplies that path as `callbackUrl` or navigates from `/home`; no
-test title is deleted, no assertion is removed, and no timeout is raised. The role-access
-spec gains one case for `SUPER_ADMIN`; the existing `ADMIN` and `YARD_STAFF` cases stay.
-Review records the base commit and the `git diff` range used to check this. *Proved by*
-`tests/e2e/sign-in.spec.ts`, `tests/e2e/role-access.spec.ts` and recorded review evidence.
+**AC-10 — The shipped role, sign-in and export tests change mechanically, and nothing is
+weakened.** `tests/e2e/support/users.ts` can create a `SUPER_ADMIN` fixture, and its sign-in
+helper learns the new landing without hiding a failure. Every existing spec that signs in and
+expects a specific landing either supplies that path as `callbackUrl` or navigates from
+`/home`; no test title is deleted, no assertion is removed, and no timeout is raised. The
+role-access spec gains one case for `SUPER_ADMIN`; the existing `ADMIN` and `YARD_STAFF` cases
+stay. Exactly one shipped unit assertion changes, and its before/after/why-not-weaker is named
+here, in the form of 009 AC-33:
+
+- `tests/unit/export-workbook.test.ts:165` — **before:** `expect(valueOf(dublin, "E3")).toBe("€1.005")`,
+  a text equality that passed only because the cell happened to be the formatted string.
+  **after:** `expect(valueOf(dublin, "E3")).toBe(1.005)` and
+  `expect(dublin.getCell("E3").numFmt).toBe('"€"#,##0.00')`, plus the no-price row asserting
+  E has no value (`toBeNull`/`toBeUndefined`, not `""`). **Not weaker:** the new pair asserts
+  the machine-readable number and the euro display format separately, which the old text
+  assertion could not distinguish; it still reads the cell back from a round-tripped
+  workbook, and it adds the blank case the old assertion did not make. The same file's
+  `valueOf` helper stays and no other assertion in it changes. `git diff` on that file shows
+  no other changed line. Review records the base commit and the `git diff` range used to
+  check this. *Proved by* `tests/unit/export-workbook.test.ts`, `tests/e2e/sign-in.spec.ts`,
+  `tests/e2e/role-access.spec.ts` and recorded review evidence.
 
 **AC-11 — The gate is green in full.** `npx prisma validate`, `npm run typecheck`,
 `npm run lint`, `npm run test:unit`, `npx prisma migrate status`, `npm run test:db` and
@@ -263,8 +308,9 @@ is updated for the third enum member and passes. `TRUNCATED_TABLES` is unchanged
   on the `SUPER_ADMIN` role), which would make e2e fixtures unable to create a second
   super administrator? This spec enforces it in the migration and in the profile services.
 - **Q2:** The owner's instruction says the calendar is "moved to its own section". This spec
-  keeps the `/stock-entry` address and makes it a menu section. Confirm that no URL rename is
-  wanted.
+  keeps both existing addresses (`/stock-entry` for counting, `/stock-takes` for history) and
+  makes *Stock Calendar* a menu section whose tile resolves per role (D4). Confirm that no URL
+  rename is wanted.
 - **Q3:** If `carlos-staarthof` does not exist at deploy time, should the owner expect to
   create the profile and run a follow-up promotion, or is a future deployment script expected
   to cover it? This spec follows R2 and does nothing in the migration.

@@ -208,13 +208,20 @@ for an unknown role, a target that is not `ACTIVE` and a target that is already
 applies when the target is an `ADMIN`. *Proved by*
 `tests/e2e/dashboard-profiles.spec.ts` and `src/server/dashboard/dashboard-service.db.test.ts`.
 
-**AC-7 — Self-protection is in the service, not only on the dashboard page.** A
-`SUPER_ADMIN` actor cannot change its own role, deactivate itself or activate itself through
-the dashboard **or** through `/profiles`: each refusal is a typed error, and the actor's row
-still has role `SUPER_ADMIN` and status `ACTIVE` afterwards. A reset of its own PIN is
-allowed. A second `SUPER_ADMIN` cannot be created or promoted by either surface, so the row
-protected here is the only one. *Proved by* `src/server/dashboard/dashboard-service.db.test.ts`,
-`src/server/auth/profile-admin-service.db.test.ts` and `tests/e2e/dashboard-profiles.spec.ts`.
+**AC-7 — Self-protection is in the service, not only on the dashboard page, and it protects
+the SUPER_ADMIN from every other actor too.** A `SUPER_ADMIN` actor cannot change its own
+role, deactivate itself or activate itself through the dashboard or through `/profiles`: each
+refusal is a typed error, and the actor's row still has role `SUPER_ADMIN` and status `ACTIVE`
+afterwards. A reset of its own PIN is allowed. Conversely, no other actor may touch the
+`SUPER_ADMIN` row: an `ADMIN` calling `resetProfilePin` or `clearAccountLock` on the
+`SUPER_ADMIN` (directly or through a dashboard service) is refused with a typed error,
+receives no PIN, and leaves every column of the target row byte-identical, so `/profiles`'
+admin-or-above guard cannot be used as a privilege-escalation path. The same refusal covers
+`changeProfileRole` and `deactivateProfile`, as #22 AC-3 states. A second `SUPER_ADMIN` cannot
+be created or promoted by either surface, so the row protected here is the only one. *Proved
+by* `src/server/dashboard/dashboard-service.db.test.ts`,
+`src/server/auth/profile-admin-service.db.test.ts` (including an `ADMIN` actor's reset of the
+`SUPER_ADMIN`: no PIN returned, no column changed) and `tests/e2e/dashboard-profiles.spec.ts`.
 
 **AC-8 — The records view is one row per approved StockCount.** For two approved counts at
 different depots and dates, the Records section shows exactly two rows, ordered newest count

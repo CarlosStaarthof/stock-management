@@ -399,25 +399,108 @@ be approved once by an `ADMIN` or `SUPER_ADMIN` (R4), and that is the only path 
 `src/server/counts/count-lifecycle-service.db.test.ts`,
 `src/app/stock-entry/counts/[id]/summary/page.test.ts` and `tests/e2e/open-items.spec.ts`.
 
-**AC-14 — The review is the only new money surface, and only for administrators.**
-A `YARD_STAFF` response for the calendar, count detail, finish screen, home menu, stock-takes
-history, review and every other staff page contains no price, value, total or amount at any
-depth. The `ADMIN`/`SUPER_ADMIN` review response contains the total and open-item prices and
-nothing else monetary. The existing money-boundary walks pass. A new walk over the finish
-screen passes with no allowance; a new walk over the administrator review passes only when it
-allows the review's `totalValue` and open-item `unitPrice`/`value` fields explicitly. The
-staff shape on the count detail page still has no money. *Proved by*
+**AC-14 — The administrator review is the new money surface, it is administrator-only, and
+it makes the euro-bearing route count three.** A `YARD_STAFF` response for the calendar,
+count detail, finish screen, home menu, stock-takes history, review and every other staff page
+contains no price, value, total or amount at any depth. The `ADMIN`/`SUPER_ADMIN` review
+response contains the total and open-item prices and nothing else monetary, and the
+`YARD_STAFF` rendering of the same `/submit` URL stays money-free. The existing money-boundary
+walks pass. A new walk over the finish screen passes with no allowance; a new walk over the
+administrator review passes only when it allows the review's `totalValue` and open-item
+`unitPrice`/`value` fields explicitly. The staff shape on the count detail page still has no
+money. Because this review is served at `/stock-entry/counts/[id]/submit` and carries a euro
+for an administrator, the shipped criteria that said no euro could appear there are **amended,
+not violated**: 009 AC-21's "`ADMIN` renders of `/submit` contain no €", 009 AC-22's
+"`/summary` is the only route whose HTML contains a €" and 011 AC-19's "the only two
+euro-bearing routes in the tree are `/analysis` and `/summary`" become "the euro-bearing routes
+are `/analysis`, `/stock-entry/counts/[id]/summary` and `/stock-entry/counts/[id]/submit`, and
+the third is administrator-only". The amendment tightens rather than drops the check: the
+`YARD_STAFF` fetch of `/submit` is still asserted to contain no euro, and the administrator
+list becomes an exact three-route list, enumerated in AC-15. *Proved by*
 `src/lib/money-boundary.test.ts`, the e2e money walks and `tests/e2e/open-items.spec.ts`.
 
-**AC-15 — The gate is green in full.** `npx prisma validate`, `npm run typecheck`,
-`npm run lint`, `npm run test:unit`, `npx prisma migrate status`, `npm run test:db` and
-`npm run test:e2e` pass; `./init.sh` ends with `[OK] Environment ready` having **executed**
-the database checks. `git status --porcelain -- Samples` is empty. The new e2e file covers
-add → remove → add → finish by `YARD_STAFF` → review and price by `ADMIN` → sign off →
-read-only, and a second path where an `ADMIN` counts and signs off in one step. The shipped
-submit/approve tests are updated only where this feature changes the flow, the legacy
-`SUBMITTED` approval test is narrowed rather than deleted, and no assertion is weakened.
-*Proved by* the recorded gate run in `progress/impl_open_items_sign_off.md`.
+**AC-15 — The gate is green in full, and exactly which shipped assertions change is named.**
+`npx prisma validate`, `npm run typecheck`, `npm run lint`, `npm run test:unit`,
+`npx prisma migrate status`, `npm run test:db` and `npm run test:e2e` pass; `./init.sh` ends
+with `[OK] Environment ready` having executed the database checks. `git status --porcelain --
+Samples` is empty. The new e2e file covers add → remove → add → finish by `YARD_STAFF` →
+review and price by `ADMIN` → sign off → read-only, and a second path where an `ADMIN` counts
+and signs off in one step. The shipped submit/approve tests are updated only where this
+feature changes the flow, the legacy `SUBMITTED` approval test is narrowed rather than
+deleted, and no assertion is weakened.
+
+Every shipped assertion this feature amends is named below with what it checked before, what
+it checks after, and why it is not weaker (009 AC-33's convention; no other shipped assertion
+changes):
+
+- **(a) Money surfaces — 009 AC-21, 009 AC-22, 011 AC-19.** Before: an `ADMIN` render of
+  `/submit` contains no `€`; `/summary` is the only euro-bearing route; the tree has exactly
+  two euro-bearing routes (`/analysis` and `/summary`). After: the `ADMIN`/`SUPER_ADMIN`
+  `/submit` review carries the total and open-item prices, and the exact euro-bearing set is
+  `/analysis`, `/stock-entry/counts/[id]/summary` and `/stock-entry/counts/[id]/submit`, the
+  third administrator-only. Not weaker: the `YARD_STAFF` render of `/submit` stays a
+  zero-euro absence assertion with no allowance, and the admin set becomes an exact
+  three-route list rather than a two-route list relaxed by deletion.
+- **(b) `tests/unit/project-contract.test.ts` exact `unitPrice` lists.** Before: "012 AC-10
+  amending 011 AC-26: exactly thirteen modules may name unitPrice", its exact
+  `src/app`+`src/components` sub-list, and `src/lib`+`scripts` held at zero. After: the list
+  grows by exactly the modules that must name the column — `src/server/counts/open-item-service.ts`,
+  `src/server/counts/open-item-input.ts`, `src/app/stock-entry/counts/[id]/submit/page.tsx`
+  and the `OpenItemForAdmin` shape in `src/types/stock-count.ts` — and the sub-lists follow;
+  `src/lib`+`scripts` stays zero. Not weaker: still an exact FILE list with a non-vacuity
+  read, never a directory exemption; a further module turns it red.
+- **(c) `tests/unit/stock-entry-contract.test.ts` scans and `MUTATION_EXEMPT`.** Before: only
+  the two lifecycle modules may name a status past `DRAFT`; `MUTATION_EXEMPT` is exactly two
+  files; the "only files naming the forbidden strings" list is an exact six; the `CountStatus`
+  union is the three-value literal; `count-lifecycle-service.ts` performs exactly four Prisma
+  operations. After: `open-item-service.ts` joins the exact status-name and mutation
+  exemptions (it branches on `DRAFT`/`PENDING_SIGN_OFF`/`APPROVED` and writes
+  `StockCountOpenItem`), the offender list gains `open-item-service.ts`, `open-item-input.ts`
+  and the review page, the union literal gains `PENDING_SIGN_OFF`, and
+  `count-lifecycle-service.ts`'s exact operation set is extended for sign-off's open-item and
+  snapshot writes. Not weaker: each remains an exact file/operation set with a non-vacuity
+  assertion, never a wildcard.
+- **(d) The audit format — `src/lib/count-audit.ts:64` and `tests/unit/count-audit.test.ts`.**
+  Before: `AuditEvent` is `SUBMITTED | APPROVED | REOPENED`, the parse regex matches those
+  three, and the test asserts that exact list. After: `FINISHED` joins the union, the regex
+  alternation and the exact list, and `auditSentence` renders the new line; existing
+  `SUBMITTED`/`APPROVED`/`REOPENED` sentences and parsing stay byte-identical and are still
+  asserted. Not weaker: the list stays exact, so a fifth event turns it red, and the legacy
+  parse is retained by a round-trip test.
+- **(e) `src/lib/count-messages.ts:133` `COUNT_STATUS_LABEL`.** Before: a
+  `Record<CountStatus, string>` with three keys. After: four keys, with
+  `PENDING_SIGN_OFF: "Awaiting sign-off"`; the type keeps it total over the union. Not weaker:
+  the `Record` makes a missing label a type error.
+- **(f) 009 AC-21/AC-22's money-key walks over the shared submit shape.** Before:
+  `getCountForSubmit` for an `ADMIN` had the exact money-key set `{itemsWithoutPrice,
+  linesWithoutPrice}` and zero for a `YARD_STAFF`. After: the shapes become
+  `FinishReviewForStaff` (no money key for staff) and `ReviewForSignOff` (total plus
+  open-item `unitPrice`/`value` for administrators), and the exact key sets are restated in
+  those tests. Not weaker: the staff walk stays zero-offender and the admin set stays exact.
+- **(g) The status-label assertions of 009 AC-23 and 010 AC-8.** Before: the label set is
+  `Draft`/`Submitted`/`Approved` on the count and history pages. After: the fourth label
+  `Awaiting sign-off` renders for a `PENDING_SIGN_OFF` count; the three existing labels and
+  their sentences are unchanged. Not weaker: the assertion enumerates all four statuses.
+- **(h) 011 AC-5 and `src/server/reporting/analysis-service.ts:273-285` `yardFigureFor`.**
+  Before: only `APPROVED` carries a value; `SUBMITTED` and `DRAFT` render their status with
+  `yardValue === null` and no `€`. After: `PENDING_SIGN_OFF` behaves exactly as `SUBMITTED`
+  does — `yardValue === null`, the label rendered from `COUNT_STATUS_LABEL`, a link to the
+  count, and no euro — and the analysis test gains that fourth status. Not weaker: the
+  existing three-status figures are unchanged to the value and the new status is asserted to
+  contribute nothing to any total.
+- **(i) `tests/unit/schema-and-migration.test.ts` and `src/server/test-db.ts`
+  `TRUNCATED_TABLES`.** Before: the `CountStatus` enum count and the table list match the
+  shipped schema. After: `CountStatus` and the table list gain the new value and table, and the
+  closure test still asserts equality with `information_schema`. Not weaker: exact-list
+  equality, so a further value or table turns it red.
+- **(j) The shipped `/summary` approve and submit/approve tests.** Before: a new count goes
+  `submitCount` then `approveCount`. After: `signOffCount` closes a new count and
+  `approveCount` is narrowed to a legacy `SUBMITTED` row; the approve control is asserted
+  absent for a count this flow signed. Not weaker: the legacy `SUBMITTED` path is still
+  asserted end to end, and the no-approve assertion is added rather than replacing it.
+
+*Proved by* the recorded gate run in `progress/impl_open_items_sign_off.md`, with the
+`git diff` over the test files named above.
 
 ## Changes to today's submit and approve flow
 
@@ -480,7 +563,14 @@ Every difference from #9/#12/#22/#23 is listed here. Nothing else in the flow ch
     updated where they assume two steps; the new `open-items.spec.ts` covers both the
     staff-finish-then-admin-sign-off flow and the admin one-step flow; the old approval tests
     are narrowed to the legacy `SUBMITTED` path rather than deleted. No test is weakened to
-    make the new flow pass.
+    make the new flow pass. Exactly which shipped assertions change is listed in AC-15.
+18. **`PENDING_SIGN_OFF` renders like `SUBMITTED` today, without a euro.** The calendar
+    badge, the `/stock-takes` list and detail page show `Awaiting sign-off` from
+    `COUNT_STATUS_LABEL`, and `/analysis`'s `yardFigureFor` treats it exactly as it treats
+    `SUBMITTED` — `yardValue === null`, `countStatus` populated, a link to the count, and no
+    `€` on any of those three surfaces. It contributes nothing to any period total, and
+    #9's existing `!DRAFT` reopen rule already covers it. This is `SUBMITTED`'s rendering
+    with a fourth label, not a new money surface.
 
 ## Out of scope
 

@@ -91,3 +91,34 @@ git diff --stat
 
 No gate was run: this round changes Markdown and the feature registry only. No feature is
 `approved`; all three remain `pending` with `spec_status: draft` for the owner's approval.
+
+## Round 3 — review fixes applied, 2026-11-17
+
+Closed `progress/review_mwkjd6rb.md` (CHANGES_REQUESTED). Spec-only; no code, schema,
+migration, test or `Samples/` change. No new scope.
+
+| Required change | Applied in |
+|---|---|
+| 1 — Close the `SUPER_ADMIN` takeover path | #22 AC-3 and the guards paragraph: `resetProfilePin`, `clearAccountLock`, `changeProfileRole`, `deactivateProfile` and (as defence in depth) `approveProfile`/`rejectProfile` refuse a `SUPER_ADMIN` target with a typed error and an unchanged row, except an own-PIN reset; the `ADMIN`-resets-`SUPER_ADMIN` test returns no PIN and changes no column. #23 AC-7 states the same protection from every other actor. |
+| 2 — Enumerate the shipped assertions each feature amends | #22 AC-10 names `tests/unit/export-workbook.test.ts:165` before/after/why-not-weaker. #24 AC-14 reworded so the administrator review adds a third, admin-only euro-bearing route rather than contradicting 009 AC-21/22 and 011 AC-19; #24 AC-15 lists every changed shipped assertion (a)–(j); change-list item 18 adds how `PENDING_SIGN_OFF` renders on the calendar, `/stock-takes` and `/analysis` with no euro. |
+| 3 — Decide what Stock Calendar means for `ADMIN` | #22 D4 now records the per-role tile: `/stock-entry` for `YARD_STAFF`, `/stock-takes` for `ADMIN`/`SUPER_ADMIN`; the tradeoff is named, the tile table, AC-5 and AC-6 assert the `href` per role, and Q2 is updated. |
+
+`feature_list.json` acceptance arrays for #22, #23 and #24 were regenerated from the amended
+specs (no other file changed). The five pre-existing spec/JSON drifts the review noted are
+included in that regeneration.
+
+### Verification
+
+```
+node feature-list validation (same logic as init.sh)
+  -> 23 features, 1 in progress (#12 export_workbook), problems: none
+node spec-vs-feature_list acceptance diff (#22/#23/#24)
+  -> diffs 0
+git status --porcelain -- Samples
+  -> empty
+```
+
+No `npm` gate was run: this round changes Markdown and the feature registry only, and the
+container has no `.env`/`DATABASE_URL` (the review recorded the same environment-only reds).
+No feature is `approved`; all three remain `pending` with `spec_status: draft` for review and
+the owner's approval.
