@@ -63,6 +63,19 @@ exists to replace the old spreadsheet must not put money in a text cell.
 - **R4 — Legacy `SUBMITTED` counts stay approvable once by an `ADMIN` or `SUPER_ADMIN`**,
   with no data conversion. #24 owns the retained legacy path; the `isAdminOrAbove` predicate
   in this spec is what lets `SUPER_ADMIN` use it.
+- **R5 — AC-10 lists two more forced unit amendments.** AC-10's "exactly one" is amended to
+  three: `tests/unit/item-master-actions-contract.test.ts` and
+  `tests/unit/pin-auth-contract.test.ts` change with AC-1's guard rename, including their two
+  test titles. Both keep their exact assertions — the pin-auth test asserts one exact
+  first-statement per function — so nothing is weakened; each before/after/why-not-weaker is
+  recorded in `progress/impl_roles_home_menu.md`.
+- **R6 — Feature #12 is signed off.** `export_workbook` was released to production on
+  2026-11-17, so it may be set `done` in `feature_list.json`. Feature #22 stays the single
+  `in_progress` feature.
+- **R7 — AC-4 to AC-7 and the `/home` half of AC-9 are proved inside the gate.** Unit tests
+  where the logic lives — the home menu, the page guards and the landing — prove them without
+  a browser. The e2e specs stay as written, to run once Chromium works in the workers; the
+  impl notes list which parts are still proved only by e2e.
 
 ## User stories
 
@@ -207,7 +220,8 @@ create. *Proved by* `src/server/auth/profile-admin-service.db.test.ts` (includin
 land on that same-origin path instead. `/home` is in `PROTECTED_PATHS` and the middleware
 matcher, and a signed-out request for it is a redirect to `/sign-in` with `callbackUrl=/home`.
 A request for `/home` with no session sends none of the menu. *Proved by*
-`tests/e2e/home-menu.spec.ts` and `src/server/auth/landing.test.ts`.
+`src/server/auth/landing.test.ts`, `src/app/page-guards.test.ts`,
+`tests/unit/home-contract.test.ts` and `tests/e2e/home-menu.spec.ts`.
 
 **AC-5 — The home menu is exactly the role's tiles.** The rendered response contains the
 tiles in the table above and no others. A `YARD_STAFF` response contains one `home-*` test id,
@@ -217,7 +231,8 @@ A `SUPER_ADMIN` response contains all four. Each tile's label and `href` are the
 `home-calendar` tile's `href` is `/stock-entry` for a `YARD_STAFF` response and `/stock-takes`
 for an `ADMIN` or `SUPER_ADMIN` response, and the other three tiles' `href`s are the table's
 for every role. The identity header's `signed-in-name` and `sign-out` controls are present
-for every role. *Proved by* `tests/e2e/home-menu.spec.ts`.
+for every role. *Proved by* `src/app/home/page.test.ts`, `src/server/home-menu.test.ts` and
+`tests/e2e/home-menu.spec.ts`.
 
 **AC-6 — The Stock Calendar section keeps working, and both calendars keep their addresses.**
 For a `YARD_STAFF` actor the *Stock Calendar* tile leads to `/stock-entry`; for an `ADMIN` or
@@ -228,7 +243,9 @@ calendar tests passing. Neither page is the automatic landing any more. The page
 become a second count-entry screen: the only count actions on `/stock-entry` remain the ones
 it has today, and `/stock-takes` stays read-only (#10). *Proved by* the existing
 `tests/e2e/stock-takes-calendar.spec.ts`, `tests/e2e/stock-takes-count.spec.ts`,
-`tests/e2e/stock-entry-start.spec.ts` and `tests/e2e/home-menu.spec.ts`.
+`tests/e2e/stock-entry-start.spec.ts` and `tests/e2e/home-menu.spec.ts`, plus
+`tests/unit/home-contract.test.ts` and `src/app/home/page.test.ts` for the addresses and the
+per-role tile.
 
 **AC-7 — SUPER_ADMIN is an administrator on every shipped admin surface.** With a
 `SUPER_ADMIN` session, `/analysis`, `/analysis/export`, `/item-master`, `/profiles` and
@@ -237,7 +254,8 @@ already rendered. With a `YARD_STAFF` session the same paths still refuse exactl
 today; with an `ADMIN` session nothing about them changes. `shapeForRole` returns the admin
 shape for `SUPER_ADMIN`, so the count detail page's `itemsWithoutPrice` and the admin sheet
 shapes are built for that role. *Proved by* `tests/e2e/role-access.spec.ts` (extended for the
-third role) and `src/server/auth/role-shape.test.ts`.
+third role), `src/app/page-guards.test.ts`, `src/server/auth/guards.test.ts`,
+`src/server/auth/role-shape.test.ts` and `src/server/auth/roles.test.ts`.
 
 **AC-8 — The export's Price column is a number in euros.** In a workbook built from a row
 whose current price is `1234.5`, cell E of that row has a numeric value (`1234.5`, not the
@@ -254,7 +272,8 @@ existing money-boundary walks still pass. The home menu adds no figure of any ki
 change does not widen a staff response: the admin shape is built only when `isAdminOrAbove`
 is true. #24's review may carry money for an `ADMIN` or `SUPER_ADMIN`; the staff rendering of
 that page remains money-free and is asserted by #24's money walk. *Proved by* the existing
-`src/lib/money-boundary.test.ts`, the e2e money walks, and a new walk over `/home`.
+`src/lib/money-boundary.test.ts`, the e2e money walks, and `src/app/home/page.test.ts`, a
+rendered walk over `/home`.
 
 **AC-10 — The shipped role, sign-in and export tests change mechanically, and nothing is
 weakened.** `tests/e2e/support/users.ts` can create a `SUPER_ADMIN` fixture, and its sign-in
@@ -262,8 +281,9 @@ helper learns the new landing without hiding a failure. Every existing spec that
 expects a specific landing either supplies that path as `callbackUrl` or navigates from
 `/home`; no test title is deleted, no assertion is removed, and no timeout is raised. The
 role-access spec gains one case for `SUPER_ADMIN`; the existing `ADMIN` and `YARD_STAFF` cases
-stay. Exactly one shipped unit assertion changes, and its before/after/why-not-weaker is named
-here, in the form of 009 AC-33:
+stay. Three shipped unit assertions change, each named here with its before/after/why-not-weaker
+in the form of 009 AC-33. The second and third are forced follow-ons of AC-1's guard rename
+(R5):
 
 - `tests/unit/export-workbook.test.ts:165` — **before:** `expect(valueOf(dublin, "E3")).toBe("€1.005")`,
   a text equality that passed only because the cell happened to be the formatted string.
@@ -275,8 +295,27 @@ here, in the form of 009 AC-33:
   workbook, and it adds the blank case the old assertion did not make. The same file's
   `valueOf` helper stays and no other assertion in it changes. `git diff` on that file shows
   no other changed line. Review records the base commit and the `git diff` range used to
-  check this. *Proved by* `tests/unit/export-workbook.test.ts`, `tests/e2e/sign-in.spec.ts`,
-  `tests/e2e/role-access.spec.ts` and recorded review evidence.
+  check this.
+- `tests/unit/item-master-actions-contract.test.ts:72` — **before:** the title "there is one
+  `requireRole("ADMIN")` call per exported action", the scan `/await requireRole\("ADMIN"\)/g`,
+  and the exact first statement `const actor = await requireRole("ADMIN");`. **after:** the
+  title "…one admin-or-above guard per exported action", the scan `/await requireAdminOrAbove\(\)/g`,
+  and the exact first statement `const actor = await requireAdminOrAbove();`. **Not weaker:**
+  every structural assertion is unchanged (19 exported actions, one guard before anything
+  else per action, exact first statement); only the shipped guard's name changed, forced by
+  AC-1.
+- `tests/unit/pin-auth-contract.test.ts:932` — **before:** the title "…asserts ADMIN as its
+  first statement" and `expect(...).toBe('assertRole(actor, "ADMIN");')`. **after:** the title
+  "…asserts admin-or-above as its first statement" and an exact per-function `toBe`:
+  `const user = assertAdminOrAbove(actor);` for `resetProfilePin` alone and
+  `assertAdminOrAbove(actor);` for the other nine. **Not weaker:** it remains an exact
+  first-statement equality per function, stricter than the two-element `toContain` an
+  intermediate draft used; the bound form is AC-3's self-reset, the only function that needs
+  the actor's id.
+
+*Proved by* `tests/unit/export-workbook.test.ts`, `tests/unit/item-master-actions-contract.test.ts`,
+`tests/unit/pin-auth-contract.test.ts`, `tests/e2e/sign-in.spec.ts`,
+`tests/e2e/role-access.spec.ts` and recorded review evidence.
 
 **AC-11 — The gate is green in full.** `npx prisma validate`, `npm run typecheck`,
 `npm run lint`, `npm run test:unit`, `npx prisma migrate status`, `npm run test:db` and
